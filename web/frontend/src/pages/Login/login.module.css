@@ -1,0 +1,142 @@
+.loginPage {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: linear-gradient(135deg, #f5f7ff 0%, #eef2ff 100%);
+    box-sizing: border-box;
+}
+
+.loginContainer {
+    width: 100%;
+    max-width: 420px;
+    padding: 40px;
+    background: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 12px 35px rgba(0, 0, 0, 0.08);
+    box-sizing: border-box;
+}
+
+.loginTitle {
+    margin: 0 0 28px;
+    text-align: center;
+    font-size: 32px;
+    font-weight: 700;
+    color: #1f2937;
+}
+
+.message {
+    margin: 0 0 16px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    background: #ecfdf5;
+    color: #047857;
+    font-size: 14px;
+}
+
+.error {
+    margin: 0 0 16px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    background: #fef2f2;
+    color: #dc2626;
+    font-size: 14px;
+}
+
+.loginForm {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.formGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.formLabel {
+    font-size: 14px;
+    font-weight: 600;
+    color: #374151;
+}
+
+.formInput {
+    width: 100%;
+    padding: 13px 14px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    outline: none;
+    font-size: 15px;
+    color: #111827;
+    background: #ffffff;
+    box-sizing: border-box;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.formInput::placeholder {
+    color: #9ca3af;
+}
+
+.formInput:focus {
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+
+.loginButton {
+    width: 100%;
+    padding: 13px 16px;
+    border: none;
+    border-radius: 8px;
+    background: #4f46e5;
+    color: #ffffff;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.1s ease;
+}
+
+.loginButton:hover:not(:disabled) {
+    background: #4338ca;
+}
+
+.loginButton:active:not(:disabled) {
+    transform: translateY(1px);
+}
+
+.loginButton:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+}
+
+.registerText {
+    margin: 24px 0 0;
+    text-align: center;
+    font-size: 14px;
+    color: #6b7280;
+}
+
+.registerLink {
+    color: #4f46e5;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.registerLink:hover {
+    text-decoration: underline;
+}
+
+@media (max-width: 480px) {
+    .loginPage {
+        padding: 16px;
+    }
+
+    .loginContainer {
+        padding: 28px 20px;
+    }
+
+    .loginTitle {
+        font-size: 28px;
+    }
+}
