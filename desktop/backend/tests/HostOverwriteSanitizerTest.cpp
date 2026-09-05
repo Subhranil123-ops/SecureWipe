@@ -21,15 +21,11 @@ void printDeviceInfo(const StorageDevice& device)
     std::cout << "Serial       : " << device.getSerialNumber() << '\n';
     std::cout << "Interface    : " << device.getInterfaceType() << '\n';
     std::cout << "Capacity     : " << device.getCapacityBytes() << " bytes\n";
-    std::cout << "System Disk  : "
-              << (device.isSystemDisk() ? "YES" : "NO") << '\n';
-    std::cout << "Removable    : "
-              << (device.isRemovable() ? "YES" : "NO") << '\n';
+    std::cout << "System Disk  : " << (device.isSystemDisk() ? "YES" : "NO") << '\n';
+    std::cout << "Removable    : " << (device.isRemovable() ? "YES" : "NO") << '\n';
 }
 
-bool openDevice(
-    const std::string& devicePath,
-    HANDLE& deviceHandle)
+bool openDevice(const std::string& devicePath, HANDLE& deviceHandle)
 {
     deviceHandle = CreateFileA(
         devicePath.c_str(),
@@ -50,9 +46,7 @@ bool openDevice(
     return true;
 }
 
-bool getDeviceCapacity(
-    HANDLE deviceHandle,
-    std::uint64_t& capacity)
+bool getDeviceCapacity(HANDLE deviceHandle, std::uint64_t& capacity)
 {
     GET_LENGTH_INFORMATION lengthInfo{};
     DWORD returnedBytes = 0;
@@ -78,14 +72,11 @@ bool getDeviceCapacity(
         return false;
     }
 
-    capacity =
-        static_cast<std::uint64_t>(lengthInfo.Length.QuadPart);
-
+    capacity = static_cast<std::uint64_t>(lengthInfo.Length.QuadPart);
     return true;
 }
 
-bool confirmDestructiveOperation(
-    const StorageDevice& device)
+bool confirmDestructiveOperation(const StorageDevice& device)
 {
     std::cout << "\n============================================================\n";
     std::cout << "                 DESTRUCTIVE OPERATION\n";
@@ -101,10 +92,9 @@ bool confirmDestructiveOperation(
     std::cout << "to continue: ";
 
     std::string confirmation;
-    std::cin >> confirmation;
+    std::getline(std::cin >> std::ws, confirmation);
 
-    const std::string expected =
-        "ERASE " + device.getSerialNumber();
+    const std::string expected = "ERASE " + device.getSerialNumber();
 
     if (confirmation != expected)
     {
@@ -125,7 +115,6 @@ int main()
     std::cout << "\n[1] Discovering storage devices...\n";
 
     WindowsStorageDiscovery discovery;
-
     const auto devices = discovery.discover();
 
     if (devices.empty())
@@ -146,12 +135,9 @@ int main()
         std::cout << "Model       : " << device.getModel() << '\n';
         std::cout << "Serial      : " << device.getSerialNumber() << '\n';
         std::cout << "Interface   : " << device.getInterfaceType() << '\n';
-        std::cout << "Capacity    : " << device.getCapacityBytes()
-                  << " bytes\n";
-        std::cout << "System Disk : "
-                  << (device.isSystemDisk() ? "YES" : "NO") << '\n';
-        std::cout << "Removable   : "
-                  << (device.isRemovable() ? "YES" : "NO") << '\n';
+        std::cout << "Capacity    : " << device.getCapacityBytes() << " bytes\n";
+        std::cout << "System Disk : " << (device.isSystemDisk() ? "YES" : "NO") << '\n';
+        std::cout << "Removable   : " << (device.isRemovable() ? "YES" : "NO") << '\n';
     }
 
     std::cout << "\nEnter device index to test: ";
@@ -189,13 +175,9 @@ int main()
     }
 
     if (target.isRemovable())
-    {
         std::cout << "Target type : Removable device\n";
-    }
     else
-    {
         std::cout << "Target type : Internal device\n";
-    }
 
     printDeviceInfo(target);
 
@@ -221,19 +203,15 @@ int main()
         return 1;
     }
 
-    std::cout << "Physical Capacity : "
-              << actualCapacity << " bytes\n";
+    std::cout << "Physical Capacity : " << actualCapacity << " bytes\n";
 
     if (actualCapacity != target.getCapacityBytes())
     {
         std::cout << "\n[WARNING] Discovered capacity and physical capacity "
                      "do not match.\n";
 
-        std::cout << "Discovered : "
-                  << target.getCapacityBytes() << '\n';
-
-        std::cout << "Physical   : "
-                  << actualCapacity << '\n';
+        std::cout << "Discovered : " << target.getCapacityBytes() << '\n';
+        std::cout << "Physical   : " << actualCapacity << '\n';
 
         std::cout << "\n[ABORTED] Target identity/capacity mismatch.\n";
 
@@ -247,29 +225,44 @@ int main()
     std::cout << "Interface    : " << target.getInterfaceType() << '\n';
     std::cout << "Operation    : Full-device host overwrite\n";
     std::cout << "Pattern      : 0x00\n";
-    std::cout << "Verification : Sampled post-write verification\n";
+    std::cout << "Verification : Sampled post-write read-back verification\n";
 
     HostOverwriteSanitizer sanitizer;
 
-    const bool result =
+    const VerificationResult result =
         sanitizer.sanitize(deviceHandle, actualCapacity);
 
     CloseHandle(deviceHandle);
 
     std::cout << "\n------------------------------------------------------------\n";
 
-    if (result)
-    {
-        std::cout << "HOST OVERWRITE RESULT : PASS\n";
-        std::cout << "Verification          : PASSED\n";
-    }
-    else
-    {
-        std::cout << "HOST OVERWRITE RESULT : FAIL\n";
-        std::cout << "Verification/Execution: FAILED\n";
-    }
+    std::cout << "Host Overwrite Result\n";
+    std::cout << "------------------------------------------------------------\n";
+    std::cout << "Verification Performed : "
+              << (result.performed ? "YES" : "NO") << '\n';
+    std::cout << "Verification Result   : "
+              << (result.passed ? "PASSED" : "FAILED") << '\n';
+    std::cout << "Verification Samples  : "
+              << result.samples << '\n';
+    std::cout << "Bytes Verified        : "
+              << result.bytesVerified << '\n';
+    std::cout << "Message               : "
+              << result.message << '\n';
 
     std::cout << "============================================================\n";
 
-    return result ? 0 : 1;
+    if (!result.performed)
+    {
+        std::cout << "FINAL RESULT : FAIL - Verification was not performed.\n";
+        return 1;
+    }
+
+    if (!result.passed)
+    {
+        std::cout << "FINAL RESULT : FAIL - Verification failed.\n";
+        return 1;
+    }
+
+    std::cout << "FINAL RESULT : PASS\n";
+    return 0;
 }

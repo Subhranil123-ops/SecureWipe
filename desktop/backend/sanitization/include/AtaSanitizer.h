@@ -1,5 +1,7 @@
 #pragma once
+
 #include <Windows.h>
+#include "VerificationResult.h"
 
 enum class AtaSanitizeMethod
 {
@@ -8,4 +10,4 @@ enum class AtaSanitizeMethod
     Overwrite
 };
 
-bool executeAtaSanitize(HANDLE deviceHandle, AtaSanitizeMethod method);
+VerificationResult executeAtaSanitize(HANDLE deviceHandle, AtaSanitizeMethod method);

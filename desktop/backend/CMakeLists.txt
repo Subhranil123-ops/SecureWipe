@@ -3,57 +3,30 @@ find_package(libjpeg-turbo CONFIG REQUIRED)
 add_library(
     SecureWipeStorage
 
-    # ------------------------------------------------------------
-    # Storage
-    # ------------------------------------------------------------
-
     storage/src/StorageDevice.cpp
     storage/src/StorageManager.cpp
 
-    # ------------------------------------------------------------
-    # Discovery
-    # ------------------------------------------------------------
-
     discovery/src/WindowsStorageDiscovery.cpp
 
-    # ------------------------------------------------------------
-    # Classification
-    # ------------------------------------------------------------
-
     classification/src/DeviceClassifier.cpp
-
-    # ------------------------------------------------------------
-    # Safety
-    # ------------------------------------------------------------
 
     safety/src/BootInfo.cpp
     safety/src/WindowsBootChecker.cpp
     safety/src/WindowsStorageUtils.cpp
     safety/src/SafetyEngine.cpp
 
-    # ------------------------------------------------------------
-    # Sanitization
-    # ------------------------------------------------------------
-
     sanitization/src/SanitizationEngine.cpp
     sanitization/src/SanitizationCapability.cpp
     sanitization/src/ScsiCapability.cpp
     sanitization/src/StoragePropertyCapability.cpp
 
-    # NVMe
     sanitization/src/NvmeCapability.cpp
     sanitization/src/NvmeSanitizer.cpp
 
-    # ATA
     sanitization/src/AtaCapability.cpp
     sanitization/src/AtaSanitizer.cpp
 
-    # Generic host overwrite
     sanitization/src/HostOverwriteSanitizer.cpp
-
-    # ------------------------------------------------------------
-    # Forensics
-    # ------------------------------------------------------------
 
     forensic/evidence/src/EvidenceCollector.cpp
     forensic/validation/src/EvidenceValidator.cpp
@@ -86,99 +59,25 @@ if(WIN32)
     )
 endif()
 
-# ============================================================
-# Core Tests
-# ============================================================
+add_executable(StorageDeviceTest tests/StorageDeviceTest.cpp)
+add_executable(StorageManagerTest tests/StorageManagerTest.cpp)
+add_executable(WindowsStorageDiscoveryTest tests/WindowsStorageDiscoveryTest.cpp)
+add_executable(DeviceClassifierTest tests/DeviceClassifierTest.cpp)
+add_executable(WindowsBootCheckerTest tests/WindowsBootCheckerTest.cpp)
+add_executable(SafetyEngineTest tests/SafetyEngineTest.cpp)
 
-add_executable(
-    StorageDeviceTest
-    tests/StorageDeviceTest.cpp
-)
+add_executable(SanitizationEngineTest tests/SanitizationEngineTest.cpp)
+add_executable(SanitizationCapabilityTest tests/SanitizationCapabilityTest.cpp)
+add_executable(NvmeCapabilityTest tests/NvmeCapabilityTest.cpp)
+add_executable(AtaCapabilityTest tests/AtaCapabilityTest.cpp)
+add_executable(SanitizationMethodSelectionTest tests/SanitizationMethodSelectionTest.cpp)
+add_executable(HostOverwriteSanitizerTest tests/HostOverwriteSanitizerTest.cpp)
 
-add_executable(
-    StorageManagerTest
-    tests/StorageManagerTest.cpp
-)
-
-add_executable(
-    WindowsStorageDiscoveryTest
-    tests/WindowsStorageDiscoveryTest.cpp
-)
-
-add_executable(
-    DeviceClassifierTest
-    tests/DeviceClassifierTest.cpp
-)
-
-add_executable(
-    WindowsBootCheckerTest
-    tests/WindowsBootCheckerTest.cpp
-)
-
-add_executable(
-    SafetyEngineTest
-    tests/SafetyEngineTest.cpp
-)
-
-# ============================================================
-# Sanitization Tests
-# ============================================================
-
-add_executable(
-    SanitizationEngineTest
-    tests/SanitizationEngineTest.cpp
-)
-
-add_executable(
-    SanitizationCapabilityTest
-    tests/SanitizationCapabilityTest.cpp
-)
-
-add_executable(
-    NvmeCapabilityTest
-    tests/NvmeCapabilityTest.cpp
-)
-
-add_executable(
-    AtaCapabilityTest
-    tests/AtaCapabilityTest.cpp
-)
-
-add_executable(
-    SanitizationMethodSelectionTest
-    tests/SanitizationMethodSelectionTest.cpp
-)
-
-add_executable(
-    HostOverwriteSanitizerTest
-    tests/HostOverwriteSanitizerTest.cpp
-)
-
-# ============================================================
-# Forensic Tests
-# ============================================================
-
-add_executable(
-    EvidenceCollectorTest
-    tests/forensic/evidence/EvidenceCollectorTest.cpp
-)
-
-add_executable(
-    HashCalculatorTest
-    tests/forensic/hashing/HashCalculatorTest.cpp
-)
-
-add_executable(
-    ConfidenceScorerTest
-    tests/forensic/scoring/ConfidenceScorerTest.cpp
-)
-
-# ============================================================
-# Test Targets
-# ============================================================
+add_executable(EvidenceCollectorTest tests/forensic/evidence/EvidenceCollectorTest.cpp)
+add_executable(HashCalculatorTest tests/forensic/hashing/HashCalculatorTest.cpp)
+add_executable(ConfidenceScorerTest tests/forensic/scoring/ConfidenceScorerTest.cpp)
 
 set(STORAGE_TESTS
-    # Core
     StorageDeviceTest
     StorageManagerTest
     WindowsStorageDiscoveryTest
@@ -186,7 +85,6 @@ set(STORAGE_TESTS
     WindowsBootCheckerTest
     SafetyEngineTest
 
-    # Sanitization
     SanitizationEngineTest
     SanitizationCapabilityTest
     NvmeCapabilityTest
@@ -194,7 +92,6 @@ set(STORAGE_TESTS
     SanitizationMethodSelectionTest
     HostOverwriteSanitizerTest
 
-    # Forensics
     EvidenceCollectorTest
     HashCalculatorTest
     ConfidenceScorerTest

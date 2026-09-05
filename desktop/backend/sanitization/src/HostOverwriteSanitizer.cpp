@@ -13,7 +13,6 @@ VerificationResult HostOverwriteSanitizer::verify(
     constexpr std::size_t VERIFY_SIZE = 4096;
 
     result.performed = true;
-    result.samples = 5;
 
     std::vector<std::uint8_t> buffer(VERIFY_SIZE);
 
@@ -29,10 +28,15 @@ VerificationResult HostOverwriteSanitizer::verify(
         LARGE_INTEGER position;
         position.QuadPart = static_cast<LONGLONG>(offset);
 
-        if (!SetFilePointerEx(deviceHandle, position, nullptr, FILE_BEGIN))
+        if (!SetFilePointerEx(
+                deviceHandle,
+                position,
+                nullptr,
+                FILE_BEGIN))
         {
             result.passed = false;
-            result.message = "Verification failed: unable to seek to verification offset.";
+            result.message =
+                "Verification failed: unable to seek to verification offset.";
             return result;
         }
 
@@ -46,18 +50,18 @@ VerificationResult HostOverwriteSanitizer::verify(
                 nullptr))
         {
             result.passed = false;
-            result.message = "Verification failed: unable to read verification data.";
+            result.message =
+                "Verification failed: unable to read verification data.";
             return result;
         }
 
         if (bytesRead != VERIFY_SIZE)
         {
             result.passed = false;
-            result.message = "Verification failed: incomplete verification read.";
+            result.message =
+                "Verification failed: incomplete verification read.";
             return result;
         }
-
-        result.bytesVerified += bytesRead;
 
         if (!std::all_of(
                 buffer.begin(),
@@ -72,6 +76,9 @@ VerificationResult HostOverwriteSanitizer::verify(
                 "Verification failed: non-zero data detected.";
             return result;
         }
+
+        result.bytesVerified += bytesRead;
+        result.samples++;
     }
 
     result.passed = true;
@@ -83,37 +90,70 @@ VerificationResult HostOverwriteSanitizer::verify(
     return result;
 }
 
-bool HostOverwriteSanitizer::overwrite(HANDLE deviceHandle, std::uint64_t totalBytes)
+bool HostOverwriteSanitizer::overwrite(
+    HANDLE deviceHandle,
+    std::uint64_t totalBytes)
 {
-    std::vector<std::uint8_t> buffer(BUFFER_SIZE, 0x00);
+    std::vector<std::uint8_t> buffer(
+        BUFFER_SIZE,
+        0x00);
+
     std::uint64_t offset = 0;
 
     while (offset < totalBytes)
     {
-        const DWORD bytesToWrite = static_cast<DWORD>(
-            std::min<std::uint64_t>(BUFFER_SIZE, totalBytes - offset));
+        const DWORD bytesToWrite =
+            static_cast<DWORD>(
+                std::min<std::uint64_t>(
+                    BUFFER_SIZE,
+                    totalBytes - offset));
 
         LARGE_INTEGER position;
-        position.QuadPart = static_cast<LONGLONG>(offset);
+        position.QuadPart =
+            static_cast<LONGLONG>(offset);
 
-        if (!SetFilePointerEx(deviceHandle, position, nullptr, FILE_BEGIN))
+        if (!SetFilePointerEx(
+                deviceHandle,
+                position,
+                nullptr,
+                FILE_BEGIN))
+        {
             return false;
+        }
 
         DWORD bytesWritten = 0;
 
-        if (!WriteFile(deviceHandle, buffer.data(), bytesToWrite, &bytesWritten, nullptr))
+        if (!WriteFile(
+                deviceHandle,
+                buffer.data(),
+                bytesToWrite,
+                &bytesWritten,
+                nullptr))
+        {
             return false;
+        }
 
         if (bytesWritten != bytesToWrite)
+        {
             return false;
+        }
 
         offset += bytesWritten;
 
-        const int progress = static_cast<int>((offset * 100) / totalBytes);
-        std::cout << "\rHost overwrite: " << progress << "%" << std::flush;
+        const int progress =
+            static_cast<int>(
+                (offset * 100) / totalBytes);
+
+        std::cout
+            << "\rHost overwrite: "
+            << progress
+            << "%"
+            << std::flush;
     }
 
-    std::cout << "\nHost overwrite completed.\n";
+    std::cout
+        << "\nHost overwrite completed.\n";
+
     return true;
 }
 
