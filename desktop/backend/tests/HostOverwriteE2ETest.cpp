@@ -2,7 +2,6 @@
 
 #include <cstdint>
 #include <iostream>
-#include <limits>
 #include <string>
 #include <vector>
 
@@ -15,7 +14,8 @@
 #include "SanitizationMethod.h"
 #include "SanitizationResult.h"
 
-static std::string methodToString(SanitizationMethod method)
+static std::string methodToString(
+    SanitizationMethod method)
 {
     switch (method)
     {
@@ -50,16 +50,25 @@ static bool parseDeviceIndex(
     try
     {
         std::size_t consumed = 0;
+
         const unsigned long long value =
-            std::stoull(input, &consumed);
+            std::stoull(
+                input,
+                &consumed);
 
         if (consumed != input.size())
             return false;
 
-        if (value == 0 || value > deviceCount)
+        if (value == 0 ||
+            value > deviceCount)
+        {
             return false;
+        }
 
-        index = static_cast<std::size_t>(value - 1);
+        index =
+            static_cast<std::size_t>(
+                value - 1);
+
         return true;
     }
     catch (...)
@@ -68,7 +77,7 @@ static bool parseDeviceIndex(
     }
 }
 
-static void printSeparator()
+static void separator()
 {
     std::cout
         << "\n============================================================\n";
@@ -80,139 +89,145 @@ static void printDevice(
 {
     std::cout
         << "\n[" << number << "]\n"
-        << "  Device ID     : " << device.getDeviceId() << '\n'
-        << "  Model         : " << device.getModel() << '\n'
-        << "  Serial        : " << device.getSerialNumber() << '\n'
-        << "  Interface     : " << device.getInterfaceType() << '\n'
-        << "  Capacity      : " << device.getCapacityBytes()
+        << "  Device ID   : "
+        << device.getDeviceId()
+        << '\n'
+        << "  Model       : "
+        << device.getModel()
+        << '\n'
+        << "  Serial      : "
+        << device.getSerialNumber()
+        << '\n'
+        << "  Interface   : "
+        << device.getInterfaceType()
+        << '\n'
+        << "  Capacity    : "
+        << device.getCapacityBytes()
         << " bytes\n"
-        << "  System Disk   : "
-        << (device.isSystemDisk() ? "YES - BLOCKED" : "NO") << '\n'
-        << "  Removable     : "
-        << (device.isRemovable() ? "YES" : "NO") << '\n';
+        << "  System Disk : "
+        << (device.isSystemDisk()
+                ? "YES - BLOCKED"
+                : "NO")
+        << '\n'
+        << "  Removable   : "
+        << (device.isRemovable()
+                ? "YES"
+                : "NO")
+        << '\n';
 }
 
-static bool runSafetyValidation(
+static bool runSafety(
     SafetyEngine& safetyEngine,
     const StorageDevice& device,
-    SafetyResult& safetyResult)
+    SafetyResult& result)
 {
-    printSeparator();
+    separator();
 
     std::cout
-        << "STEP 2 - SAFETY ENGINE VALIDATION\n";
-
-    std::cout
+        << "STEP 2 - SAFETY ENGINE\n"
         << "------------------------------------------------------------\n";
-
-    std::cout
-        << "Setting expected target identity...\n";
 
     safetyEngine.setExpectedTarget(device);
 
-    std::cout
-        << "Expected target set.\n";
-
-    std::cout
-        << "\nRunning all safety checks...\n";
-
-    safetyResult =
-        safetyEngine.evaluateWithResult(device);
+    result =
+        safetyEngine.evaluateWithResult(
+            device);
 
     std::cout
         << "\nSafety Decision : "
-        << safetyResult.decision << '\n';
-
-    std::cout
+        << result.decision
+        << '\n'
         << "Safety Summary  : "
-        << safetyResult.summary << '\n';
+        << result.summary
+        << '\n';
 
     std::cout
-        << "\nIndividual Safety Checks\n"
-        << "-----------------------\n";
+        << "\nIndividual Checks\n"
+        << "-----------------\n";
 
     bool allPassed = true;
 
-    for (const auto& check : safetyResult.checks)
+    for (const auto& check : result.checks)
     {
         std::cout
             << "\n"
-            << (check.passed ? "[PASS] " : "[FAIL] ")
-            << check.checkName << '\n';
-
-        std::cout
+            << (check.passed
+                    ? "[PASS] "
+                    : "[FAIL] ")
+            << check.checkName
+            << '\n'
             << "       "
-            << check.message << '\n';
+            << check.message
+            << '\n';
 
         if (!check.passed)
             allPassed = false;
     }
 
-    if (!safetyResult.isOverallSafe || !allPassed)
+    if (!result.isOverallSafe ||
+        !allPassed)
     {
         std::cout
             << "\n"
             << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
             << "SANITIZATION BLOCKED\n"
-            << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
-            << "Safety Engine did not authorize this target.\n";
+            << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n";
 
         return false;
     }
 
     std::cout
-        << "\n[SAFETY PASS]\n"
-        << "All required safety checks passed.\n";
+        << "\n[SAFETY PASS]\n";
 
     return true;
 }
 
-static bool confirmDestructiveOperation(
+static bool confirmTarget(
     const StorageDevice& device)
 {
-    printSeparator();
+    separator();
 
     std::cout
-        << "STEP 4 - DESTRUCTIVE OPERATION CONFIRMATION\n";
+        << "DESTRUCTIVE OPERATION CONFIRMATION\n"
+        << "------------------------------------------------------------\n\n";
 
     std::cout
-        << "------------------------------------------------------------\n";
-
-    std::cout
-        << "\nWARNING: THIS OPERATION IS DESTRUCTIVE.\n\n";
-
-    std::cout
-        << "The complete physical device will be overwritten with 0x00.\n"
-        << "Existing data, partitions and filesystem contents will be destroyed.\n"
+        << "WARNING: THIS OPERATION IS DESTRUCTIVE.\n\n"
+        << "The entire physical device will be overwritten with 0x00.\n"
+        << "All existing data will be destroyed.\n"
         << "This operation cannot be undone.\n\n";
 
     std::cout
         << "Target Device\n"
         << "-------------\n"
-        << "Device ID : " << device.getDeviceId() << '\n'
-        << "Model     : " << device.getModel() << '\n'
-        << "Serial    : " << device.getSerialNumber() << '\n'
-        << "Interface : " << device.getInterfaceType() << '\n'
-        << "Capacity  : " << device.getCapacityBytes()
-        << " bytes\n";
-
-    std::cout
-        << "\nThe following serial number must be entered exactly:\n\n"
-        << "    "
+        << "Device ID : "
+        << device.getDeviceId()
+        << '\n'
+        << "Model     : "
+        << device.getModel()
+        << '\n'
+        << "Serial    : "
         << device.getSerialNumber()
-        << "\n\n";
+        << '\n'
+        << "Interface : "
+        << device.getInterfaceType()
+        << '\n'
+        << "Capacity  : "
+        << device.getCapacityBytes()
+        << " bytes\n\n";
 
     std::cout
-        << "Enter serial number to confirm: ";
+        << "Enter the exact target serial number: ";
 
-    const std::string enteredSerial = readLine();
+    const std::string serial =
+        readLine();
 
-    if (enteredSerial != device.getSerialNumber())
+    if (serial !=
+        device.getSerialNumber())
     {
         std::cout
             << "\n[ABORTED]\n"
-            << "Confirmation value does not match target serial number.\n"
-            << "No destructive operation was started.\n";
+            << "Serial number does not match.\n";
 
         return false;
     }
@@ -221,55 +236,47 @@ static bool confirmDestructiveOperation(
         << "\nSerial confirmation matched.\n";
 
     std::cout
-        << "\nType YES to authorize the destructive operation: ";
+        << "Type YES to continue: ";
 
-    const std::string finalConfirmation = readLine();
+    const std::string confirmation =
+        readLine();
 
-    if (finalConfirmation != "YES")
+    if (confirmation != "YES")
     {
         std::cout
             << "\n[ABORTED]\n"
-            << "Final confirmation was not received.\n"
-            << "No destructive operation was started.\n";
+            << "Destructive operation was not authorized.\n";
 
         return false;
     }
-
-    std::cout
-        << "\n[CONFIRMED]\n"
-        << "Destructive operation authorized by operator.\n";
 
     return true;
 }
 
 int main()
 {
-    printSeparator();
+    separator();
 
     std::cout
-        << "        SECUREWIPE HOST OVERWRITE E2E TEST\n";
-
-    std::cout
+        << "        SECUREWIPE HOST OVERWRITE E2E TEST\n"
         << "        REAL PHYSICAL DEVICE TEST\n";
 
-    printSeparator();
+    separator();
 
     std::cout
         << "\nIMPORTANT:\n"
-        << "This test can permanently destroy data on the selected device.\n"
-        << "Use ONLY a disposable test device.\n"
-        << "DO NOT select your Windows/system disk.\n";
+        << "This test permanently destroys data.\n"
+        << "Use ONLY a disposable/sacrificial device.\n"
+        << "NEVER select the Windows system disk.\n";
 
-    // ============================================================
-    // STEP 1 - DEVICE DISCOVERY
-    // ============================================================
+    // =========================================================
+    // STEP 1 - DISCOVERY
+    // =========================================================
 
-    printSeparator();
-
-    std::cout
-        << "STEP 1 - DEVICE DISCOVERY\n";
+    separator();
 
     std::cout
+        << "STEP 1 - DEVICE DISCOVERY\n"
         << "------------------------------------------------------------\n";
 
     WindowsStorageDiscovery discovery;
@@ -284,7 +291,7 @@ int main()
     {
         std::cout
             << "\n[FAIL]\n"
-            << "No physical storage devices were detected.\n";
+            << "No physical storage devices detected.\n";
 
         return 1;
     }
@@ -294,31 +301,35 @@ int main()
         << devices.size()
         << " physical storage device(s).\n";
 
-    for (std::size_t i = 0; i < devices.size(); ++i)
-        printDevice(devices[i], i + 1);
+    for (std::size_t i = 0;
+         i < devices.size();
+         ++i)
+    {
+        printDevice(
+            devices[i],
+            i + 1);
+    }
 
-    // ============================================================
+    // =========================================================
     // TARGET SELECTION
-    // ============================================================
+    // =========================================================
 
-    printSeparator();
-
-    std::cout
-        << "TARGET SELECTION\n";
+    separator();
 
     std::cout
+        << "TARGET SELECTION\n"
         << "------------------------------------------------------------\n";
 
     std::cout
-        << "\nSelect the disposable test device.\n"
-        << "Enter device number: ";
+        << "\nEnter the number of the SACRIFICIAL device: ";
 
-    const std::string selectedInput = readLine();
+    const std::string input =
+        readLine();
 
     std::size_t selectedIndex = 0;
 
     if (!parseDeviceIndex(
-            selectedInput,
+            input,
             devices.size(),
             selectedIndex))
     {
@@ -332,27 +343,23 @@ int main()
     StorageDevice selectedDevice =
         devices[selectedIndex];
 
-    std::cout
-        << "\nSelected target:\n";
-
     printDevice(
         selectedDevice,
         selectedIndex + 1);
 
-    // ============================================================
-    // HARD SYSTEM-DISK GUARD
-    // ============================================================
+    // =========================================================
+    // HARD SAFETY GUARDS
+    // =========================================================
 
     if (selectedDevice.isSystemDisk())
     {
-        printSeparator();
-
         std::cout
+            << "\n"
             << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
             << "CRITICAL SAFETY BLOCK\n"
             << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
-            << "The selected device is the Windows system disk.\n"
-            << "Host overwrite will NOT be executed.\n";
+            << "Selected device is the Windows system disk.\n"
+            << "Operation will NOT continue.\n";
 
         return 2;
     }
@@ -361,7 +368,7 @@ int main()
     {
         std::cout
             << "\n[FAIL]\n"
-            << "Target device ID is empty.\n";
+            << "Device ID is empty.\n";
 
         return 1;
     }
@@ -370,8 +377,7 @@ int main()
     {
         std::cout
             << "\n[FAIL]\n"
-            << "Target serial number is empty.\n"
-            << "Destructive test requires target identity.\n";
+            << "Serial number is empty.\n";
 
         return 1;
     }
@@ -380,20 +386,19 @@ int main()
     {
         std::cout
             << "\n[FAIL]\n"
-            << "Target capacity is zero/unknown.\n";
+            << "Device capacity is zero.\n";
 
         return 1;
     }
 
-    // ============================================================
+    // =========================================================
     // STEP 2 - SAFETY
-    // ============================================================
+    // =========================================================
 
     SafetyEngine safetyEngine;
-
     SafetyResult safetyResult;
 
-    if (!runSafetyValidation(
+    if (!runSafety(
             safetyEngine,
             selectedDevice,
             safetyResult))
@@ -401,20 +406,15 @@ int main()
         return 2;
     }
 
-    // ============================================================
-    // STEP 3 - CAPABILITY + METHOD
-    // ============================================================
+    // =========================================================
+    // STEP 3 - CAPABILITY
+    // =========================================================
 
-    printSeparator();
-
-    std::cout
-        << "STEP 3 - CAPABILITY DETECTION & METHOD SELECTION\n";
+    separator();
 
     std::cout
+        << "STEP 3 - CAPABILITY & METHOD SELECTION\n"
         << "------------------------------------------------------------\n";
-
-    std::cout
-        << "Detecting sanitization capability...\n";
 
     SanitizationCapability capability =
         detectSanitizationCapability(
@@ -423,24 +423,27 @@ int main()
     std::cout
         << "\nCapability Summary\n"
         << "------------------\n"
-        << "USB Device              : "
-        << (capability.isUsbDevice ? "YES" : "NO") << '\n'
-        << "Storage Property Query  : "
+        << "USB Device             : "
+        << (capability.isUsbDevice
+                ? "YES"
+                : "NO")
+        << '\n'
+        << "Storage Property Query : "
         << (capability.storagePropertyQueryAvailable
                 ? "AVAILABLE"
                 : "NOT AVAILABLE")
         << '\n'
-        << "SCSI Path               : "
+        << "SCSI Path              : "
         << (capability.scsiPathAvailable
                 ? "AVAILABLE"
                 : "NOT AVAILABLE")
         << '\n'
-        << "NVMe Identify           : "
+        << "NVMe Identify          : "
         << (capability.nvmeIdentifyAvailable
                 ? "AVAILABLE"
                 : "NOT AVAILABLE")
         << '\n'
-        << "ATA Identify            : "
+        << "ATA Identify           : "
         << (capability.ataIdentifyAvailable
                 ? "AVAILABLE"
                 : "NOT AVAILABLE")
@@ -454,17 +457,16 @@ int main()
             capability);
 
     std::cout
-        << "\nSelected Sanitization Method\n"
-        << "----------------------------\n"
+        << "\nSelected Sanitization Method: "
         << methodToString(method)
         << '\n';
 
-    if (method != SanitizationMethod::HostOverwrite)
+    if (method !=
+        SanitizationMethod::HostOverwrite)
     {
         std::cout
             << "\n[TEST STOPPED]\n"
-            << "This E2E test is specifically for the Host Overwrite path.\n"
-            << "The selected device was not assigned Host Overwrite.\n"
+            << "This test is specifically for Host Overwrite.\n"
             << "No destructive operation was started.\n";
 
         return 3;
@@ -472,32 +474,30 @@ int main()
 
     std::cout
         << "\n[PASS]\n"
-        << "Host Overwrite is the selected sanitization method.\n";
+        << "Host Overwrite selected.\n";
 
-    // ============================================================
-    // STEP 4 - EXPLICIT CONFIRMATION
-    // ============================================================
+    // =========================================================
+    // STEP 4 - CONFIRMATION
+    // =========================================================
 
-    if (!confirmDestructiveOperation(
+    if (!confirmTarget(
             selectedDevice))
     {
         return 4;
     }
 
-    // ============================================================
-    // STEP 5 - FINAL FRESH DISCOVERY
-    // ============================================================
+    // =========================================================
+    // STEP 5 - FRESH DISCOVERY
+    // =========================================================
 
-    printSeparator();
-
-    std::cout
-        << "STEP 5 - FINAL TARGET REVALIDATION\n";
+    separator();
 
     std::cout
+        << "STEP 5 - FINAL TARGET REVALIDATION\n"
         << "------------------------------------------------------------\n";
 
     std::cout
-        << "Performing fresh physical-device discovery...\n";
+        << "Performing fresh device discovery...\n";
 
     std::vector<StorageDevice> freshDevices =
         discovery.discover();
@@ -506,8 +506,7 @@ int main()
     {
         std::cout
             << "\n[ABORTED]\n"
-            << "Fresh device discovery returned no devices.\n"
-            << "Target cannot be safely revalidated.\n";
+            << "Fresh discovery returned no devices.\n";
 
         return 5;
     }
@@ -517,19 +516,15 @@ int main()
             selectedDevice))
     {
         std::cout
-            << "\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
-            << "FINAL TARGET VALIDATION FAILED\n"
-            << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
-            << "The original target could not be matched safely.\n"
-            << "No destructive operation will be executed.\n";
+            << "\n[ABORTED]\n"
+            << "Original target could not be safely revalidated.\n";
 
         return 5;
     }
 
-    // Find the freshly discovered matching target.
-    const StorageDevice* freshTarget = nullptr;
+    StorageDevice* freshTarget = nullptr;
 
-    for (const auto& device : freshDevices)
+    for (auto& device : freshDevices)
     {
         if (device.getDeviceId() ==
             selectedDevice.getDeviceId())
@@ -543,19 +538,19 @@ int main()
     {
         std::cout
             << "\n[ABORTED]\n"
-            << "Fresh target device was not found.\n";
+            << "Fresh target was not found.\n";
 
         return 5;
     }
 
-    selectedDevice = *freshTarget;
+    selectedDevice =
+        *freshTarget;
 
     if (selectedDevice.isSystemDisk())
     {
         std::cout
             << "\n[CRITICAL BLOCK]\n"
-            << "Target is now detected as the system disk.\n"
-            << "Sanitization aborted.\n";
+            << "Target is now detected as system disk.\n";
 
         return 5;
     }
@@ -568,7 +563,7 @@ int main()
     {
         std::cout
             << "\n[ABORTED]\n"
-            << "Final safety evaluation failed.\n"
+            << "Final safety validation failed.\n"
             << finalSafetyResult.summary
             << '\n';
 
@@ -579,57 +574,57 @@ int main()
         << "\n[FINAL VALIDATION PASS]\n"
         << "Target identity and safety state remain valid.\n";
 
-    // ============================================================
+    // =========================================================
     // STEP 6 - FINAL WARNING
-    // ============================================================
+    // =========================================================
 
-    printSeparator();
-
-    std::cout
-        << "STEP 6 - FINAL DESTRUCTIVE WARNING\n";
+    separator();
 
     std::cout
+        << "STEP 6 - FINAL DESTRUCTIVE AUTHORIZATION\n"
         << "------------------------------------------------------------\n";
 
     std::cout
-        << "\nTARGET LOCKED\n\n"
-        << "Device ID : " << selectedDevice.getDeviceId() << '\n'
-        << "Model     : " << selectedDevice.getModel() << '\n'
-        << "Serial    : " << selectedDevice.getSerialNumber() << '\n'
-        << "Capacity  : " << selectedDevice.getCapacityBytes()
+        << "\nTARGET:\n"
+        << "Device ID : "
+        << selectedDevice.getDeviceId()
+        << '\n'
+        << "Model     : "
+        << selectedDevice.getModel()
+        << '\n'
+        << "Serial    : "
+        << selectedDevice.getSerialNumber()
+        << '\n'
+        << "Capacity  : "
+        << selectedDevice.getCapacityBytes()
         << " bytes\n"
         << "Method    : Host Overwrite\n"
         << "Pattern   : 0x00\n\n";
 
     std::cout
-        << "The next operation will permanently overwrite\n"
-        << "the entire physical device.\n\n";
-
-    std::cout
-        << "Enter START WIPE to begin: ";
+        << "Type START WIPE to permanently erase this device: ";
 
     const std::string wipeConfirmation =
         readLine();
 
-    if (wipeConfirmation != "START WIPE")
+    if (wipeConfirmation !=
+        "START WIPE")
     {
         std::cout
             << "\n[ABORTED]\n"
-            << "Final destructive command was not authorized.\n";
+            << "Final destructive authorization failed.\n";
 
         return 6;
     }
 
-    // ============================================================
-    // STEP 7 - SANITIZATION
-    // ============================================================
+    // =========================================================
+    // STEP 7 - EXECUTION
+    // =========================================================
 
-    printSeparator();
-
-    std::cout
-        << "STEP 7 - HOST OVERWRITE EXECUTION\n";
+    separator();
 
     std::cout
+        << "STEP 7 - HOST OVERWRITE EXECUTION\n"
         << "------------------------------------------------------------\n";
 
     std::cout
@@ -637,28 +632,30 @@ int main()
         << "DO NOT DISCONNECT THE DEVICE.\n"
         << "DO NOT POWER OFF THE COMPUTER.\n\n";
 
-    std::cout
-        << "Method  : Host Overwrite\n"
-        << "Pattern : 0x00\n"
-        << "Target  : "
-        << selectedDevice.getDeviceId()
-        << '\n';
+    const auto start =
+        GetTickCount64();
 
     SecureWipe::SanitizationResult result =
         sanitizationEngine.sanitize(
             selectedDevice,
             finalSafetyResult);
 
-    // ============================================================
+    const auto end =
+        GetTickCount64();
+
+    std::cout
+        << "\nExecution time: "
+        << (end - start)
+        << " ms\n";
+
+    // =========================================================
     // STEP 8 - RESULT
-    // ============================================================
+    // =========================================================
 
-    printSeparator();
-
-    std::cout
-        << "STEP 8 - FINAL SANITIZATION RESULT\n";
+    separator();
 
     std::cout
+        << "STEP 8 - FINAL RESULT\n"
         << "------------------------------------------------------------\n";
 
     std::cout
@@ -679,14 +676,11 @@ int main()
         break;
     }
 
-    std::cout << '\n';
-
     std::cout
+        << '\n'
         << "Message             : "
         << result.message
-        << '\n';
-
-    std::cout
+        << '\n'
         << "Bytes Processed     : "
         << result.bytesProcessed
         << '\n';
@@ -713,33 +707,26 @@ int main()
         break;
     }
 
-    std::cout << '\n';
-
     std::cout
+        << '\n'
         << "Verification Samples : "
         << result.verificationSamples
-        << '\n';
-
-    std::cout
+        << '\n'
         << "Bytes Verified       : "
         << result.bytesVerified
-        << '\n';
-
-    std::cout
+        << '\n'
         << "Verification Message : "
         << result.verificationMessage
-        << '\n';
-
-    std::cout
+        << '\n'
         << "Duration             : "
         << result.operationDurationMs
         << " ms\n";
 
-    // ============================================================
+    // =========================================================
     // FINAL DECISION
-    // ============================================================
+    // =========================================================
 
-    printSeparator();
+    separator();
 
     const bool finalPass =
         result.status ==
@@ -750,28 +737,24 @@ int main()
     if (finalPass)
     {
         std::cout
-            << "              E2E TEST PASSED\n";
+            << "\n"
+            << "============================================================\n"
+            << "                 E2E TEST PASSED\n"
+            << "============================================================\n"
+            << "\n"
+            << "Host Overwrite completed successfully.\n"
+            << "Post-write verification passed.\n";
     }
     else
     {
         std::cout
-            << "              E2E TEST FAILED\n";
-    }
-
-    printSeparator();
-
-    if (finalPass)
-    {
-        std::cout
-            << "\nHost Overwrite completed successfully.\n"
-            << "Post-write verification passed.\n"
-            << "The selected physical device was processed successfully.\n";
-    }
-    else
-    {
-        std::cout
-            << "\nThe sanitization operation did not satisfy\n"
-            << "the complete E2E success criteria.\n";
+            << "\n"
+            << "============================================================\n"
+            << "                 E2E TEST FAILED\n"
+            << "============================================================\n"
+            << "\n"
+            << "The complete sanitization + verification criteria\n"
+            << "were not satisfied.\n";
     }
 
     return finalPass ? 0 : 7;

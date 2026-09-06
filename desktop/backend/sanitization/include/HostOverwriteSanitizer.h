@@ -3,8 +3,9 @@
 #include "VerificationResult.h"
 
 #include <Windows.h>
-#include <cstdint>
 #include <cstddef>
+#include <cstdint>
+#include <vector>
 
 class HostOverwriteSanitizer
 {
@@ -21,6 +22,14 @@ private:
     bool checkWritable(
         HANDLE deviceHandle,
         VerificationResult& result);
+
+    bool lockTargetVolumes(
+        HANDLE deviceHandle,
+        std::vector<HANDLE>& lockedVolumes,
+        VerificationResult& result);
+
+    void unlockTargetVolumes(
+        std::vector<HANDLE>& lockedVolumes);
 
     bool overwrite(
         HANDLE deviceHandle,

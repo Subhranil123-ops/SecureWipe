@@ -1,33 +1,33 @@
 #include "HostOverwriteSanitizer.h"
 
+#include <Windows.h>
+#include <winioctl.h>
+
 #include <algorithm>
 #include <iostream>
-#include <vector>
 #include <sstream>
+#include <string>
+#include <vector>
 
 namespace
 {
-std::string winErrorMessage(DWORD errorCode)
+std::string getWindowsErrorMessage(DWORD errorCode)
 {
     if (errorCode == ERROR_SUCCESS)
         return "ERROR_SUCCESS";
 
     LPSTR buffer = nullptr;
 
-    const DWORD flags =
+    DWORD length = FormatMessageA(
         FORMAT_MESSAGE_ALLOCATE_BUFFER |
-        FORMAT_MESSAGE_FROM_SYSTEM |
-        FORMAT_MESSAGE_IGNORE_INSERTS;
-
-    const DWORD length =
-        FormatMessageA(
-            flags,
-            nullptr,
-            errorCode,
-            0,
-            reinterpret_cast<LPSTR>(&buffer),
-            0,
-            nullptr);
+            FORMAT_MESSAGE_FROM_SYSTEM |
+            FORMAT_MESSAGE_IGNORE_INSERTS,
+        nullptr,
+        errorCode,
+        0,
+        reinterpret_cast<LPSTR>(&buffer),
+        0,
+        nullptr);
 
     std::string message;
 
@@ -63,16 +63,67 @@ std::string buildIoError(
 {
     std::ostringstream stream;
 
-    stream
-        << phase
-        << " failed."
-        << " Windows error=" << errorCode
-        << " (" << winErrorMessage(errorCode) << ")"
-        << ", offset=" << offset
-        << ", requested=" << requested
-        << ", actual=" << actual;
+    stream << phase
+           << " failed. Windows error="
+           << errorCode
+           << " ("
+           << getWindowsErrorMessage(errorCode)
+           << "), offset="
+           << offset
+           << ", requested="
+           << requested
+           << ", actual="
+           << actual;
 
     return stream.str();
+}
+
+bool getPhysicalDiskNumber(
+    HANDLE deviceHandle,
+    DWORD& diskNumber)
+{
+    STORAGE_DEVICE_NUMBER deviceNumber{};
+    DWORD returnedBytes = 0;
+
+    if (!DeviceIoControl(
+            deviceHandle,
+            IOCTL_STORAGE_GET_DEVICE_NUMBER,
+            nullptr,
+            0,
+            &deviceNumber,
+            sizeof(deviceNumber),
+            &returnedBytes,
+            nullptr))
+    {
+        return false;
+    }
+
+    diskNumber = deviceNumber.DeviceNumber;
+    return true;
+}
+
+bool getVolumeDiskNumber(
+    HANDLE volumeHandle,
+    DWORD& diskNumber)
+{
+    STORAGE_DEVICE_NUMBER deviceNumber{};
+    DWORD returnedBytes = 0;
+
+    if (!DeviceIoControl(
+            volumeHandle,
+            IOCTL_STORAGE_GET_DEVICE_NUMBER,
+            nullptr,
+            0,
+            &deviceNumber,
+            sizeof(deviceNumber),
+            &returnedBytes,
+            nullptr))
+    {
+        return false;
+    }
+
+    diskNumber = deviceNumber.DeviceNumber;
+    return true;
 }
 }
 
@@ -80,12 +131,10 @@ bool HostOverwriteSanitizer::getSectorSize(
     HANDLE deviceHandle,
     std::uint32_t& sectorSize)
 {
-    sectorSize = 512;
-
     DISK_GEOMETRY_EX geometry{};
     DWORD returnedBytes = 0;
 
-    if (DeviceIoControl(
+    if (!DeviceIoControl(
             deviceHandle,
             IOCTL_DISK_GET_DRIVE_GEOMETRY_EX,
             nullptr,
@@ -95,20 +144,25 @@ bool HostOverwriteSanitizer::getSectorSize(
             &returnedBytes,
             nullptr))
     {
-        if (geometry.Geometry.BytesPerSector != 0)
-        {
-            sectorSize =
-                geometry.Geometry.BytesPerSector;
-        }
+        return false;
     }
 
-    return sectorSize != 0;
+    if (geometry.Geometry.BytesPerSector == 0)
+        return false;
+
+    sectorSize =
+        static_cast<std::uint32_t>(
+            geometry.Geometry.BytesPerSector);
+
+    return true;
 }
 
 bool HostOverwriteSanitizer::checkWritable(
     HANDLE deviceHandle,
     VerificationResult& result)
 {
+    DWORD returnedBytes = 0;
+
     if (DeviceIoControl(
             deviceHandle,
             IOCTL_DISK_IS_WRITABLE,
@@ -116,37 +170,303 @@ bool HostOverwriteSanitizer::checkWritable(
             0,
             nullptr,
             0,
-            nullptr,
+            &returnedBytes,
             nullptr))
     {
         return true;
     }
 
-    const DWORD errorCode = GetLastError();
+    DWORD errorCode = GetLastError();
 
-    // Some storage bridges may not implement this control code.
-    // In that case, allow the actual WriteFile call to determine
-    // writability and capture the real error there.
     if (errorCode == ERROR_INVALID_FUNCTION ||
         errorCode == ERROR_NOT_SUPPORTED)
     {
         std::cout
-            << "Writable preflight is not supported by this device."
-            << " Continuing to actual write test.\n";
+            << "Writable preflight is not supported by this device.\n"
+            << "Continuing to actual write operation.\n";
 
         return true;
     }
 
-    result.nativeErrorCode = errorCode;
-    result.phase = "Writable preflight";
+    result.nativeErrorCode =
+        errorCode;
+
+    result.phase =
+        "Writable preflight";
+
     result.message =
-        "Target device is not writable: Windows error=" +
+        "Target device is not writable. Windows error=" +
         std::to_string(errorCode) +
         " (" +
-        winErrorMessage(errorCode) +
+        getWindowsErrorMessage(errorCode) +
         ").";
 
     return false;
+}
+
+bool HostOverwriteSanitizer::lockTargetVolumes(
+    HANDLE deviceHandle,
+    std::vector<HANDLE>& lockedVolumes,
+    VerificationResult& result)
+{
+    DWORD targetDiskNumber = 0;
+
+    if (!getPhysicalDiskNumber(
+            deviceHandle,
+            targetDiskNumber))
+    {
+        DWORD errorCode = GetLastError();
+
+        result.nativeErrorCode =
+            errorCode;
+
+        result.phase =
+            "Physical disk identification";
+
+        result.message =
+            "Unable to determine target physical disk number. Windows error=" +
+            std::to_string(errorCode) +
+            " (" +
+            getWindowsErrorMessage(errorCode) +
+            ").";
+
+        return false;
+    }
+
+    std::cout
+        << "\nTarget PhysicalDrive number: "
+        << targetDiskNumber
+        << '\n';
+
+    DWORD logicalDrives =
+        GetLogicalDrives();
+
+    if (logicalDrives == 0)
+    {
+        DWORD errorCode = GetLastError();
+
+        result.nativeErrorCode =
+            errorCode;
+
+        result.phase =
+            "Logical drive enumeration";
+
+        result.message =
+            "Unable to enumerate logical drives. Windows error=" +
+            std::to_string(errorCode) +
+            " (" +
+            getWindowsErrorMessage(errorCode) +
+            ").";
+
+        return false;
+    }
+
+    std::cout
+        << "Checking mounted volumes belonging to target disk...\n";
+
+    for (char driveLetter = 'A';
+         driveLetter <= 'Z';
+         ++driveLetter)
+    {
+        DWORD mask =
+            1u << (driveLetter - 'A');
+
+        if ((logicalDrives & mask) == 0)
+            continue;
+
+        std::string volumePath =
+            "\\\\.\\";
+
+        volumePath +=
+            driveLetter;
+
+        volumePath +=
+            ":";
+
+        HANDLE volumeHandle =
+            CreateFileA(
+                volumePath.c_str(),
+                GENERIC_READ | GENERIC_WRITE,
+                FILE_SHARE_READ | FILE_SHARE_WRITE,
+                nullptr,
+                OPEN_EXISTING,
+                0,
+                nullptr);
+
+        if (volumeHandle ==
+            INVALID_HANDLE_VALUE)
+        {
+            continue;
+        }
+
+        DWORD volumeDiskNumber = 0;
+
+        if (!getVolumeDiskNumber(
+                volumeHandle,
+                volumeDiskNumber))
+        {
+            CloseHandle(volumeHandle);
+            continue;
+        }
+
+        if (volumeDiskNumber !=
+            targetDiskNumber)
+        {
+            CloseHandle(volumeHandle);
+            continue;
+        }
+
+        std::cout
+            << "\nTarget volume found: "
+            << driveLetter
+            << ":\n";
+
+        DWORD returnedBytes = 0;
+
+        std::cout
+            << "Locking volume "
+            << driveLetter
+            << ": ...\n";
+
+        if (!DeviceIoControl(
+                volumeHandle,
+                FSCTL_LOCK_VOLUME,
+                nullptr,
+                0,
+                nullptr,
+                0,
+                &returnedBytes,
+                nullptr))
+        {
+            DWORD errorCode =
+                GetLastError();
+
+            result.nativeErrorCode =
+                errorCode;
+
+            result.phase =
+                "FSCTL_LOCK_VOLUME";
+
+            result.message =
+                "Unable to lock target volume " +
+                std::string(1, driveLetter) +
+                ": Windows error=" +
+                std::to_string(errorCode) +
+                " (" +
+                getWindowsErrorMessage(errorCode) +
+                "). Close Explorer or applications using the target drive.";
+
+            CloseHandle(volumeHandle);
+
+            unlockTargetVolumes(
+                lockedVolumes);
+
+            return false;
+        }
+
+        std::cout
+            << "Volume "
+            << driveLetter
+            << ": locked successfully.\n";
+
+        returnedBytes = 0;
+
+        std::cout
+            << "Dismounting volume "
+            << driveLetter
+            << ": ...\n";
+
+        if (!DeviceIoControl(
+                volumeHandle,
+                FSCTL_DISMOUNT_VOLUME,
+                nullptr,
+                0,
+                nullptr,
+                0,
+                &returnedBytes,
+                nullptr))
+        {
+            DWORD errorCode =
+                GetLastError();
+
+            result.nativeErrorCode =
+                errorCode;
+
+            result.phase =
+                "FSCTL_DISMOUNT_VOLUME";
+
+            result.message =
+                "Unable to dismount target volume " +
+                std::string(1, driveLetter) +
+                ": Windows error=" +
+                std::to_string(errorCode) +
+                " (" +
+                getWindowsErrorMessage(errorCode) +
+                ").";
+
+            returnedBytes = 0;
+
+            DeviceIoControl(
+                volumeHandle,
+                FSCTL_UNLOCK_VOLUME,
+                nullptr,
+                0,
+                nullptr,
+                0,
+                &returnedBytes,
+                nullptr);
+
+            CloseHandle(volumeHandle);
+
+            unlockTargetVolumes(
+                lockedVolumes);
+
+            return false;
+        }
+
+        std::cout
+            << "Volume "
+            << driveLetter
+            << ": dismounted successfully.\n";
+
+        lockedVolumes.push_back(
+            volumeHandle);
+    }
+
+    std::cout
+        << "\nVolume preparation completed.\n";
+
+    return true;
+}
+
+void HostOverwriteSanitizer::unlockTargetVolumes(
+    std::vector<HANDLE>& lockedVolumes)
+{
+    for (HANDLE volumeHandle :
+         lockedVolumes)
+    {
+        if (volumeHandle ==
+            INVALID_HANDLE_VALUE)
+        {
+            continue;
+        }
+
+        DWORD returnedBytes = 0;
+
+        DeviceIoControl(
+            volumeHandle,
+            FSCTL_UNLOCK_VOLUME,
+            nullptr,
+            0,
+            nullptr,
+            0,
+            &returnedBytes,
+            nullptr);
+
+        CloseHandle(volumeHandle);
+    }
+
+    lockedVolumes.clear();
 }
 
 bool HostOverwriteSanitizer::overwrite(
@@ -155,51 +475,25 @@ bool HostOverwriteSanitizer::overwrite(
     std::uint32_t sectorSize,
     VerificationResult& result)
 {
-    std::size_t chunkSize = BUFFER_SIZE;
+    std::size_t chunkSize =
+        BUFFER_SIZE;
 
-    if (sectorSize > 0)
-    {
-        chunkSize =
-            (chunkSize / sectorSize) * sectorSize;
-    }
+    chunkSize =
+        (chunkSize / sectorSize) *
+        sectorSize;
 
-    if (chunkSize < sectorSize)
+    if (chunkSize == 0)
         chunkSize = sectorSize;
 
     std::vector<std::uint8_t> buffer(
         chunkSize,
         0x00);
 
-    LARGE_INTEGER startPosition{};
-    startPosition.QuadPart = 0;
-
-    if (!SetFilePointerEx(
-            deviceHandle,
-            startPosition,
-            nullptr,
-            FILE_BEGIN))
-    {
-        const DWORD errorCode = GetLastError();
-
-        result.nativeErrorCode = errorCode;
-        result.failedOffset = 0;
-        result.phase = "Initial seek";
-        result.message =
-            buildIoError(
-                "Initial seek",
-                errorCode,
-                0,
-                0,
-                0);
-
-        return false;
-    }
-
     std::uint64_t offset = 0;
 
     while (offset < totalBytes)
     {
-        const std::uint64_t remaining =
+        std::uint64_t remaining =
             totalBytes - offset;
 
         DWORD bytesToWrite =
@@ -208,23 +502,68 @@ bool HostOverwriteSanitizer::overwrite(
                     chunkSize,
                     remaining));
 
-        // Every write except the final one should be sector aligned.
-        if (remaining > bytesToWrite)
+        if ((bytesToWrite %
+             sectorSize) != 0)
         {
+            if (remaining < sectorSize)
+            {
+                result.nativeErrorCode =
+                    ERROR_INVALID_PARAMETER;
+
+                result.failedOffset =
+                    offset;
+
+                result.phase =
+                    "Write alignment";
+
+                result.message =
+                    "Final write is not sector aligned.";
+
+                return false;
+            }
+
             bytesToWrite =
-                (bytesToWrite / sectorSize) *
+                (bytesToWrite /
+                 sectorSize) *
                 sectorSize;
         }
 
-        if (bytesToWrite == 0)
-        {
-            result.nativeErrorCode =
-                ERROR_INVALID_PARAMETER;
+        LARGE_INTEGER position{};
+        position.QuadPart =
+            static_cast<LONGLONG>(
+                offset);
 
-            result.failedOffset = offset;
-            result.phase = "Write preparation";
+        if (!SetFilePointerEx(
+                deviceHandle,
+                position,
+                nullptr,
+                FILE_BEGIN))
+        {
+            DWORD errorCode =
+                GetLastError();
+
+            result.nativeErrorCode =
+                errorCode;
+
+            result.failedOffset =
+                offset;
+
+            result.requestedBytes =
+                bytesToWrite;
+
+            result.actualBytes =
+                0;
+
+            result.phase =
+                "Write seek";
+
             result.message =
-                "Unable to create a sector-aligned write request.";
+                buildIoError(
+                    "Write seek",
+                    errorCode,
+                    offset,
+                    bytesToWrite,
+                    0);
 
             return false;
         }
@@ -238,13 +577,24 @@ bool HostOverwriteSanitizer::overwrite(
                 &bytesWritten,
                 nullptr))
         {
-            const DWORD errorCode = GetLastError();
+            DWORD errorCode =
+                GetLastError();
 
-            result.nativeErrorCode = errorCode;
-            result.failedOffset = offset;
-            result.requestedBytes = bytesToWrite;
-            result.actualBytes = bytesWritten;
-            result.phase = "WriteFile";
+            result.nativeErrorCode =
+                errorCode;
+
+            result.failedOffset =
+                offset;
+
+            result.requestedBytes =
+                bytesToWrite;
+
+            result.actualBytes =
+                bytesWritten;
+
+            result.phase =
+                "WriteFile";
+
             result.message =
                 buildIoError(
                     "WriteFile",
@@ -256,30 +606,24 @@ bool HostOverwriteSanitizer::overwrite(
             return false;
         }
 
-        if (bytesWritten == 0)
+        if (bytesWritten !=
+            bytesToWrite)
         {
             result.nativeErrorCode =
                 ERROR_WRITE_FAULT;
 
-            result.failedOffset = offset;
-            result.requestedBytes = bytesToWrite;
-            result.actualBytes = 0;
-            result.phase = "WriteFile";
-            result.message =
-                "WriteFile returned success but wrote zero bytes.";
+            result.failedOffset =
+                offset;
 
-            return false;
-        }
+            result.requestedBytes =
+                bytesToWrite;
 
-        if (bytesWritten != bytesToWrite)
-        {
-            result.nativeErrorCode =
-                ERROR_WRITE_FAULT;
+            result.actualBytes =
+                bytesWritten;
 
-            result.failedOffset = offset;
-            result.requestedBytes = bytesToWrite;
-            result.actualBytes = bytesWritten;
-            result.phase = "Partial write";
+            result.phase =
+                "Partial write";
+
             result.message =
                 buildIoError(
                     "Partial write",
@@ -291,9 +635,10 @@ bool HostOverwriteSanitizer::overwrite(
             return false;
         }
 
-        offset += bytesWritten;
+        offset +=
+            bytesWritten;
 
-        const int progress =
+        int progress =
             static_cast<int>(
                 (offset * 100ULL) /
                 totalBytes);
@@ -301,14 +646,15 @@ bool HostOverwriteSanitizer::overwrite(
         std::cout
             << "\rHost overwrite: "
             << progress
-            << "% "
+            << "%"
             << std::flush;
     }
 
     std::cout
         << "\nHost overwrite completed.\n";
 
-    result.deviceReportedSuccess = true;
+    result.deviceReportedSuccess =
+        true;
 
     return true;
 }
@@ -320,23 +666,32 @@ VerificationResult HostOverwriteSanitizer::verify(
 {
     VerificationResult result;
 
+    result.performed =
+        true;
+
     result.method =
         VerificationMethod::HOST_READ_BACK;
 
-    result.performed = true;
-
-    if (totalBytes < VERIFY_SIZE)
+    if (totalBytes <
+        VERIFY_SIZE)
     {
-        result.performed = false;
+        result.performed =
+            false;
+
+        result.phase =
+            "Verification preparation";
+
         result.message =
-            "Verification failed: device is smaller than verification block.";
+            "Target is smaller than verification block.";
+
         return result;
     }
 
     std::vector<std::uint8_t> buffer(
         VERIFY_SIZE);
 
-    std::uint64_t offsets[] = {
+    const std::uint64_t offsets[] =
+    {
         0,
         totalBytes / 4,
         totalBytes / 2,
@@ -344,25 +699,26 @@ VerificationResult HostOverwriteSanitizer::verify(
         totalBytes - VERIFY_SIZE
     };
 
-    for (std::uint64_t offset : offsets)
+    for (std::uint64_t offset :
+         offsets)
     {
-        // Keep verification offsets sector aligned.
-        if (sectorSize != 0)
-        {
-            offset =
-                (offset / sectorSize) *
-                sectorSize;
-        }
+        offset =
+            (offset / sectorSize) *
+            sectorSize;
 
-        if (offset + VERIFY_SIZE > totalBytes)
+        if (offset + VERIFY_SIZE >
+            totalBytes)
         {
             offset =
-                totalBytes - VERIFY_SIZE;
+                ((totalBytes - VERIFY_SIZE) /
+                 sectorSize) *
+                sectorSize;
         }
 
         LARGE_INTEGER position{};
         position.QuadPart =
-            static_cast<LONGLONG>(offset);
+            static_cast<LONGLONG>(
+                offset);
 
         if (!SetFilePointerEx(
                 deviceHandle,
@@ -370,17 +726,29 @@ VerificationResult HostOverwriteSanitizer::verify(
                 nullptr,
                 FILE_BEGIN))
         {
-            const DWORD errorCode = GetLastError();
+            DWORD errorCode =
+                GetLastError();
 
-            result.nativeErrorCode = errorCode;
-            result.failedOffset = offset;
-            result.phase = "Verification seek";
+            result.nativeErrorCode =
+                errorCode;
+
+            result.failedOffset =
+                offset;
+
+            result.requestedBytes =
+                static_cast<std::uint32_t>(
+                    VERIFY_SIZE);
+
+            result.phase =
+                "Verification seek";
+
             result.message =
                 buildIoError(
                     "Verification seek",
                     errorCode,
                     offset,
-                    VERIFY_SIZE,
+                    static_cast<DWORD>(
+                        VERIFY_SIZE),
                     0);
 
             return result;
@@ -391,44 +759,68 @@ VerificationResult HostOverwriteSanitizer::verify(
         if (!ReadFile(
                 deviceHandle,
                 buffer.data(),
-                VERIFY_SIZE,
+                static_cast<DWORD>(
+                    VERIFY_SIZE),
                 &bytesRead,
                 nullptr))
         {
-            const DWORD errorCode = GetLastError();
+            DWORD errorCode =
+                GetLastError();
 
-            result.nativeErrorCode = errorCode;
-            result.failedOffset = offset;
-            result.requestedBytes = VERIFY_SIZE;
-            result.actualBytes = bytesRead;
-            result.phase = "Verification read";
+            result.nativeErrorCode =
+                errorCode;
+
+            result.failedOffset =
+                offset;
+
+            result.requestedBytes =
+                static_cast<std::uint32_t>(
+                    VERIFY_SIZE);
+
+            result.actualBytes =
+                bytesRead;
+
+            result.phase =
+                "Verification read";
+
             result.message =
                 buildIoError(
                     "Verification read",
                     errorCode,
                     offset,
-                    VERIFY_SIZE,
+                    static_cast<DWORD>(
+                        VERIFY_SIZE),
                     bytesRead);
 
             return result;
         }
 
-        if (bytesRead != VERIFY_SIZE)
+        if (bytesRead !=
+            VERIFY_SIZE)
         {
             result.nativeErrorCode =
                 ERROR_READ_FAULT;
 
-            result.failedOffset = offset;
-            result.requestedBytes = VERIFY_SIZE;
-            result.actualBytes = bytesRead;
-            result.phase = "Verification read";
+            result.failedOffset =
+                offset;
+
+            result.requestedBytes =
+                static_cast<std::uint32_t>(
+                    VERIFY_SIZE);
+
+            result.actualBytes =
+                bytesRead;
+
+            result.phase =
+                "Verification read";
 
             result.message =
                 buildIoError(
                     "Incomplete verification read",
                     ERROR_READ_FAULT,
                     offset,
-                    VERIFY_SIZE,
+                    static_cast<DWORD>(
+                        VERIFY_SIZE),
                     bytesRead);
 
             return result;
@@ -443,30 +835,46 @@ VerificationResult HostOverwriteSanitizer::verify(
                     return value == 0x00;
                 });
 
-        if (!allZero)
-        {
-            result.passed = false;
-            result.failedOffset = offset;
-            result.phase = "Verification data check";
-            result.message =
-                "Verification failed: non-zero data detected at sampled offset.";
-
-            return result;
-        }
-
         result.bytesVerified +=
             bytesRead;
 
         result.samples++;
+
+        if (!allZero)
+        {
+            result.failedOffset =
+                offset;
+
+            result.phase =
+                "Verification data check";
+
+            result.message =
+                "Verification failed: non-zero data detected at offset " +
+                std::to_string(offset) +
+                ".";
+
+            return result;
+        }
+
+        std::cout
+            << "Verification sample "
+            << result.samples
+            << " PASSED at offset "
+            << offset
+            << ".\n";
     }
 
-    result.passed = true;
-    result.globalDataErased = true;
+    result.passed =
+        true;
+
+    result.sanitizationCompleted =
+        true;
 
     result.message =
-        "Host overwrite verification passed: all sampled regions contain 0x00.";
+        "Host overwrite completed and read-back verification passed.";
 
     std::cout
+        << "\n"
         << result.message
         << '\n';
 
@@ -482,46 +890,61 @@ VerificationResult HostOverwriteSanitizer::sanitize(
     result.method =
         VerificationMethod::HOST_READ_BACK;
 
-    if (deviceHandle == INVALID_HANDLE_VALUE)
+    if (deviceHandle ==
+        INVALID_HANDLE_VALUE)
     {
+        result.phase =
+            "Handle validation";
+
         result.message =
             "Sanitization failed: invalid device handle.";
-        result.phase = "Handle validation";
+
         return result;
     }
 
     if (totalBytes == 0)
     {
+        result.phase =
+            "Capacity validation";
+
         result.message =
             "Sanitization failed: device capacity is zero.";
-        result.phase = "Capacity validation";
+
         return result;
     }
 
-    std::uint32_t sectorSize = 512;
+    std::uint32_t sectorSize = 0;
 
     if (!getSectorSize(
             deviceHandle,
             sectorSize))
     {
+        DWORD errorCode =
+            GetLastError();
+
         result.nativeErrorCode =
-            ERROR_INVALID_DATA;
+            errorCode;
 
         result.phase =
             "Sector size detection";
 
         result.message =
-            "Unable to determine a valid physical sector size.";
+            "Unable to determine device sector size. Windows error=" +
+            std::to_string(errorCode) +
+            " (" +
+            getWindowsErrorMessage(errorCode) +
+            ").";
 
         return result;
     }
 
     std::cout
-        << "Physical sector size: "
+        << "\nPhysical sector size: "
         << sectorSize
         << " bytes\n";
 
-    if ((totalBytes % sectorSize) != 0)
+    if ((totalBytes %
+         sectorSize) != 0)
     {
         result.nativeErrorCode =
             ERROR_INVALID_DATA;
@@ -530,7 +953,7 @@ VerificationResult HostOverwriteSanitizer::sanitize(
             "Capacity alignment";
 
         result.message =
-            "Device capacity is not aligned to the physical sector size.";
+            "Device capacity is not aligned to reported sector size.";
 
         return result;
     }
@@ -545,30 +968,57 @@ VerificationResult HostOverwriteSanitizer::sanitize(
     std::cout
         << "Writable preflight passed.\n";
 
-    if (!overwrite(
+    std::vector<HANDLE> lockedVolumes;
+
+    if (!lockTargetVolumes(
             deviceHandle,
-            totalBytes,
-            sectorSize,
+            lockedVolumes,
             result))
     {
         return result;
     }
 
     std::cout
+        << "\n========================================\n"
+        << " RAW PHYSICAL DEVICE OVERWRITE\n"
+        << "========================================\n";
+
+    if (!overwrite(
+            deviceHandle,
+            totalBytes,
+            sectorSize,
+            result))
+    {
+        unlockTargetVolumes(
+            lockedVolumes);
+
+        return result;
+    }
+
+    std::cout
         << "Flushing device buffers...\n";
 
-    if (!FlushFileBuffers(deviceHandle))
+    if (!FlushFileBuffers(
+            deviceHandle))
     {
-        const DWORD errorCode = GetLastError();
+        DWORD errorCode =
+            GetLastError();
 
-        result.nativeErrorCode = errorCode;
-        result.phase = "FlushFileBuffers";
+        result.nativeErrorCode =
+            errorCode;
+
+        result.phase =
+            "FlushFileBuffers";
+
         result.message =
-            "FlushFileBuffers failed: Windows error=" +
+            "FlushFileBuffers failed. Windows error=" +
             std::to_string(errorCode) +
             " (" +
-            winErrorMessage(errorCode) +
+            getWindowsErrorMessage(errorCode) +
             ").";
+
+        unlockTargetVolumes(
+            lockedVolumes);
 
         return result;
     }
@@ -576,8 +1026,17 @@ VerificationResult HostOverwriteSanitizer::sanitize(
     std::cout
         << "Device buffers flushed successfully.\n";
 
-    return verify(
-        deviceHandle,
-        totalBytes,
-        sectorSize);
+    std::cout
+        << "\nStarting sampled read-back verification...\n";
+
+    VerificationResult verification =
+        verify(
+            deviceHandle,
+            totalBytes,
+            sectorSize);
+
+    unlockTargetVolumes(
+        lockedVolumes);
+
+    return verification;
 }
