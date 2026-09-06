@@ -1073,7 +1073,7 @@ const updateEmployeeSanitizationStatus =
         const allowedTransitions = {
             ASSIGNED: ["IN_PROGRESS"],
             IN_PROGRESS: ["VERIFYING"],
-            VERIFYING: ["COMPLETED", "FAILED"],
+            VERIFYING: ["FAILED"],
         };
 
         const allowedNextStatuses =
