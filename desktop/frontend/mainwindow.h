@@ -3,8 +3,10 @@
 
 #include <QMainWindow>
 #include <QPushButton>
+#include <QFuture>
 
-#include "StorageDevice.h"
+#include "../../backend/sanitization/include/SanitizationResult.h"
+#include "../../backend/sanitization/include/SanitizationCertificate.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -65,6 +67,16 @@ private:
     void hideDeviceDetailsPage();
 
     void logout();
+
+    void startSanitization();
+
+    void showSanitizationResult(
+        const SecureWipe::SanitizationResult &result
+    );
+
+    QString sanitizationMethodName(
+        SecureWipe::SanitizationMethod method
+    ) const;
 };
 
 #endif // MAINWINDOW_H

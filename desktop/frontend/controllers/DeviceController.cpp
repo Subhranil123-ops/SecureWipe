@@ -156,7 +156,7 @@ bool DeviceController::validateSelectedTarget()
         emit safetyCheckFailed(
             QStringLiteral(
                 "Unable to refresh storage devices."));
-
+        
         return false;
     }
 
@@ -201,14 +201,18 @@ bool DeviceController::evaluateSelectedTarget()
     }
 
     /*
-     * SafetyEngine is called only after target validation.
+     * Keep the complete safety result because SanitizationEngine
+     * requires the exact result that approved this target.
      */
-    if (!safetyEngine_.evaluate(
-            *selectedTarget_))
+    lastSafetyResult_ =
+        safetyEngine_.evaluateWithResult(
+            *selectedTarget_);
+
+    if (!lastSafetyResult_.isOverallSafe)
     {
         emit safetyCheckFailed(
-            QStringLiteral(
-                "Safety checks blocked sanitization."));
+            QString::fromStdString(
+                lastSafetyResult_.summary));
 
         return false;
     }
@@ -216,4 +220,55 @@ bool DeviceController::evaluateSelectedTarget()
     emit safetyCheckPassed();
 
     return true;
+}
+
+
+// ============================================================
+// Sanitization
+// ============================================================
+
+bool DeviceController::sanitizeSelectedTarget()
+{
+    if (!selectedTarget_.has_value())
+    {
+        emit sanitizationFailed(
+            QStringLiteral(
+                "No validated target is available."));
+
+        return false;
+    }
+
+    const SecureWipe::SanitizationResult result =
+        sanitizationEngine_.sanitize(
+            *selectedTarget_,
+            lastSafetyResult_);
+
+    if (result.isSuccess())
+    {
+        emit sanitizationSucceeded();
+
+        return true;
+    }
+
+    QString message =
+        QString::fromStdString(
+            result.errorMessage);
+
+    if (message.isEmpty())
+    {
+        message =
+            QString::fromStdString(
+                result.message);
+    }
+
+    if (message.isEmpty())
+    {
+        message =
+            QStringLiteral(
+                "Sanitization failed.");
+    }
+
+    emit sanitizationFailed(message);
+
+    return false;
 }
