@@ -22,10 +22,17 @@ struct VerificationResult
     std::uint64_t bytesVerified = 0;
     std::uint32_t samples = 0;
 
-    std::uint32_t nativeStatusCode = 0;
+    // Native Windows error information.
+    std::uint32_t nativeErrorCode = 0;
+
+    // I/O diagnostics.
+    std::uint64_t failedOffset = 0;
+    std::uint32_t requestedBytes = 0;
+    std::uint32_t actualBytes = 0;
 
     bool deviceReportedSuccess = false;
     bool globalDataErased = false;
 
+    std::string phase;
     std::string message;
 };

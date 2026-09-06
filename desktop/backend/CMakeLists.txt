@@ -59,23 +59,105 @@ if(WIN32)
     )
 endif()
 
-add_executable(StorageDeviceTest tests/StorageDeviceTest.cpp)
-add_executable(StorageManagerTest tests/StorageManagerTest.cpp)
-add_executable(WindowsStorageDiscoveryTest tests/WindowsStorageDiscoveryTest.cpp)
-add_executable(DeviceClassifierTest tests/DeviceClassifierTest.cpp)
-add_executable(WindowsBootCheckerTest tests/WindowsBootCheckerTest.cpp)
-add_executable(SafetyEngineTest tests/SafetyEngineTest.cpp)
+# ============================================================
+# UNIT / FUNCTIONAL TEST EXECUTABLES
+# ============================================================
 
-add_executable(SanitizationEngineTest tests/SanitizationEngineTest.cpp)
-add_executable(SanitizationCapabilityTest tests/SanitizationCapabilityTest.cpp)
-add_executable(NvmeCapabilityTest tests/NvmeCapabilityTest.cpp)
-add_executable(AtaCapabilityTest tests/AtaCapabilityTest.cpp)
-add_executable(SanitizationMethodSelectionTest tests/SanitizationMethodSelectionTest.cpp)
-add_executable(HostOverwriteSanitizerTest tests/HostOverwriteSanitizerTest.cpp)
+add_executable(
+    StorageDeviceTest
+    tests/StorageDeviceTest.cpp
+)
 
-add_executable(EvidenceCollectorTest tests/forensic/evidence/EvidenceCollectorTest.cpp)
-add_executable(HashCalculatorTest tests/forensic/hashing/HashCalculatorTest.cpp)
-add_executable(ConfidenceScorerTest tests/forensic/scoring/ConfidenceScorerTest.cpp)
+add_executable(
+    StorageManagerTest
+    tests/StorageManagerTest.cpp
+)
+
+add_executable(
+    WindowsStorageDiscoveryTest
+    tests/WindowsStorageDiscoveryTest.cpp
+)
+
+add_executable(
+    DeviceClassifierTest
+    tests/DeviceClassifierTest.cpp
+)
+
+add_executable(
+    WindowsBootCheckerTest
+    tests/WindowsBootCheckerTest.cpp
+)
+
+add_executable(
+    SafetyEngineTest
+    tests/SafetyEngineTest.cpp
+)
+
+add_executable(
+    SanitizationEngineTest
+    tests/SanitizationEngineTest.cpp
+)
+
+add_executable(
+    SanitizationCapabilityTest
+    tests/SanitizationCapabilityTest.cpp
+)
+
+add_executable(
+    NvmeCapabilityTest
+    tests/NvmeCapabilityTest.cpp
+)
+
+add_executable(
+    AtaCapabilityTest
+    tests/AtaCapabilityTest.cpp
+)
+
+add_executable(
+    SanitizationMethodSelectionTest
+    tests/SanitizationMethodSelectionTest.cpp
+)
+
+add_executable(
+    HostOverwriteSanitizerTest
+    tests/HostOverwriteSanitizerTest.cpp
+)
+
+# ============================================================
+# REAL DEVICE HOST OVERWRITE E2E TEST
+#
+# WARNING:
+# This test performs a destructive operation on a real
+# physical storage device after explicit confirmation.
+# ============================================================
+
+add_executable(
+    HostOverwriteE2ETest
+    tests/HostOverwriteE2ETest.cpp
+)
+
+# ============================================================
+# FORENSIC TESTS
+# ============================================================
+
+add_executable(
+    EvidenceCollectorTest
+    tests/forensic/evidence/EvidenceCollectorTest.cpp
+)
+
+add_executable(
+    HashCalculatorTest
+    tests/forensic/hashing/HashCalculatorTest.cpp
+)
+
+add_executable(
+    ConfidenceScorerTest
+    tests/forensic/scoring/ConfidenceScorerTest.cpp
+)
+
+# ============================================================
+# ALL TEST TARGETS
+# ============================================================
 
 set(STORAGE_TESTS
     StorageDeviceTest
@@ -92,10 +174,17 @@ set(STORAGE_TESTS
     SanitizationMethodSelectionTest
     HostOverwriteSanitizerTest
 
+    # Real physical-device E2E test
+    HostOverwriteE2ETest
+
     EvidenceCollectorTest
     HashCalculatorTest
     ConfidenceScorerTest
 )
+
+# ============================================================
+# COMMON TEST CONFIGURATION
+# ============================================================
 
 foreach(TEST_TARGET IN LISTS STORAGE_TESTS)
 
