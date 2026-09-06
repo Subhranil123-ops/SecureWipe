@@ -27,7 +27,6 @@ add_library(
     sanitization/src/AtaSanitizer.cpp
 
     sanitization/src/HostOverwriteSanitizer.cpp
-    sanitization/src/CertificateGenerator.cpp
 
     forensic/evidence/src/EvidenceCollector.cpp
     forensic/validation/src/EvidenceValidator.cpp
@@ -125,7 +124,7 @@ add_executable(
 )
 
 # ============================================================
-# REAL DEVICE HOST OVERWRITE + CERTIFICATE E2E TEST
+# REAL DEVICE HOST OVERWRITE E2E TEST
 #
 # WARNING:
 # This test performs a destructive operation on a real

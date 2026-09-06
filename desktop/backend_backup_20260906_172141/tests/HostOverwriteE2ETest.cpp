@@ -13,62 +13,26 @@
 #include "SanitizationEngine.h"
 #include "SanitizationMethod.h"
 #include "SanitizationResult.h"
-#include "CertificateGenerator.h"
-#include "SanitizationCertificate.h"
 
-using namespace SecureWipe;
-
-static std::string methodToString(SanitizationMethod method)
+static std::string methodToString(
+    SanitizationMethod method)
 {
     switch (method)
     {
     case SanitizationMethod::NvmeSanitize:
         return "NVMe Sanitize";
+
     case SanitizationMethod::AtaSanitize:
         return "ATA Sanitize";
+
     case SanitizationMethod::HostOverwrite:
         return "Host Overwrite";
+
     case SanitizationMethod::Unsupported:
         return "Unsupported";
     }
 
     return "Unknown";
-}
-
-static std::string sanitizationStatusToString(SanitizationStatus status)
-{
-    switch (status)
-    {
-    case SanitizationStatus::NOT_STARTED:
-        return "NOT_STARTED";
-    case SanitizationStatus::IN_PROGRESS:
-        return "IN_PROGRESS";
-    case SanitizationStatus::COMPLETED:
-        return "COMPLETED";
-    case SanitizationStatus::FAILED:
-        return "FAILED";
-    case SanitizationStatus::ABORTED:
-        return "ABORTED";
-    }
-
-    return "UNKNOWN";
-}
-
-static std::string verificationStatusToString(VerificationStatus status)
-{
-    switch (status)
-    {
-    case VerificationStatus::NOT_PERFORMED:
-        return "NOT_PERFORMED";
-    case VerificationStatus::IN_PROGRESS:
-        return "IN_PROGRESS";
-    case VerificationStatus::PASSED:
-        return "PASSED";
-    case VerificationStatus::FAILED:
-        return "FAILED";
-    }
-
-    return "UNKNOWN";
 }
 
 static std::string readLine()
@@ -289,292 +253,13 @@ static bool confirmTarget(
     return true;
 }
 
-static void printCertificate(
-    const SanitizationCertificate& certificate)
-{
-    separator();
-
-    std::cout
-        << "SANITIZATION CERTIFICATE\n"
-        << "------------------------------------------------------------\n"
-        << "Certificate ID        : "
-        << certificate.certificateId
-        << '\n'
-        << "Operation ID          : "
-        << certificate.operationId
-        << '\n'
-        << "Request ID            : "
-        << (certificate.requestId.empty()
-                ? "<not supplied - standalone E2E>"
-                : certificate.requestId)
-        << '\n'
-        << "Device ID             : "
-        << certificate.deviceId
-        << '\n'
-        << "Model                 : "
-        << certificate.model
-        << '\n'
-        << "Serial Number         : "
-        << certificate.serialNumber
-        << '\n'
-        << "Capacity              : "
-        << certificate.capacityBytes
-        << " bytes\n"
-        << "Interface             : "
-        << certificate.interfaceType
-        << '\n'
-        << "Method                : "
-        << methodToString(certificate.method)
-        << '\n'
-        << "Status                : "
-        << sanitizationStatusToString(certificate.status)
-        << '\n'
-        << "Bytes Processed       : "
-        << certificate.bytesProcessed
-        << '\n'
-        << "Operation Duration    : "
-        << certificate.operationDurationMs
-        << " ms\n"
-        << "Verification Status   : "
-        << verificationStatusToString(
-               certificate.verificationStatus)
-        << '\n'
-        << "Verification Performed: "
-        << (certificate.verificationPerformed
-                ? "YES"
-                : "NO")
-        << '\n'
-        << "Verification Passed   : "
-        << (certificate.verificationPassed
-                ? "YES"
-                : "NO")
-        << '\n'
-        << "Bytes Verified        : "
-        << certificate.bytesVerified
-        << '\n'
-        << "Verification Samples  : "
-        << certificate.verificationSamples
-        << '\n'
-        << "Native Error Code     : "
-        << certificate.nativeErrorCode
-        << '\n'
-        << "Generated At          : "
-        << certificate.generatedAt
-        << '\n'
-        << "Hash Algorithm        : "
-        << certificate.hashAlgorithm
-        << '\n'
-        << "Certificate Hash      : "
-        << certificate.certificateHash
-        << '\n'
-        << "Message               : "
-        << certificate.message
-        << '\n';
-}
-
-static bool validateCertificate(
-    const SanitizationCertificate& certificate,
-    const StorageDevice& target,
-    const SanitizationResult& result)
-{
-    separator();
-
-    std::cout
-        << "CERTIFICATE VALIDATION\n"
-        << "------------------------------------------------------------\n";
-
-    bool passed = true;
-
-    if (certificate.certificateId.empty())
-    {
-        std::cout << "[FAIL] Certificate ID is empty.\n";
-        passed = false;
-    }
-    else
-    {
-        std::cout << "[PASS] Certificate ID generated.\n";
-    }
-
-    if (certificate.operationId.empty())
-    {
-        std::cout << "[FAIL] Operation ID is empty.\n";
-        passed = false;
-    }
-    else
-    {
-        std::cout << "[PASS] Operation ID preserved.\n";
-    }
-
-    if (certificate.deviceId !=
-        target.getDeviceId())
-    {
-        std::cout
-            << "[FAIL] Certificate device ID does not match target.\n";
-        passed = false;
-    }
-    else
-    {
-        std::cout
-            << "[PASS] Device identity matches.\n";
-    }
-
-    if (certificate.serialNumber !=
-        target.getSerialNumber())
-    {
-        std::cout
-            << "[FAIL] Certificate serial number does not match target.\n";
-        passed = false;
-    }
-    else
-    {
-        std::cout
-            << "[PASS] Serial number matches.\n";
-    }
-
-    if (certificate.capacityBytes !=
-        target.getCapacityBytes())
-    {
-        std::cout
-            << "[FAIL] Certificate capacity does not match target.\n";
-        passed = false;
-    }
-    else
-    {
-        std::cout
-            << "[PASS] Capacity matches.\n";
-    }
-
-    if (certificate.method !=
-        result.method)
-    {
-        std::cout
-            << "[FAIL] Certificate method does not match result.\n";
-        passed = false;
-    }
-    else
-    {
-        std::cout
-            << "[PASS] Sanitization method preserved.\n";
-    }
-
-    if (certificate.status !=
-        SanitizationStatus::COMPLETED)
-    {
-        std::cout
-            << "[FAIL] Certificate status is not COMPLETED.\n";
-        passed = false;
-    }
-    else
-    {
-        std::cout
-            << "[PASS] Certificate status is COMPLETED.\n";
-    }
-
-    if (!certificate.verificationPerformed)
-    {
-        std::cout
-            << "[FAIL] Certificate says verification was not performed.\n";
-        passed = false;
-    }
-    else
-    {
-        std::cout
-            << "[PASS] Verification evidence recorded.\n";
-    }
-
-    if (certificate.verificationStatus !=
-        VerificationStatus::PASSED)
-    {
-        std::cout
-            << "[FAIL] Certificate verification status is not PASSED.\n";
-        passed = false;
-    }
-    else
-    {
-        std::cout
-            << "[PASS] Verification status is PASSED.\n";
-    }
-
-    if (!certificate.verificationPassed)
-    {
-        std::cout
-            << "[FAIL] Certificate verificationPassed is false.\n";
-        passed = false;
-    }
-    else
-    {
-        std::cout
-            << "[PASS] verificationPassed is TRUE.\n";
-    }
-
-    if (certificate.bytesVerified !=
-        result.bytesVerified)
-    {
-        std::cout
-            << "[FAIL] bytesVerified does not match real result.\n";
-        passed = false;
-    }
-    else
-    {
-        std::cout
-            << "[PASS] bytesVerified preserved.\n";
-    }
-
-    if (certificate.verificationSamples !=
-        result.verificationSamples)
-    {
-        std::cout
-            << "[FAIL] Verification sample count does not match.\n";
-        passed = false;
-    }
-    else
-    {
-        std::cout
-            << "[PASS] Verification sample count preserved.\n";
-    }
-
-    if (certificate.certificateHash.empty())
-    {
-        std::cout
-            << "[FAIL] Certificate SHA-256 hash is empty.\n";
-        passed = false;
-    }
-    else if (certificate.certificateHash.length() != 64)
-    {
-        std::cout
-            << "[FAIL] SHA-256 hash length is "
-            << certificate.certificateHash.length()
-            << " instead of 64.\n";
-        passed = false;
-    }
-    else
-    {
-        std::cout
-            << "[PASS] SHA-256 certificate hash generated.\n";
-    }
-
-    if (!certificate.isValid())
-    {
-        std::cout
-            << "[FAIL] Certificate isValid() returned FALSE.\n";
-        passed = false;
-    }
-    else
-    {
-        std::cout
-            << "[PASS] Certificate isValid() returned TRUE.\n";
-    }
-
-    return passed;
-}
-
 int main()
 {
     separator();
 
     std::cout
         << "        SECUREWIPE HOST OVERWRITE E2E TEST\n"
-        << "        REAL PHYSICAL DEVICE + CERTIFICATE TEST\n";
+        << "        REAL PHYSICAL DEVICE TEST\n";
 
     separator();
 
@@ -933,13 +618,13 @@ int main()
     }
 
     // =========================================================
-    // STEP 7 - REAL EXECUTION
+    // STEP 7 - EXECUTION
     // =========================================================
 
     separator();
 
     std::cout
-        << "STEP 7 - REAL HOST OVERWRITE EXECUTION\n"
+        << "STEP 7 - HOST OVERWRITE EXECUTION\n"
         << "------------------------------------------------------------\n";
 
     std::cout
@@ -950,7 +635,7 @@ int main()
     const auto start =
         GetTickCount64();
 
-    SanitizationResult result =
+    SecureWipe::SanitizationResult result =
         sanitizationEngine.sanitize(
             selectedDevice,
             finalSafetyResult);
@@ -964,34 +649,65 @@ int main()
         << " ms\n";
 
     // =========================================================
-    // STEP 8 - REAL RESULT
+    // STEP 8 - RESULT
     // =========================================================
 
     separator();
 
     std::cout
-        << "STEP 8 - REAL SANITIZATION RESULT\n"
+        << "STEP 8 - FINAL RESULT\n"
         << "------------------------------------------------------------\n";
 
     std::cout
-        << "Status               : "
-        << sanitizationStatusToString(
-               result.status)
+        << "Status              : ";
+
+    switch (result.status)
+    {
+    case SecureWipe::SanitizationStatus::COMPLETED:
+        std::cout << "COMPLETED";
+        break;
+
+    case SecureWipe::SanitizationStatus::FAILED:
+        std::cout << "FAILED";
+        break;
+
+    case SecureWipe::SanitizationStatus::IN_PROGRESS:
+        std::cout << "IN PROGRESS";
+        break;
+    }
+
+    std::cout
         << '\n'
-        << "Message              : "
+        << "Message             : "
         << result.message
         << '\n'
-        << "Bytes Processed      : "
+        << "Bytes Processed     : "
         << result.bytesProcessed
-        << '\n'
-        << "Verification Status  : "
-        << verificationStatusToString(
-               result.verificationStatus)
-        << '\n'
-        << "Verification Performed: "
-        << (result.verificationPerformed
-                ? "YES"
-                : "NO")
+        << '\n';
+
+    std::cout
+        << "Verification        : ";
+
+    switch (result.verificationStatus)
+    {
+    case SecureWipe::VerificationStatus::PASSED:
+        std::cout << "PASSED";
+        break;
+
+    case SecureWipe::VerificationStatus::FAILED:
+        std::cout << "FAILED";
+        break;
+
+    case SecureWipe::VerificationStatus::IN_PROGRESS:
+        std::cout << "IN PROGRESS";
+        break;
+
+    case SecureWipe::VerificationStatus::NOT_PERFORMED:
+        std::cout << "NOT PERFORMED";
+        break;
+    }
+
+    std::cout
         << '\n'
         << "Verification Samples : "
         << result.verificationSamples
@@ -1004,118 +720,42 @@ int main()
         << '\n'
         << "Duration             : "
         << result.operationDurationMs
-        << " ms\n"
-        << "Native Error Code    : "
-        << result.nativeErrorCode
-        << '\n'
-        << "Error                : "
-        << result.errorMessage
-        << '\n';
+        << " ms\n";
 
     // =========================================================
-    // STEP 9 - REAL SUCCESS DECISION
+    // FINAL DECISION
     // =========================================================
 
-    const bool sanitizationPassed =
+    separator();
+
+    const bool finalPass =
         result.status ==
-            SanitizationStatus::COMPLETED &&
+            SecureWipe::SanitizationStatus::COMPLETED &&
         result.verificationStatus ==
-            VerificationStatus::PASSED &&
-        result.verificationPerformed;
+            SecureWipe::VerificationStatus::PASSED;
 
-    if (!sanitizationPassed)
+    if (finalPass)
     {
-        separator();
-
         std::cout
-            << "\n============================================================\n"
+            << "\n"
+            << "============================================================\n"
+            << "                 E2E TEST PASSED\n"
+            << "============================================================\n"
+            << "\n"
+            << "Host Overwrite completed successfully.\n"
+            << "Post-write verification passed.\n";
+    }
+    else
+    {
+        std::cout
+            << "\n"
+            << "============================================================\n"
             << "                 E2E TEST FAILED\n"
             << "============================================================\n"
             << "\n"
-            << "Real sanitization/verification criteria were not satisfied.\n"
-            << "Certificate generation will NOT be treated as successful.\n";
-
-        return 7;
+            << "The complete sanitization + verification criteria\n"
+            << "were not satisfied.\n";
     }
 
-    std::cout
-        << "\n[PASS] Real Host Overwrite completed.\n"
-        << "[PASS] Real post-write verification passed.\n";
-
-    // =========================================================
-    // STEP 10 - CERTIFICATE GENERATION
-    // =========================================================
-
-    separator();
-
-    std::cout
-        << "STEP 10 - CERTIFICATE GENERATION\n"
-        << "------------------------------------------------------------\n";
-
-    CertificateGenerator certificateGenerator;
-
-    /*
-     * Standalone hardware E2E test does not yet receive a request
-     * from the web backend, so requestId is intentionally empty.
-     *
-     * No fake request ID is inserted here.
-     * During Web -> Desktop integration, the actual MongoDB
-     * sanitization request ID will be supplied.
-     */
-    const std::string requestId;
-
-    SanitizationCertificate certificate =
-        certificateGenerator.generate(
-            result,
-            requestId);
-
-    printCertificate(certificate);
-
-    // =========================================================
-    // STEP 11 - CERTIFICATE VALIDATION
-    // =========================================================
-
-    if (!validateCertificate(
-            certificate,
-            selectedDevice,
-            result))
-    {
-        separator();
-
-        std::cout
-            << "\n============================================================\n"
-            << "       CERTIFICATE VALIDATION FAILED\n"
-            << "============================================================\n";
-
-        return 8;
-    }
-
-    // =========================================================
-    // FINAL RESULT
-    // =========================================================
-
-    separator();
-
-    std::cout
-        << "\n============================================================\n"
-        << "             REAL DEVICE E2E TEST PASSED\n"
-        << "============================================================\n"
-        << "\n"
-        << "Physical device sanitization : PASS\n"
-        << "Host Overwrite               : PASS\n"
-        << "Post-write verification      : PASS\n"
-        << "Certificate generation       : PASS\n"
-        << "Certificate validation       : PASS\n"
-        << "SHA-256 integrity hash       : PASS\n"
-        << "\n"
-        << "Certificate ID:\n"
-        << certificate.certificateId
-        << "\n\n"
-        << "Certificate SHA-256:\n"
-        << certificate.certificateHash
-        << "\n";
-
-    separator();
-
-    return 0;
+    return finalPass ? 0 : 7;
 }
