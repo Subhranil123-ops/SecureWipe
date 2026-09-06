@@ -1,11 +1,10 @@
 const mongoose = require("mongoose");
 
-const sanitizationCertificateSchema = new mongoose.Schema(
+const sanitizationResultSchema = new mongoose.Schema(
     {
-        certificateId: {
+        requestId: {
             type: String,
             required: true,
-            unique: true,
             index: true
         },
 
@@ -16,23 +15,11 @@ const sanitizationCertificateSchema = new mongoose.Schema(
             index: true
         },
 
-        requestId: {
-            type: String,
-            required: true,
-            index: true
-        },
-
-        result: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: "SanitizationResult",
-            required: true,
-            index: true
-        },
-
-        generatedBy: {
+        submittedBy: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
-            required: true
+            required: true,
+            index: true
         },
 
         deviceId: {
@@ -113,12 +100,12 @@ const sanitizationCertificateSchema = new mongoose.Schema(
 
         verificationPerformed: {
             type: Boolean,
-            required: true
+            default: false
         },
 
         verificationPassed: {
             type: Boolean,
-            required: true
+            default: false
         },
 
         bytesVerified: {
@@ -133,14 +120,10 @@ const sanitizationCertificateSchema = new mongoose.Schema(
             min: 0
         },
 
-        deviceReportedSuccess: {
-            type: Boolean,
-            default: false
-        },
-
-        globalDataErased: {
-            type: Boolean,
-            default: false
+        verificationMessage: {
+            type: String,
+            trim: true,
+            default: ""
         },
 
         nativeErrorCode: {
@@ -149,39 +132,14 @@ const sanitizationCertificateSchema = new mongoose.Schema(
             min: 0
         },
 
-        verificationMessage: {
-            type: String,
-            trim: true,
-            default: ""
-        },
-
-        generatedAt: {
-            type: Date,
-            required: true
-        },
-
-        hashAlgorithm: {
-            type: String,
-            enum: ["SHA-256"],
-            required: true
-        },
-
-        certificateHash: {
-            type: String,
-            required: true,
-            index: true,
-            match: /^[a-fA-F0-9]{64}$/
-        },
-
-        message: {
-            type: String,
-            trim: true,
-            default: ""
-        },
-
-        integrityVerified: {
+        deviceReportedSuccess: {
             type: Boolean,
-            default: true
+            default: false
+        },
+
+        globalDataErased: {
+            type: Boolean,
+            default: false
         }
     },
     {
@@ -189,7 +147,12 @@ const sanitizationCertificateSchema = new mongoose.Schema(
     }
 );
 
+sanitizationResultSchema.index({
+    requestId: 1,
+    createdAt: -1
+});
+
 module.exports = mongoose.model(
-    "SanitizationCertificate",
-    sanitizationCertificateSchema
+    "SanitizationResult",
+    sanitizationResultSchema
 );

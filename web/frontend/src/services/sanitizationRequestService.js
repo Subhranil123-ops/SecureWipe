@@ -1,4 +1,5 @@
 import { apiRequest } from "./api";
+
 export const getAllSanitizationRequests =
     async () => {
 
@@ -9,7 +10,6 @@ export const getAllSanitizationRequests =
 
         return response.data || [];
     };
-
 
 export const getHeadSanitizationRequests =
     async () => {
@@ -22,7 +22,6 @@ export const getHeadSanitizationRequests =
         return response.data || [];
     };
 
-
 export const getHeadApprovedSanitizationRequests =
     async () => {
 
@@ -33,7 +32,6 @@ export const getHeadApprovedSanitizationRequests =
 
         return response.data || [];
     };
-
 
 export const updateSanitizationRequestStatus =
     async (
@@ -46,15 +44,12 @@ export const updateSanitizationRequestStatus =
                 `/api/sanitization-requests/${requestId}/status`,
                 {
                     method: "PATCH",
-
-                    body:
-                        JSON.stringify(data),
+                    body: JSON.stringify(data),
                 }
             );
 
         return response.data;
     };
-
 
 export const assignSanitizationRequest =
     async (
@@ -67,9 +62,7 @@ export const assignSanitizationRequest =
                 `/api/sanitization-requests/${requestId}/assign`,
                 {
                     method: "PATCH",
-
-                    body:
-                        JSON.stringify(data),
+                    body: JSON.stringify(data),
                 }
             );
 
@@ -96,4 +89,24 @@ export const getEmployeeSanitizationRequests =
             );
 
         return response.data || [];
+    };
+
+export const updateEmployeeSanitizationStatus =
+    async (
+        requestId,
+        status
+    ) => {
+
+        const response =
+            await apiRequest(
+                `/api/sanitization-requests/${requestId}/employee-status`,
+                {
+                    method: "PATCH",
+                    body: JSON.stringify({
+                        status,
+                    }),
+                }
+            );
+
+        return response.data;
     };

@@ -18,8 +18,11 @@ const authRoute = require("./Routes/auth.routes");
 const workstationRoute = require("./Routes/workstationCenterRoutes");
 const userRoute = require("./Routes/users.routes");
 const workstationManagementRoute = require("./Routes/workstation.routes");
-const sanitizationRequestRoute =require("./Routes/sanitizationRequest.routes");
+const sanitizationRequestRoute = require("./Routes/sanitizationRequest.routes");
+const sanitizationResultRoute = require("./Routes/sanitizationResult.routes");
+const sanitizationCertificateRoute = require("./Routes/sanitizationCertificate.routes");
 const forensicCaseRoute = require("./Routes/forensicCase.routes");
+
 
 // error middlewares
 const notFound = require("./middlewares/notFound");
@@ -30,7 +33,7 @@ app.use("/api/auth", authRoute);
 app.use("/api/workstation-centers", workstationRoute);
 app.use("/api/users", userRoute);
 app.use("/api/workstations", workstationManagementRoute);
-app.use("/api/sanitization-requests",sanitizationRequestRoute);
+app.use("/api/sanitization-requests", sanitizationRequestRoute);
 app.use("/api/forensics", forensicCaseRoute);
 
 //adding errors
