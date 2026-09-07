@@ -109,12 +109,14 @@ bool parseApiResponse(
 {
     const int statusCode =
         reply->attribute(
-            QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            QNetworkRequest::HttpStatusCodeAttribute)
+            .toInt();
 
     const QByteArray body =
         reply->readAll();
 
-    if (reply->error() != QNetworkReply::NoError)
+    if (reply->error() !=
+        QNetworkReply::NoError)
     {
         errorMessage =
             QStringLiteral(
@@ -210,7 +212,8 @@ void SanitizationResultService::submitResult(
         QStringLiteral(
             "%1/api/sanitization-results/%2")
             .arg(
-                QString::fromLatin1(kApiBaseUrl),
+                QString::fromLatin1(
+                    kApiBaseUrl),
                 requestId));
 
     const QNetworkRequest request =
@@ -236,7 +239,7 @@ void SanitizationResultService::submitResult(
         reply,
         &QNetworkReply::finished,
         this,
-        [this, reply, requestId]()
+        [this, reply, requestId, token, pipelineResult]()
         {
             QJsonObject response;
             QString errorMessage;
@@ -261,6 +264,26 @@ void SanitizationResultService::submitResult(
                 requestId);
 
             reply->deleteLater();
+
+            /*
+             * The backend changes an IN_PROGRESS request
+             * to VERIFYING after accepting a successful
+             * sanitization result.
+             *
+             * Only a successful local pipeline that
+             * generated a valid certificate should
+             * continue to certificate submission.
+             */
+            if (
+                pipelineResult.sanitization.isSuccess() &&
+                pipelineResult.certificateGenerated &&
+                pipelineResult.certificate.isValid())
+            {
+                submitCertificate(
+                    token,
+                    requestId,
+                    pipelineResult);
+            }
         });
 }
 
@@ -306,7 +329,8 @@ void SanitizationResultService::submitCertificate(
         QStringLiteral(
             "%1/api/sanitization-certificates/%2")
             .arg(
-                QString::fromLatin1(kApiBaseUrl),
+                QString::fromLatin1(
+                    kApiBaseUrl),
                 requestId));
 
     const QNetworkRequest request =
@@ -415,12 +439,6 @@ QJsonObject SanitizationResultService::resultToJson(
         QString::fromStdString(
             result.serialNumber));
 
-    /*
-     * The web service converts capacityBytes to Number().
-     * Sending the value as a decimal string avoids any
-     * loss of precision caused by a JSON floating-point
-     * representation for large storage capacities.
-     */
     object.insert(
         QStringLiteral("capacityBytes"),
         QString::number(
@@ -517,11 +535,6 @@ QJsonObject SanitizationResultService::certificateToJson(
         QString::fromStdString(
             certificate.operationId));
 
-    /*
-     * The backend takes requestId from the URL and
-     * also expects it as part of the canonical
-     * certificate data.
-     */
     object.insert(
         QStringLiteral("requestId"),
         QString::fromStdString(

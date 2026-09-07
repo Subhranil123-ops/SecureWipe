@@ -5,22 +5,20 @@ const WorkstationCenter = require("../models/WorkstationCenter");
 const AppError = require("../utils/AppError");
 const Counter = require("../models/Counter");
 
-
 const generateCenterId = async () => {
-
     const counter =
         await Counter.findOneAndUpdate(
             {
-                name: "workstationCenter"
+                name: "workstationCenter",
             },
             {
                 $inc: {
-                    sequence: 1
-                }
+                    sequence: 1,
+                },
             },
             {
                 new: true,
-                upsert: true
+                upsert: true,
             }
         );
 
@@ -29,8 +27,13 @@ const generateCenterId = async () => {
     ).padStart(4, "0")}`;
 };
 
-const createWorkstationCenter = async (data) => {
-    const head = await User.findById(data.head);
+const createWorkstationCenter = async (
+    data
+) => {
+    const head =
+        await User.findById(
+            data.head
+        );
 
     if (!head) {
         throw new AppError(
@@ -39,23 +42,30 @@ const createWorkstationCenter = async (data) => {
         );
     }
 
-    if (head.status !== "ACTIVE") {
+    if (
+        head.status !==
+        "ACTIVE"
+    ) {
         throw new AppError(
             "Selected workstation head is inactive",
             400
         );
     }
 
-    if (head.role !== "WORKSTATION_HEAD") {
+    if (
+        head.role !==
+        "WORKSTATION_HEAD"
+    ) {
         throw new AppError(
             "Selected user is not a workstation head",
             400
         );
     }
 
-    const existingCenter = await WorkstationCenter.findOne({
-        head: head._id,
-    });
+    const existingCenter =
+        await WorkstationCenter.findOne({
+            head: head._id,
+        });
 
     if (existingCenter) {
         throw new AppError(
@@ -63,107 +73,207 @@ const createWorkstationCenter = async (data) => {
             409
         );
     }
+
     const centerId =
         await generateCenterId();
 
-    const workstationCenter =
-        await WorkstationCenter.create({
-            ...data,
-            centerId
-        });
-
-    return workstationCenter;
+    return WorkstationCenter.create({
+        ...data,
+        centerId,
+    });
 };
 
-const getWorkstationCenterById = async (centerId, user) => {
-
-    const center = await WorkstationCenter.findOne({
-        centerId: centerId
-    })
-        .populate(
-            "head",
-            "name email"
-        )
-        .populate(
-            "employees",
-            "name email role status"
-        );
-
-    if (!center) {
-        throw new AppError(
-            "Workstation center does not exist",
-            404
-        );
-    }
-
-    // Find all workstations belonging to this center
-    const workstations = await Workstation.find({
-        workstationCenter: center._id
-    }).select(
-        "workstationId name status connectionStatus hostname operatingSystem enrolledAt"
-    );
-
-    if (user.role === "ADMIN") {
-        return {
-            centerId: center.centerId,
-            name: center.name,
-            location: center.location,
-            status: center.status,
-            head: center.head,
-            employees: center.employees,
-            workstations: workstations,
-            createdAt: center.createdAt,
-            updatedAt: center.updatedAt
-        };
-    }
-
-    if (user.role === "WORKSTATION_HEAD") {
-
-        if (!center.head._id.equals(user._id)) {
+const getWorkstationCenterById =
+    async (
+        centerId,
+        user
+    ) => {
+        if (!user) {
             throw new AppError(
-                "You are not authorized to access this workstation center",
-                403
+                "Authentication required",
+                401
             );
         }
 
-        return {
-            centerId: center.centerId,
-            name: center.name,
-            location: center.location,
-            status: center.status,
-            employees: center.employees,
-            workstations: workstations
-        };
-    }
+        const center =
+            await WorkstationCenter.findOne({
+                centerId,
+            })
+                .populate(
+                    "head",
+                    "name email phone role status"
+                )
+                .populate(
+                    "employees",
+                    "name email role status workstationCenter"
+                );
 
-    if (user.role === "CUSTOMER") {
-        return {
-            centerId: center.centerId,
-            name: center.name,
-            location: center.location,
-            status: center.status,
+        if (!center) {
+            throw new AppError(
+                "Workstation center does not exist",
+                404
+            );
+        }
 
-            head: {
-                name: center.head.name
+        const workstations =
+            await Workstation.find({
+                workstationCenter:
+                    center._id,
+            })
+                .populate(
+                    "assignedEmployee",
+                    "name email role status"
+                )
+                .select(
+                    "workstationId name status connectionStatus hostname operatingSystem assignedEmployee enrolledAt"
+                )
+                .sort({
+                    name: 1,
+                });
+
+        const safeHead =
+            center.head
+                ? {
+                      _id:
+                          center.head._id,
+                      name:
+                          center.head.name,
+                      email:
+                          center.head.email,
+                      phone:
+                          center.head.phone,
+                      role:
+                          center.head.role,
+                      status:
+                          center.head.status,
+                  }
+                : null;
+
+        if (
+            user.role ===
+            "ADMIN"
+        ) {
+            return {
+                centerId:
+                    center.centerId,
+
+                name:
+                    center.name,
+
+                location:
+                    center.location,
+
+                status:
+                    center.status,
+
+                head:
+                    safeHead,
+
+                employees:
+                    center.employees,
+
+                workstations,
+
+                createdAt:
+                    center.createdAt,
+
+                updatedAt:
+                    center.updatedAt,
+            };
+        }
+
+        if (
+            user.role ===
+            "WORKSTATION_HEAD"
+        ) {
+            if (
+                !center.head ||
+                String(
+                    center.head._id
+                ) !==
+                    String(user._id)
+            ) {
+                throw new AppError(
+                    "You are not authorized to access this workstation center",
+                    403
+                );
             }
-        };
-    }
 
-    throw new AppError(
-        "You are not authorized to access this workstation center",
-        403
-    );
-};
+            return {
+                centerId:
+                    center.centerId,
+
+                name:
+                    center.name,
+
+                location:
+                    center.location,
+
+                status:
+                    center.status,
+
+                head:
+                    safeHead,
+
+                employees:
+                    center.employees,
+
+                workstations,
+            };
+        }
+
+        if (
+            user.role ===
+            "CUSTOMER"
+        ) {
+            return {
+                centerId:
+                    center.centerId,
+
+                name:
+                    center.name,
+
+                location:
+                    center.location,
+
+                status:
+                    center.status,
+
+                head:
+                    safeHead
+                        ? {
+                              name:
+                                  safeHead.name,
+
+                              email:
+                                  safeHead.email,
+                          }
+                        : null,
+            };
+        }
+
+        throw new AppError(
+            "You are not authorized to access this workstation center",
+            403
+        );
+    };
 
 const assignEmployees = async (
     centerId,
     employeesIds,
     currentUser
 ) => {
+    if (!currentUser) {
+        throw new AppError(
+            "Authentication required",
+            401
+        );
+    }
 
-    // 1. employeesIds array check
     if (
-        !Array.isArray(employeesIds) ||
+        !Array.isArray(
+            employeesIds
+        ) ||
         employeesIds.length === 0
     ) {
         throw new AppError(
@@ -172,10 +282,10 @@ const assignEmployees = async (
         );
     }
 
-    // 2. Find workstation center
-    const center = await WorkstationCenter.findOne({
-        centerId
-    });
+    const center =
+        await WorkstationCenter.findOne({
+            centerId,
+        });
 
     if (!center) {
         throw new AppError(
@@ -184,13 +294,16 @@ const assignEmployees = async (
         );
     }
 
-    // 3. If requester is WORKSTATION_HEAD,
-    //    he can only assign employees to his own center
-    if (currentUser.role === "WORKSTATION_HEAD") {
-
+    if (
+        currentUser.role ===
+        "WORKSTATION_HEAD"
+    ) {
         if (
-            center.head.toString() !==
-            currentUser._id.toString()
+            !center.head ||
+            String(center.head) !==
+                String(
+                    currentUser._id
+                )
         ) {
             throw new AppError(
                 "You can only assign employees to your own center",
@@ -199,17 +312,22 @@ const assignEmployees = async (
         }
     }
 
-    // 4. Remove duplicate employee IDs
-    const uniqueemployeesIds = [
-        ...new Set(
-            employeesIds.map(id => id.toString())
-        )
-    ];
+    const uniqueEmployeeIds =
+        [
+            ...new Set(
+                employeesIds.map(
+                    (id) =>
+                        id.toString()
+                )
+            ),
+        ];
 
-    // Check whether every ID is a valid MongoDB ObjectId
     const invalidEmployeeId =
-        uniqueemployeesIds.find(
-            id => !mongoose.Types.ObjectId.isValid(id)
+        uniqueEmployeeIds.find(
+            (id) =>
+                !mongoose.Types.ObjectId.isValid(
+                    id
+                )
         );
 
     if (invalidEmployeeId) {
@@ -220,18 +338,21 @@ const assignEmployees = async (
     }
 
     const employeeObjectIds =
-        uniqueemployeesIds.map(
-            id => new mongoose.Types.ObjectId(id)
+        uniqueEmployeeIds.map(
+            (id) =>
+                new mongoose.Types.ObjectId(
+                    id
+                )
         );
 
-    // 5. Find all selected users
-    const employees = await User.find({
-        _id: {
-            $in: employeeObjectIds
-        }
-    });
+    const employees =
+        await User.find({
+            _id: {
+                $in:
+                    employeeObjectIds,
+            },
+        });
 
-    // 6. Check all employees exist
     if (
         employees.length !==
         employeeObjectIds.length
@@ -242,12 +363,12 @@ const assignEmployees = async (
         );
     }
 
-    // 7. Make sure all users are workstation employees
-    const invalidEmployee = employees.find(
-        user =>
-            user.role !==
-            "WORKSTATION_EMPLOYEE"
-    );
+    const invalidEmployee =
+        employees.find(
+            (employee) =>
+                employee.role !==
+                "WORKSTATION_EMPLOYEE"
+        );
 
     if (invalidEmployee) {
         throw new AppError(
@@ -256,11 +377,12 @@ const assignEmployees = async (
         );
     }
 
-    // 8. Check whether active or inactive
-    const inactiveEmployee = employees.find(
-        user =>
-            user.status !== "ACTIVE"
-    );
+    const inactiveEmployee =
+        employees.find(
+            (employee) =>
+                employee.status !==
+                "ACTIVE"
+        );
 
     if (inactiveEmployee) {
         throw new AppError(
@@ -269,226 +391,225 @@ const assignEmployees = async (
         );
     }
 
-    // 9. Check whether any employee is already assigned
-    const alreadyAssigned = employees.filter(
-        employee =>
-            employee.workstationCenter
-    );
+    const alreadyAssigned =
+        employees.filter(
+            (employee) =>
+                employee.workstationCenter
+        );
 
-    if (alreadyAssigned.length > 0) {
+    if (
+        alreadyAssigned.length > 0
+    ) {
         throw new AppError(
             "One or more employees are already assigned to a workstation center",
             400
         );
     }
 
-    // 10. Add employees to center
     center.employees.push(
         ...employeeObjectIds
     );
 
     await center.save();
 
-    // 11. Update each employee's workstationCenter
     await User.updateMany(
         {
             _id: {
-                $in: employeeObjectIds
-            }
+                $in:
+                    employeeObjectIds,
+            },
         },
         {
             $set: {
-                workstationCenter: center._id
-            }
+                workstationCenter:
+                    center._id,
+            },
         }
     );
 
-    return center;
+    return getWorkstationCenterById(
+        center.centerId,
+        currentUser
+    );
 };
 
 const getActiveWorkstationCenters =
     async () => {
-
-        const centers =
-            await WorkstationCenter.find({
-                status: "ACTIVE"
-            })
-                .select(
-                    "centerId name location status"
-                )
-                .sort({
-                    name: 1
-                });
-
-        return centers;
-    };
-
-const getMyWorkstationCenter = async (user) => {
-
-    // ---------------------------------------------
-    // 1. Authentication check
-    // ---------------------------------------------
-
-    if (!user) {
-        throw new AppError(
-            "Authentication required",
-            401
-        );
-    }
-
-
-    // ---------------------------------------------
-    // 2. Role check
-    // ---------------------------------------------
-
-    if (user.role !== "WORKSTATION_HEAD") {
-        throw new AppError(
-            "Only workstation heads can access this resource",
-            403
-        );
-    }
-
-
-    // ---------------------------------------------
-    // 3. Find center belonging to logged-in head
-    // ---------------------------------------------
-
-    const center =
-        await WorkstationCenter.findOne({
-            head: user._id
+        return WorkstationCenter.find({
+            status: "ACTIVE",
         })
+            .select(
+                "centerId name location status head"
+            )
             .populate(
                 "head",
-                "name email"
-            )
-            .populate(
-                "employees",
-                "name email role status workstationCenter"
-            );
-
-
-    // ---------------------------------------------
-    // 4. Center must exist
-    // ---------------------------------------------
-
-    if (!center) {
-        throw new AppError(
-            "No workstation center is assigned to this head",
-            404
-        );
-    }
-
-
-    // ---------------------------------------------
-    // 5. Get workstations belonging to this center
-    // ---------------------------------------------
-
-    const workstations =
-        await Workstation.find({
-            workstationCenter: center._id
-        })
-            .populate(
-                "assignedEmployee",
-                "name email role status"
-            )
-            .select(
-                "workstationId name status connectionStatus hostname operatingSystem assignedEmployee enrolledAt"
+                "name email phone role status"
             )
             .sort({
-                name: 1
+                name: 1,
+            });
+    };
+
+const getMyWorkstationCenter =
+    async (user) => {
+        if (!user) {
+            throw new AppError(
+                "Authentication required",
+                401
+            );
+        }
+
+        if (
+            user.role !==
+            "WORKSTATION_HEAD"
+        ) {
+            throw new AppError(
+                "Only workstation heads can access this resource",
+                403
+            );
+        }
+
+        const center =
+            await WorkstationCenter.findOne({
+                head: user._id,
+            })
+                .populate(
+                    "head",
+                    "name email phone role status"
+                )
+                .populate(
+                    "employees",
+                    "name email role status workstationCenter"
+                );
+
+        if (!center) {
+            throw new AppError(
+                "No workstation center is assigned to this head",
+                404
+            );
+        }
+
+        const workstations =
+            await Workstation.find({
+                workstationCenter:
+                    center._id,
+            })
+                .populate(
+                    "assignedEmployee",
+                    "name email role status"
+                )
+                .select(
+                    "workstationId name status connectionStatus hostname operatingSystem assignedEmployee enrolledAt"
+                )
+                .sort({
+                    name: 1,
+                });
+
+        return {
+            centerId:
+                center.centerId,
+
+            name:
+                center.name,
+
+            location:
+                center.location,
+
+            status:
+                center.status,
+
+            head:
+                center.head
+                    ? {
+                          _id:
+                              center.head._id,
+                          name:
+                              center.head.name,
+                          email:
+                              center.head.email,
+                          phone:
+                              center.head.phone,
+                      }
+                    : null,
+
+            employees:
+                center.employees,
+
+            workstations,
+        };
+    };
+
+const getEligibleEmployees =
+    async (
+        centerId,
+        currentUser
+    ) => {
+        if (!currentUser) {
+            throw new AppError(
+                "Authentication required",
+                401
+            );
+        }
+
+        const center =
+            await WorkstationCenter.findOne({
+                centerId,
             });
 
+        if (!center) {
+            throw new AppError(
+                "Workstation center not found",
+                404
+            );
+        }
 
-    // ---------------------------------------------
-    // 6. Return center information
-    // ---------------------------------------------
+        if (
+            currentUser.role ===
+            "WORKSTATION_HEAD"
+        ) {
+            if (
+                !center.head ||
+                String(center.head) !==
+                    String(
+                        currentUser._id
+                    )
+            ) {
+                throw new AppError(
+                    "You can only access employees from your own center",
+                    403
+                );
+            }
+        }
 
-    return {
-        centerId: center.centerId,
+        if (
+            currentUser.role !==
+                "ADMIN" &&
+            currentUser.role !==
+                "WORKSTATION_HEAD"
+        ) {
+            throw new AppError(
+                "You are not authorized to view eligible employees",
+                403
+            );
+        }
 
-        name: center.name,
+        return User.find({
+            role:
+                "WORKSTATION_EMPLOYEE",
 
-        location: center.location,
+            status:
+                "ACTIVE",
 
-        status: center.status,
-
-        head: center.head,
-
-        employees: center.employees,
-
-        workstations: workstations
+            workstationCenter:
+                null,
+        })
+            .select(
+                "_id name email role status workstationCenter"
+            )
+            .sort({
+                name: 1,
+            });
     };
-};
-
-const getEligibleEmployees = async (
-    centerId,
-    currentUser
-) => {
-
-    // 1. Authentication check
-    if (!currentUser) {
-        throw new AppError(
-            "Authentication required",
-            401
-        );
-    }
-
-    // 2. Find workstation center
-    const center = await WorkstationCenter.findOne({
-        centerId
-    });
-
-    if (!center) {
-        throw new AppError(
-            "Workstation center not found",
-            404
-        );
-    }
-
-    // 3. Workstation Head can only view
-    //    eligible employees for their own center
-    if (
-        currentUser.role === "WORKSTATION_HEAD" &&
-        (
-            !center.head ||
-            center.head.toString() !==
-            currentUser._id.toString()
-        )
-    ) {
-        throw new AppError(
-            "You can only access employees from your own center",
-            403
-        );
-    }
-
-    // 4. Only ADMIN and WORKSTATION_HEAD
-    //    should reach this service
-    if (
-        currentUser.role !== "ADMIN" &&
-        currentUser.role !== "WORKSTATION_HEAD"
-    ) {
-        throw new AppError(
-            "You are not authorized to view eligible employees",
-            403
-        );
-    }
-
-    // 5. Find employees who can actually
-    //    be assigned to this center
-    const employees = await User.find({
-        role: "WORKSTATION_EMPLOYEE",
-        status: "ACTIVE",
-        workstationCenter: null
-    })
-        .select(
-            "_id name email role status workstationCenter"
-        )
-        .sort({
-            name: 1
-        });
-
-    return employees;
-};
 
 module.exports = {
     createWorkstationCenter,
@@ -496,6 +617,5 @@ module.exports = {
     assignEmployees,
     getActiveWorkstationCenters,
     getMyWorkstationCenter,
-    getEligibleEmployees
+    getEligibleEmployees,
 };
-

@@ -7,10 +7,17 @@ function Sidebar() {
     const role = user?.role;
 
     const getLinkClass = ({ isActive }) =>
-        `block rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+        `group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
             isActive
-                ? "bg-indigo-50 text-indigo-700"
+                ? "bg-indigo-50 text-indigo-700 shadow-sm"
                 : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+        }`;
+
+    const getIconClass = ({ isActive }) =>
+        `flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition ${
+            isActive
+                ? "bg-white text-indigo-600 shadow-sm"
+                : "bg-transparent text-slate-400 group-hover:text-slate-600"
         }`;
 
     const handleLogout = () => {
@@ -18,179 +25,379 @@ function Sidebar() {
         navigate("/login", { replace: true });
     };
 
-    return (
-        <aside className="hidden w-64 shrink-0 border-r border-slate-200 bg-white md:flex md:flex-col">
-            <div className="border-b border-slate-200 px-5 py-5">
-                <h1 className="text-lg font-bold text-indigo-600">
-                    SecureWipe
-                </h1>
+    const roleLabel =
+        role
+            ? role
+                  .replaceAll("_", " ")
+                  .replace(
+                      /\b\w/g,
+                      (character) =>
+                          character.toUpperCase()
+                  )
+            : "";
 
-                <p className="mt-1 text-xs text-slate-500">
-                    {role?.replaceAll("_", " ")}
-                </p>
+    return (
+        <aside className="hidden w-72 shrink-0 border-r border-slate-200 bg-white md:flex md:flex-col">
+            <div className="border-b border-slate-200 px-5 py-5">
+                <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 text-sm font-bold text-white shadow-sm">
+                        SW
+                    </div>
+
+                    <div className="min-w-0">
+                        <h1 className="text-base font-bold tracking-tight text-slate-900">
+                            SecureWipe
+                        </h1>
+
+                        <p className="mt-0.5 text-xs text-slate-400">
+                            Secure media operations
+                        </p>
+                    </div>
+                </div>
+
+                {roleLabel && (
+                    <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                            Current Role
+                        </p>
+
+                        <p className="mt-1 text-xs font-semibold text-slate-700">
+                            {roleLabel}
+                        </p>
+                    </div>
+                )}
             </div>
 
-            <nav className="flex-1 space-y-1 overflow-y-auto p-4">
-
+            <nav className="flex-1 overflow-y-auto p-4">
                 {role === "ADMIN" && (
-                    <>
-                        <NavLink
+                    <NavSection title="Administration">
+                        <SidebarLink
                             to="/admin/dashboard"
-                            className={getLinkClass}
+                            icon={<IconHome />}
+                            getClass={getLinkClass}
+                            getIconClass={getIconClass}
                         >
                             Dashboard
-                        </NavLink>
+                        </SidebarLink>
 
-                        <NavLink
+                        <SidebarLink
                             to="/admin/users"
-                            className={getLinkClass}
+                            icon={<IconUsers />}
+                            getClass={getLinkClass}
+                            getIconClass={getIconClass}
                         >
                             Users
-                        </NavLink>
+                        </SidebarLink>
 
-                        <NavLink
+                        <SidebarLink
                             to="/admin/workstation-centers"
-                            className={getLinkClass}
+                            icon={<IconBuilding />}
+                            getClass={getLinkClass}
+                            getIconClass={getIconClass}
                         >
                             Workstation Centers
-                        </NavLink>
-                    </>
+                        </SidebarLink>
+                    </NavSection>
                 )}
 
                 {role === "WORKSTATION_HEAD" && (
-                    <>
-                        <NavLink
+                    <NavSection title="Operations">
+                        <SidebarLink
                             to="/workstation-head/dashboard"
-                            className={getLinkClass}
+                            icon={<IconHome />}
+                            getClass={getLinkClass}
+                            getIconClass={getIconClass}
                         >
                             Dashboard
-                        </NavLink>
+                        </SidebarLink>
 
-                        <NavLink
+                        <SidebarLink
                             to="/workstation-head/sanitization-requests"
-                            className={getLinkClass}
+                            icon={<IconShield />}
+                            getClass={getLinkClass}
+                            getIconClass={getIconClass}
                         >
                             Sanitization Requests
-                        </NavLink>
+                        </SidebarLink>
 
-                        <NavLink
+                        <SidebarLink
                             to="/workstation-head/workstations"
-                            className={getLinkClass}
+                            icon={<IconMonitor />}
+                            getClass={getLinkClass}
+                            getIconClass={getIconClass}
                         >
                             Workstations
-                        </NavLink>
-                    </>
+                        </SidebarLink>
+                    </NavSection>
                 )}
 
                 {role === "WORKSTATION_EMPLOYEE" && (
-                    <>
-                        <NavLink
+                    <NavSection title="Operations">
+                        <SidebarLink
                             to="/workstation-employee/dashboard"
                             end
-                            className={getLinkClass}
+                            icon={<IconHome />}
+                            getClass={getLinkClass}
+                            getIconClass={getIconClass}
                         >
                             Dashboard
-                        </NavLink>
+                        </SidebarLink>
 
-                        <NavLink
+                        <SidebarLink
                             to="/workstation-employee/sanitization/history"
-                            className={getLinkClass}
+                            icon={<IconShield />}
+                            getClass={getLinkClass}
+                            getIconClass={getIconClass}
                         >
                             Sanitization History
-                        </NavLink>
-                    </>
+                        </SidebarLink>
+                    </NavSection>
                 )}
 
                 {role === "CUSTOMER" && (
-                    <>
-                        <NavLink
+                    <NavSection title="Service">
+                        <SidebarLink
                             to="/customer/dashboard"
-                            className={getLinkClass}
+                            icon={<IconHome />}
+                            getClass={getLinkClass}
+                            getIconClass={getIconClass}
                         >
                             Dashboard
-                        </NavLink>
+                        </SidebarLink>
 
-                        <NavLink
+                        <SidebarLink
                             to="/customer/sanitization-request"
-                            className={getLinkClass}
+                            icon={<IconShield />}
+                            getClass={getLinkClass}
+                            getIconClass={getIconClass}
                         >
                             Sanitization Request
-                        </NavLink>
-                    </>
+                        </SidebarLink>
+                    </NavSection>
                 )}
 
                 {role && (
-                    <>
-                        <div className="px-3 pb-1 pt-6 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                            Forensics
-                        </div>
-
-                        <NavLink
+                    <NavSection title="Forensics">
+                        <SidebarLink
                             to="/forensics"
                             end
-                            className={getLinkClass}
+                            icon={<IconGrid />}
+                            getClass={getLinkClass}
+                            getIconClass={getIconClass}
                         >
-                            <span className="flex items-center gap-2">
-                                <IconGrid />
-                                Overview
-                            </span>
-                        </NavLink>
+                            Overview
+                        </SidebarLink>
 
-                        <NavLink
+                        <SidebarLink
                             to="/forensics/cases"
-                            className={getLinkClass}
+                            icon={<IconFolder />}
+                            getClass={getLinkClass}
+                            getIconClass={getIconClass}
                         >
-                            <span className="flex items-center gap-2">
-                                <IconFolder />
-                                Cases
-                            </span>
-                        </NavLink>
+                            Cases
+                        </SidebarLink>
 
-                        <NavLink
+                        <SidebarLink
                             to="/forensics/evidence"
-                            className={getLinkClass}
+                            icon={<IconEvidence />}
+                            getClass={getLinkClass}
+                            getIconClass={getIconClass}
                         >
-                            <span className="flex items-center gap-2">
-                                <IconEvidence />
-                                Evidence
-                            </span>
-                        </NavLink>
+                            Evidence
+                        </SidebarLink>
 
-                        <NavLink
+                        <SidebarLink
                             to="/forensics/reports"
-                            className={getLinkClass}
+                            icon={<IconReport />}
+                            getClass={getLinkClass}
+                            getIconClass={getIconClass}
                         >
-                            <span className="flex items-center gap-2">
-                                <IconReport />
-                                Reports
-                            </span>
-                        </NavLink>
+                            Reports
+                        </SidebarLink>
 
                         {role === "CUSTOMER" && (
-                            <NavLink
+                            <SidebarLink
                                 to="/customer/forensics/new"
-                                className={getLinkClass}
+                                icon={<IconPlus />}
+                                getClass={getLinkClass}
+                                getIconClass={getIconClass}
                             >
-                                <span className="flex items-center gap-2">
-                                    <IconPlus />
-                                    New Forensic Case
-                                </span>
-                            </NavLink>
+                                New Forensic Case
+                            </SidebarLink>
                         )}
-                    </>
+                    </NavSection>
                 )}
             </nav>
 
             <div className="border-t border-slate-200 p-4">
+                {user?.name && (
+                    <div className="mb-3 flex items-center gap-3 rounded-xl bg-slate-50 px-3 py-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-xs font-semibold text-indigo-700">
+                            {getInitials(user.name)}
+                        </div>
+
+                        <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-slate-800">
+                                {user.name}
+                            </p>
+
+                            <p className="truncate text-xs text-slate-400">
+                                {user.email || roleLabel}
+                            </p>
+                        </div>
+                    </div>
+                )}
+
                 <button
                     type="button"
                     onClick={handleLogout}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:border-red-200 hover:bg-red-50 hover:text-red-700"
                 >
+                    <IconLogout />
                     Logout
                 </button>
             </div>
         </aside>
+    );
+}
+
+function NavSection({ title, children }) {
+    return (
+        <div className="mb-6">
+            <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                {title}
+            </p>
+
+            <div className="space-y-1">
+                {children}
+            </div>
+        </div>
+    );
+}
+
+function SidebarLink({
+    to,
+    end = false,
+    icon,
+    children,
+    getClass,
+    getIconClass,
+}) {
+    return (
+        <NavLink
+            to={to}
+            end={end}
+            className={getClass}
+        >
+            {({ isActive }) => (
+                <>
+                    <span className={getIconClass({ isActive })}>
+                        {icon}
+                    </span>
+
+                    <span className="truncate">
+                        {children}
+                    </span>
+                </>
+            )}
+        </NavLink>
+    );
+}
+
+function getInitials(name) {
+    const parts = String(name)
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+
+    if (parts.length === 0) {
+        return "U";
+    }
+
+    if (parts.length === 1) {
+        return parts[0]
+            .slice(0, 2)
+            .toUpperCase();
+    }
+
+    return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
+function IconHome() {
+    return (
+        <svg
+            viewBox="0 0 24 24"
+            className="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+        >
+            <path d="m3 10 9-7 9 7" />
+            <path d="M5 9v11h14V9" />
+            <path d="M9 20v-6h6v6" />
+        </svg>
+    );
+}
+
+function IconUsers() {
+    return (
+        <svg
+            viewBox="0 0 24 24"
+            className="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+        >
+            <circle cx="9" cy="8" r="3" />
+            <path d="M3.5 20a5.5 5.5 0 0 1 11 0" />
+            <path d="M16 11a3 3 0 1 0 0-6" />
+            <path d="M16 14a5.5 5.5 0 0 1 4.5 6" />
+        </svg>
+    );
+}
+
+function IconBuilding() {
+    return (
+        <svg
+            viewBox="0 0 24 24"
+            className="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+        >
+            <path d="M4 21V5l8-2 8 2v16" />
+            <path d="M8 8h2M14 8h2M8 12h2M14 12h2M8 16h2M14 16h2" />
+        </svg>
+    );
+}
+
+function IconMonitor() {
+    return (
+        <svg
+            viewBox="0 0 24 24"
+            className="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+        >
+            <rect x="3" y="4" width="18" height="13" rx="2" />
+            <path d="M8 21h8M12 17v4" />
+        </svg>
+    );
+}
+
+function IconShield() {
+    return (
+        <svg
+            viewBox="0 0 24 24"
+            className="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+        >
+            <path d="M12 3 19 6v5c0 5-3 8-7 10-4-2-7-5-7-10V6l7-3Z" />
+            <path d="m9 12 2 2 4-4" />
+        </svg>
     );
 }
 
@@ -265,6 +472,22 @@ function IconPlus() {
             strokeWidth="1.8"
         >
             <path d="M12 5v14M5 12h14" />
+        </svg>
+    );
+}
+
+function IconLogout() {
+    return (
+        <svg
+            viewBox="0 0 24 24"
+            className="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+        >
+            <path d="M10 5H5v14h5" />
+            <path d="M14 8l4 4-4 4" />
+            <path d="M18 12H9" />
         </svg>
     );
 }

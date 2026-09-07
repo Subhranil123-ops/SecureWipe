@@ -1,8 +1,31 @@
 import { apiRequest } from "./api";
 
+export const createSanitizationRequest =
+    async (data) => {
+        const response =
+            await apiRequest(
+                "/api/sanitization-requests",
+                {
+                    method: "POST",
+                    body: JSON.stringify(data),
+                }
+            );
+
+        return response.data;
+    };
+
+export const getMySanitizationRequests =
+    async () => {
+        const response =
+            await apiRequest(
+                "/api/sanitization-requests/my"
+            );
+
+        return response.data || [];
+    };
+
 export const getAllSanitizationRequests =
     async () => {
-
         const response =
             await apiRequest(
                 "/api/sanitization-requests"
@@ -13,7 +36,6 @@ export const getAllSanitizationRequests =
 
 export const getHeadSanitizationRequests =
     async () => {
-
         const response =
             await apiRequest(
                 "/api/sanitization-requests/head"
@@ -24,7 +46,6 @@ export const getHeadSanitizationRequests =
 
 export const getHeadApprovedSanitizationRequests =
     async () => {
-
         const response =
             await apiRequest(
                 "/api/sanitization-requests/head/approved"
@@ -38,7 +59,6 @@ export const updateSanitizationRequestStatus =
         requestId,
         data
     ) => {
-
         const response =
             await apiRequest(
                 `/api/sanitization-requests/${requestId}/status`,
@@ -56,7 +76,6 @@ export const assignSanitizationRequest =
         requestId,
         data
     ) => {
-
         const response =
             await apiRequest(
                 `/api/sanitization-requests/${requestId}/assign`,
@@ -71,7 +90,6 @@ export const assignSanitizationRequest =
 
 export const getAllHeadSanitizationRequests =
     async () => {
-
         const response =
             await apiRequest(
                 "/api/sanitization-requests/head/all"
@@ -82,7 +100,6 @@ export const getAllHeadSanitizationRequests =
 
 export const getEmployeeSanitizationRequests =
     async () => {
-
         const response =
             await apiRequest(
                 "/api/sanitization-requests/employee"
@@ -96,7 +113,6 @@ export const updateEmployeeSanitizationStatus =
         requestId,
         status
     ) => {
-
         const response =
             await apiRequest(
                 `/api/sanitization-requests/${requestId}/employee-status`,

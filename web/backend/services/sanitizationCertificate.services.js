@@ -14,8 +14,24 @@ const SanitizationRequest = require(
 
 const AppError = require("../utils/AppError");
 
+const canonicalTimestamp = value => {
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+        throw new AppError(
+            "Certificate generatedAt contains an invalid timestamp",
+            400
+        );
+    }
+
+    const iso = date.toISOString();
+
+    return iso.substring(0, 19) + "Z";
+};
+
 const buildCanonicalData = certificate => {
-    const boolToString = value => value ? "true" : "false";
+    const boolToString =
+        value => value ? "true" : "false";
 
     return [
         `certificateId=${certificate.certificateId}`,
@@ -34,8 +50,12 @@ const buildCanonicalData = certificate => {
         `operationDurationMs=${certificate.operationDurationMs}`,
 
         `verificationStatus=${certificate.verificationStatus}`,
-        `verificationPerformed=${boolToString(certificate.verificationPerformed)}`,
-        `verificationPassed=${boolToString(certificate.verificationPassed)}`,
+        `verificationPerformed=${boolToString(
+            certificate.verificationPerformed
+        )}`,
+        `verificationPassed=${boolToString(
+            certificate.verificationPassed
+        )}`,
 
         `bytesVerified=${certificate.bytesVerified}`,
         `verificationSamples=${certificate.verificationSamples}`,
@@ -76,9 +96,10 @@ const submitCertificate = async (
     }
 
     if (
-        !["WORKSTATION_EMPLOYEE", "ADMIN"].includes(
-            user.role
-        )
+        ![
+            "WORKSTATION_EMPLOYEE",
+            "ADMIN"
+        ].includes(user.role)
     ) {
         throw new AppError(
             "Only the assigned workstation employee or admin can submit sanitization certificates",
@@ -106,7 +127,8 @@ const submitCertificate = async (
     }
 
     if (
-        user.role === "WORKSTATION_EMPLOYEE" &&
+        user.role ===
+        "WORKSTATION_EMPLOYEE" &&
         (
             !request.assignedEmployee ||
             request.assignedEmployee.toString() !==
@@ -119,9 +141,22 @@ const submitCertificate = async (
         );
     }
 
-    if (request.status !== "VERIFYING") {
+    if (
+        request.status !==
+        "VERIFYING"
+    ) {
         throw new AppError(
             `Certificate can only be submitted while request is VERIFYING, current status is ${request.status}`,
+            400
+        );
+    }
+
+    if (
+        !payload ||
+        typeof payload !== "object"
+    ) {
+        throw new AppError(
+            "Certificate payload is required",
             400
         );
     }
@@ -129,7 +164,8 @@ const submitCertificate = async (
     const result =
         await SanitizationResult.findOne({
             requestId,
-            operationId: payload.operationId
+            operationId:
+                payload.operationId
         });
 
     if (!result) {
@@ -140,7 +176,8 @@ const submitCertificate = async (
     }
 
     if (
-        result.method !== "HOST_OVERWRITE"
+        result.method !==
+        "HOST_OVERWRITE"
     ) {
         throw new AppError(
             "The current end-to-end certificate pipeline accepts HOST_OVERWRITE only",
@@ -149,8 +186,10 @@ const submitCertificate = async (
     }
 
     if (
-        result.status !== "COMPLETED" ||
-        result.verificationStatus !== "PASSED" ||
+        result.status !==
+            "COMPLETED" ||
+        result.verificationStatus !==
+            "PASSED" ||
         !result.verificationPerformed ||
         !result.verificationPassed
     ) {
@@ -162,7 +201,8 @@ const submitCertificate = async (
 
     const existing =
         await SanitizationCertificate.findOne({
-            operationId: result.operationId
+            operationId:
+                result.operationId
         });
 
     if (existing) {
@@ -192,10 +232,14 @@ const submitCertificate = async (
         "certificateHash"
     ];
 
-    for (const field of requiredFields) {
+    for (
+        const field of requiredFields
+    ) {
         if (
-            payload[field] === undefined ||
-            payload[field] === null
+            payload[field] ===
+                undefined ||
+            payload[field] === null ||
+            payload[field] === ""
         ) {
             throw new AppError(
                 `Certificate field '${field}' is required`,
@@ -204,101 +248,204 @@ const submitCertificate = async (
         }
     }
 
-    const certificateData = {
-        certificateId: String(
-            payload.certificateId
-        ),
-
-        operationId: String(
-            payload.operationId
-        ),
-
-        requestId: request.requestId,
-
-        deviceId: String(
-            payload.deviceId
-        ),
-
-        model: String(
-            payload.model
-        ),
-
-        serialNumber: String(
-            payload.serialNumber
-        ),
-
-        capacityBytes: Number(
-            payload.capacityBytes
-        ),
-
-        interfaceType: String(
-            payload.interfaceType
-        ),
-
-        method: String(
-            payload.method
-        ),
-
-        status: String(
-            payload.status
-        ),
-
-        bytesProcessed: Number(
-            payload.bytesProcessed
-        ) || 0,
-
-        operationDurationMs: Number(
-            payload.operationDurationMs
-        ) || 0,
-
-        verificationStatus: String(
-            payload.verificationStatus
-        ),
-
-        verificationPerformed: Boolean(
-            payload.verificationPerformed
-        ),
-
-        verificationPassed: Boolean(
-            payload.verificationPassed
-        ),
-
-        bytesVerified: Number(
-            payload.bytesVerified
-        ) || 0,
-
-        verificationSamples: Number(
-            payload.verificationSamples
-        ) || 0,
-
-        deviceReportedSuccess: Boolean(
-            payload.deviceReportedSuccess
-        ),
-
-        globalDataErased: Boolean(
-            payload.globalDataErased
-        ),
-
-        nativeErrorCode: Number(
-            payload.nativeErrorCode
-        ) || 0,
-
-        verificationMessage: String(
-            payload.verificationMessage || ""
-        ),
-
-        generatedAt: new Date(
+    const generatedAtCanonical =
+        canonicalTimestamp(
             payload.generatedAt
-        ).toISOString(),
+        );
 
-        hashAlgorithm: String(
-            payload.hashAlgorithm
-        ),
+    const certificateData = {
+        certificateId:
+            String(
+                payload.certificateId
+            ),
 
-        message: String(
-            payload.message || ""
-        )
+        operationId:
+            String(
+                payload.operationId
+            ),
+
+        requestId:
+            request.requestId,
+
+        deviceId:
+            String(
+                payload.deviceId
+            ),
+
+        model:
+            String(
+                payload.model
+            ),
+
+        serialNumber:
+            String(
+                payload.serialNumber
+            ),
+
+        capacityBytes:
+            Number(
+                payload.capacityBytes
+            ),
+
+        interfaceType:
+            String(
+                payload.interfaceType
+            ),
+
+        method:
+            String(
+                payload.method
+            ),
+
+        status:
+            String(
+                payload.status
+            ),
+
+        bytesProcessed:
+            Number(
+                payload.bytesProcessed
+            ) || 0,
+
+        operationDurationMs:
+            Number(
+                payload.operationDurationMs
+            ) || 0,
+
+        verificationStatus:
+            String(
+                payload.verificationStatus
+            ),
+
+        verificationPerformed:
+            Boolean(
+                payload.verificationPerformed
+            ),
+
+        verificationPassed:
+            Boolean(
+                payload.verificationPassed
+            ),
+
+        bytesVerified:
+            Number(
+                payload.bytesVerified
+            ) || 0,
+
+        verificationSamples:
+            Number(
+                payload.verificationSamples
+            ) || 0,
+
+        deviceReportedSuccess:
+            Boolean(
+                payload.deviceReportedSuccess
+            ),
+
+        globalDataErased:
+            Boolean(
+                payload.globalDataErased
+            ),
+
+        nativeErrorCode:
+            Number(
+                payload.nativeErrorCode
+            ) || 0,
+
+        verificationMessage:
+            String(
+                payload.verificationMessage ||
+                ""
+            ),
+
+        generatedAt:
+            new Date(
+                payload.generatedAt
+            ),
+
+        hashAlgorithm:
+            String(
+                payload.hashAlgorithm
+            ),
+
+        message:
+            String(
+                payload.message ||
+                ""
+            )
     };
+
+    if (
+        !Number.isFinite(
+            certificateData.capacityBytes
+        ) ||
+        certificateData.capacityBytes <= 0
+    ) {
+        throw new AppError(
+            "Certificate capacityBytes must be a positive number",
+            400
+        );
+    }
+
+    if (
+        !Number.isFinite(
+            certificateData.bytesProcessed
+        ) ||
+        certificateData.bytesProcessed < 0
+    ) {
+        throw new AppError(
+            "Certificate bytesProcessed must be a non-negative number",
+            400
+        );
+    }
+
+    if (
+        !Number.isFinite(
+            certificateData.operationDurationMs
+        ) ||
+        certificateData.operationDurationMs < 0
+    ) {
+        throw new AppError(
+            "Certificate operationDurationMs must be a non-negative number",
+            400
+        );
+    }
+
+    if (
+        !Number.isFinite(
+            certificateData.bytesVerified
+        ) ||
+        certificateData.bytesVerified < 0
+    ) {
+        throw new AppError(
+            "Certificate bytesVerified must be a non-negative number",
+            400
+        );
+    }
+
+    if (
+        !Number.isFinite(
+            certificateData.verificationSamples
+        ) ||
+        certificateData.verificationSamples < 0
+    ) {
+        throw new AppError(
+            "Certificate verificationSamples must be a non-negative number",
+            400
+        );
+    }
+
+    if (
+        !Number.isFinite(
+            certificateData.nativeErrorCode
+        ) ||
+        certificateData.nativeErrorCode < 0
+    ) {
+        throw new AppError(
+            "Certificate nativeErrorCode must be a non-negative number",
+            400
+        );
+    }
 
     if (
         certificateData.operationId !==
@@ -312,11 +459,11 @@ const submitCertificate = async (
 
     if (
         certificateData.deviceId !==
-        result.deviceId ||
+            result.deviceId ||
         certificateData.serialNumber !==
-        result.serialNumber ||
+            result.serialNumber ||
         certificateData.capacityBytes !==
-        result.capacityBytes
+            result.capacityBytes
     ) {
         throw new AppError(
             "Certificate device identity does not match sanitization result",
@@ -326,11 +473,11 @@ const submitCertificate = async (
 
     if (
         certificateData.verificationStatus !==
-        result.verificationStatus ||
+            result.verificationStatus ||
         certificateData.verificationPerformed !==
-        result.verificationPerformed ||
+            result.verificationPerformed ||
         certificateData.verificationPassed !==
-        result.verificationPassed
+            result.verificationPassed
     ) {
         throw new AppError(
             "Certificate verification evidence does not match sanitization result",
@@ -348,9 +495,27 @@ const submitCertificate = async (
         );
     }
 
+    /*
+     * IMPORTANT:
+     *
+     * The desktop CertificateGenerator signs the
+     * canonical timestamp with second precision:
+     *
+     * YYYY-MM-DDTHH:mm:ssZ
+     *
+     * Mongoose stores generatedAt as a Date, but the
+     * hash must use the exact canonical representation
+     * used by the desktop generator.
+     */
+    const canonicalCertificateData = {
+        ...certificateData,
+        generatedAt:
+            generatedAtCanonical
+    };
+
     const canonicalData =
         buildCanonicalData(
-            certificateData
+            canonicalCertificateData
         );
 
     const calculatedHash =
@@ -360,7 +525,9 @@ const submitCertificate = async (
 
     if (
         calculatedHash.toLowerCase() !==
-        String(payload.certificateHash).toLowerCase()
+        String(
+            payload.certificateHash
+        ).toLowerCase()
     ) {
         throw new AppError(
             "Certificate SHA-256 integrity verification failed",
@@ -371,19 +538,36 @@ const submitCertificate = async (
     const certificate =
         await SanitizationCertificate.create({
             ...certificateData,
-            result: result._id,
-            generatedBy: user._id,
-            certificateHash: calculatedHash,
-            integrityVerified: true
+
+            result:
+                result._id,
+
+            generatedBy:
+                user._id,
+
+            certificateHash:
+                calculatedHash,
+
+            integrityVerified:
+                true
         });
 
-    request.status = "COMPLETED";
-    request.completedAt = new Date();
+    request.status =
+        "COMPLETED";
+
+    request.completedAt =
+        new Date();
 
     request.history.push({
-        status: "COMPLETED",
-        changedBy: user._id,
-        changedAt: new Date(),
+        status:
+            "COMPLETED",
+
+        changedBy:
+            user._id,
+
+        changedAt:
+            new Date(),
+
         note:
             `Sanitization completed. Certificate ${certificate.certificateId} generated and SHA-256 integrity verified.`
     });
@@ -406,7 +590,9 @@ const getCertificateById = async (
 
     const certificate =
         await SanitizationCertificate
-            .findOne({ certificateId })
+            .findOne({
+                certificateId
+            })
             .populate(
                 "generatedBy",
                 "name email role"
@@ -424,7 +610,8 @@ const getCertificateById = async (
 
     const request =
         await SanitizationRequest.findOne({
-            requestId: certificate.requestId
+            requestId:
+                certificate.requestId
         });
 
     if (!request) {
@@ -446,7 +633,8 @@ const getCertificateById = async (
     }
 
     if (
-        user.role === "WORKSTATION_EMPLOYEE" &&
+        user.role ===
+            "WORKSTATION_EMPLOYEE" &&
         request.assignedEmployee?.toString() !==
         user._id.toString()
     ) {
@@ -457,7 +645,8 @@ const getCertificateById = async (
     }
 
     if (
-        user.role === "WORKSTATION_HEAD" &&
+        user.role ===
+            "WORKSTATION_HEAD" &&
         request.workstationCenter.toString() !==
         user.workstationCenter?.toString()
     ) {
@@ -470,101 +659,130 @@ const getCertificateById = async (
     return certificate;
 };
 
-const verifyCertificateIntegrity = async (
-    certificateId,
-    user
-) => {
-    const certificate =
-        await getCertificateById(
-            certificateId,
-            user
-        );
+const verifyCertificateIntegrity =
+    async (
+        certificateId,
+        user
+    ) => {
+        const certificate =
+            await getCertificateById(
+                certificateId,
+                user
+            );
 
-    const certificateData = {
-        certificateId: certificate.certificateId,
-        operationId: certificate.operationId,
-        requestId: certificate.requestId,
+        const certificateData = {
+            certificateId:
+                certificate.certificateId,
 
-        deviceId: certificate.deviceId,
-        model: certificate.model,
-        serialNumber: certificate.serialNumber,
-        capacityBytes: certificate.capacityBytes,
-        interfaceType: certificate.interfaceType,
+            operationId:
+                certificate.operationId,
 
-        method: certificate.method,
-        status: certificate.status,
-        bytesProcessed: certificate.bytesProcessed,
-        operationDurationMs:
-            certificate.operationDurationMs,
+            requestId:
+                certificate.requestId,
 
-        verificationStatus:
-            certificate.verificationStatus,
+            deviceId:
+                certificate.deviceId,
 
-        verificationPerformed:
-            certificate.verificationPerformed,
+            model:
+                certificate.model,
 
-        verificationPassed:
-            certificate.verificationPassed,
+            serialNumber:
+                certificate.serialNumber,
 
-        bytesVerified:
-            certificate.bytesVerified,
+            capacityBytes:
+                certificate.capacityBytes,
 
-        verificationSamples:
-            certificate.verificationSamples,
+            interfaceType:
+                certificate.interfaceType,
 
-        deviceReportedSuccess:
-            certificate.deviceReportedSuccess,
+            method:
+                certificate.method,
 
-        globalDataErased:
-            certificate.globalDataErased,
+            status:
+                certificate.status,
 
-        nativeErrorCode:
-            certificate.nativeErrorCode,
+            bytesProcessed:
+                certificate.bytesProcessed,
 
-        verificationMessage:
-            certificate.verificationMessage,
+            operationDurationMs:
+                certificate.operationDurationMs,
 
-        generatedAt:
-            new Date(
-                certificate.generatedAt
-            ).toISOString(),
+            verificationStatus:
+                certificate.verificationStatus,
 
-        hashAlgorithm:
-            certificate.hashAlgorithm,
+            verificationPerformed:
+                certificate.verificationPerformed,
 
-        message:
-            certificate.message
+            verificationPassed:
+                certificate.verificationPassed,
+
+            bytesVerified:
+                certificate.bytesVerified,
+
+            verificationSamples:
+                certificate.verificationSamples,
+
+            deviceReportedSuccess:
+                certificate.deviceReportedSuccess,
+
+            globalDataErased:
+                certificate.globalDataErased,
+
+            nativeErrorCode:
+                certificate.nativeErrorCode,
+
+            verificationMessage:
+                certificate.verificationMessage,
+
+            generatedAt:
+                canonicalTimestamp(
+                    certificate.generatedAt
+                ),
+
+            hashAlgorithm:
+                certificate.hashAlgorithm,
+
+            message:
+                certificate.message
+        };
+
+        const canonicalData =
+            buildCanonicalData(
+                certificateData
+            );
+
+        const calculatedHash =
+            calculateSha256(
+                canonicalData
+            );
+
+        const valid =
+            calculatedHash.toLowerCase() ===
+            certificate.certificateHash.toLowerCase();
+
+        return {
+            certificateId:
+                certificate.certificateId,
+
+            storedHash:
+                certificate.certificateHash,
+
+            calculatedHash,
+
+            hashAlgorithm:
+                certificate.hashAlgorithm,
+
+            valid,
+
+            integrityVerified:
+                certificate.integrityVerified,
+
+            message:
+                valid
+                    ? "Certificate SHA-256 integrity verification passed."
+                    : "Certificate SHA-256 integrity verification failed."
+        };
     };
-
-    const canonicalData =
-        buildCanonicalData(
-            certificateData
-        );
-
-    const calculatedHash =
-        calculateSha256(
-            canonicalData
-        );
-
-    const valid =
-        calculatedHash.toLowerCase() ===
-        certificate.certificateHash.toLowerCase();
-
-    return {
-        certificateId:
-            certificate.certificateId,
-
-        storedHash:
-            certificate.certificateHash,
-
-        calculatedHash,
-
-        hashAlgorithm:
-            certificate.hashAlgorithm,
-
-        valid
-    };
-};
 
 module.exports = {
     submitCertificate,

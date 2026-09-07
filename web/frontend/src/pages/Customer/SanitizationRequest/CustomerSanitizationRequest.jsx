@@ -414,13 +414,13 @@ export default function CustomerSanitizationRequest() {
 
                             phone: formData.phone,
 
-                            workstationCenter:formData.workstationCenter,
+                            workstationCenter: formData.workstationCenter,
 
-                            deviceType:formData.deviceType,
+                            deviceType: formData.deviceType,
 
-                            capacity:formData.capacity,
+                            capacity: formData.capacity,
 
-                            deviceCount:Number(formData.deviceCount),
+                            deviceCount: Number(formData.deviceCount),
 
                             assetIdentifier:
                                 formData.assetIdentifier,
@@ -556,6 +556,7 @@ export default function CustomerSanitizationRequest() {
                                 placeholder="+91 9876543210"
                                 required
                             />
+
                             <div>
                                 <label
                                     htmlFor="workstationCenter"
@@ -598,17 +599,42 @@ export default function CustomerSanitizationRequest() {
                                             : "Select workstation center"}
                                     </option>
 
-                                    {workstationCenters.map((center) => (
-                                        <option
-                                            key={center.centerId}
-                                            value={center.centerId}
-                                        >
-                                            {center.name}
-                                            {center.location?.city
-                                                ? ` — ${center.location.city}`
-                                                : ""}
-                                        </option>
-                                    ))}
+                                    {workstationCenters.map((center) => {
+                                        const centerName =
+                                            center.name ||
+                                            center.centerId ||
+                                            "Unnamed workstation center";
+
+                                        const centerCode =
+                                            center.centerId ||
+                                            "N/A";
+
+                                        const city =
+                                            center.location?.city ||
+                                            center.location?.state ||
+                                            "";
+
+                                        const headName =
+                                            center.head?.name ||
+                                            "Head not assigned";
+
+                                        const headEmail =
+                                            center.head?.email ||
+                                            "";
+
+                                        return (
+                                            <option
+                                                key={center.centerId}
+                                                value={center.centerId}
+                                            >
+                                                {centerCode} — {centerName}
+                                                {city ? ` — ${city}` : ""}
+                                                {headEmail
+                                                    ? ` — Head: ${headName}`
+                                                    : ` — Head: ${headName}`}
+                                            </option>
+                                        );
+                                    })}
                                 </select>
 
                                 <FieldError

@@ -14,11 +14,6 @@
 
 class SanitizationEngine
 {
-private:
-    VerificationResult performOverwrite(
-        HANDLE deviceHandle,
-        std::uint64_t totalBytes);
-
 public:
     SanitizationMethod selectMethod(
         const StorageDevice &device,
