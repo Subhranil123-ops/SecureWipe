@@ -1,10 +1,9 @@
-#ifndef SANITIZATIONREQUESTSERVICE_H
-#define SANITIZATIONREQUESTSERVICE_H
+#pragma once
 
 #include <QObject>
-#include <QNetworkAccessManager>
 #include <QJsonArray>
 #include <QString>
+#include <QNetworkAccessManager>
 
 class SanitizationRequestService : public QObject
 {
@@ -20,9 +19,9 @@ public:
     );
 
     void updateRequestStatus(
-    const QString &token,
-    const QString &requestId,
-    const QString &status
+        const QString &token,
+        const QString &requestId,
+        const QString &status
     );
 
 signals:
@@ -35,8 +34,8 @@ signals:
     );
 
     void requestStatusUpdated(
-    const QString &requestId,
-    const QString &status
+        const QString &requestId,
+        const QString &status
     );
 
     void requestStatusUpdateFailed(
@@ -44,7 +43,5 @@ signals:
     );
 
 private:
-    QNetworkAccessManager *networkManager;
+    QNetworkAccessManager *networkManager_;
 };
-
-#endif // SANITIZATIONREQUESTSERVICE_H

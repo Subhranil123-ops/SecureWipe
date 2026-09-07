@@ -1,29 +1,29 @@
-#ifndef MAINWINDOW_H
-#define MAINWINDOW_H
+#pragma once
 
-#include <QFuture>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QMainWindow>
-#include <QPushButton>
+#include <QStackedWidget>
 #include <QString>
 
 #include "StorageDevice.h"
 #include "../../backend/sanitization/include/SanitizationMethod.h"
+#include "../../backend/sanitization/include/SanitizationPipeline.h"
 #include "../../backend/sanitization/include/SanitizationResult.h"
-
-QT_BEGIN_NAMESPACE
-namespace Ui { class MainWindow; }
-QT_END_NAMESPACE
 
 class AuthManager;
 class DeviceController;
 class DeviceTableModel;
-class DeviceDetailsPage;
-class ForensicPage;
 class SanitizationRequestService;
+class SanitizationResultService;
+
+class QLabel;
+class QLineEdit;
+class QPushButton;
 class QComboBox;
 class QTableWidget;
-class QLabel;
 class QProgressBar;
+class QWidget;
 
 class MainWindow : public QMainWindow
 {
@@ -34,57 +34,177 @@ public:
     ~MainWindow() override;
 
 private:
-    QString selectedRequestId;
-    QString selectedRequestDeviceType;
-    QString selectedRequestMethod;
-    QString selectedWipeDeviceId;
+    AuthManager *authManager_;
+    SanitizationRequestService *requestService_;
+    SanitizationResultService *resultService_;
 
-    bool waitingForSanitizationStart = false;
-    bool sanitizationOperationRunning = false;
-    bool wipeSafetyApproved = false;
+    DeviceController *deviceController_;
+    DeviceTableModel *deviceTableModel_;
 
-    Ui::MainWindow *ui;
-    AuthManager *authManager;
-    SanitizationRequestService *sanitizationRequestService;
-    DeviceController *deviceController;
-    DeviceTableModel *deviceTableModel;
-    DeviceDetailsPage *deviceDetailsPage;
-    ForensicPage *forensicPage;
-    QPushButton *refreshDevicesButton;
+    QWidget *deviceDetailsPage_;
+    QWidget *forensicPage_;
 
-    // Rebuilt, user-facing sanitization workspace.
-    QComboBox *wipeRequestComboBox = nullptr;
-    QTableWidget *wipeDeviceTable = nullptr;
-    QPushButton *wipeRefreshButton = nullptr;
-    QPushButton *wipeSafetyButton = nullptr;
-    QPushButton *wipeStartButton = nullptr;
-    QProgressBar *wipeProgressBar = nullptr;
-    QLabel *wipeRequestSummaryLabel = nullptr;
-    QLabel *wipeTargetSummaryLabel = nullptr;
-    QLabel *wipeMethodValueLabel = nullptr;
-    QLabel *wipeTargetValueLabel = nullptr;
-    QLabel *wipeCapacityValueLabel = nullptr;
-    QLabel *wipeInterfaceValueLabel = nullptr;
-    QLabel *wipeSafetyBadgeLabel = nullptr;
-    QLabel *wipeStatusLabel = nullptr;
-    QLabel *wipeVerificationLabel = nullptr;
-    QLabel *wipeSafetyChecksLabel = nullptr;
+    QWidget *root_;
+    QStackedWidget *rootStack_;
+    QWidget *loginPage_;
+    QWidget *appPage_;
+    QStackedWidget *contentStack_;
 
-    void setActiveNavButton(QPushButton *activeButton);
-    void setupDevicesPage();
-    void setupWipePage();
-    void refreshDevices();
-    void populateWipeDevices();
-    void updateWipeSelectionState();
-    void runWipeSafetyCheck();
-    void showSelectedDeviceDetails();
-    void showDeviceDetails(const StorageDevice &device);
-    void showDevicesPage();
-    void hideDeviceDetailsPage();
-    void logout();
+    QLineEdit *emailEdit_;
+    QLineEdit *passwordEdit_;
+    QLabel *loginErrorLabel_;
+    QPushButton *loginButton_;
+
+    QLabel *operatorNameLabel_;
+    QLabel *operatorRoleLabel_;
+    QLabel *connectionBadgeLabel_;
+
+    QPushButton *dashboardNavButton_;
+    QPushButton *devicesNavButton_;
+    QPushButton *jobsNavButton_;
+    QPushButton *forensicsNavButton_;
+    QPushButton *settingsNavButton_;
+    QPushButton *logoutButton_;
+
+    QWidget *dashboardPage_;
+    QWidget *devicesPage_;
+    QWidget *jobsPage_;
+    QWidget *forensicsPage_;
+    QWidget *settingsPage_;
+
+    QTableWidget *dashboardJobsTable_;
+    QTableWidget *assignedJobsTable_;
+    QTableWidget *deviceTable_;
+
+    QLabel *totalJobsValue_;
+    QLabel *activeJobsValue_;
+    QLabel *completedJobsValue_;
+    QLabel *failedJobsValue_;
+
+    QComboBox *jobComboBox_;
+
+    QLabel *jobRequestIdValue_;
+    QLabel *jobDeviceTypeValue_;
+    QLabel *jobRequestedMethodValue_;
+    QLabel *jobAssetValue_;
+    QLabel *jobWorkstationValue_;
+
+    QLabel *targetModelValue_;
+    QLabel *targetSerialValue_;
+    QLabel *targetCapacityValue_;
+    QLabel *targetInterfaceValue_;
+    QLabel *targetPathValue_;
+
+    QLabel *targetSafetyBadge_;
+    QLabel *targetSafetyText_;
+
+    QLabel *capabilityValue_;
+    QLabel *selectedMethodValue_;
+
+    QLabel *pipelineStatusValue_;
+    QLabel *verificationValue_;
+    QLabel *operationValue_;
+    QLabel *bytesProcessedValue_;
+    QLabel *bytesVerifiedValue_;
+    QLabel *samplesValue_;
+    QLabel *certificateValue_;
+    QLabel *evidenceValue_;
+
+    QLabel *jobMessageLabel_;
+    QProgressBar *operationProgress_;
+
+    QPushButton *refreshJobsButton_;
+    QPushButton *refreshDevicesButton_;
+    QPushButton *validateTargetButton_;
+    QPushButton *startSanitizationButton_;
+
+    QJsonArray assignedRequests_;
+
+    QString selectedRequestId_;
+    QString selectedRequestDeviceType_;
+    QString selectedRequestMethod_;
+
+    bool operationRunning_ = false;
+
+    void buildUi();
+    void buildLoginPage();
+    void buildAppShell();
+    void buildDashboardPage();
+    void buildJobsPage();
+    void buildDevicesPage();
+    void buildForensicsPage();
+    void buildSettingsPage();
+
+    void applyTheme();
+
+    void setActiveNav(QPushButton *button);
+
+    void setConnectionState(
+        bool connected,
+        const QString &text = QString());
+
+    void showPage(
+        QWidget *page,
+        QPushButton *navButton);
+
+    void refreshAssignedRequests();
+
+    void handleAssignedRequests(
+        const QJsonArray &requests);
+
+    QJsonObject selectedRequestObject() const;
+
+    void selectRequestFromJobs(int index);
+    void populateJobDetails();
+
+    void refreshPhysicalDevices();
+    void populateDeviceTable();
+
+    bool requestMatchesDevice(
+        const QString &requestedType,
+        const StorageDevice &device) const;
+
+    void selectTargetDevice(int row);
+
+    void resetTargetPanel();
+
+    void runTargetSafetyCheck();
     void startSanitization();
-    void showSanitizationResult(const SecureWipe::SanitizationResult &result);
-    QString sanitizationMethodName(SanitizationMethod method) const;
-};
 
-#endif // MAINWINDOW_H
+    void finishSanitization(
+        const SecureWipe::SanitizationPipelineResult &pipelineResult);
+
+    void submitPipelineResult(
+        const SecureWipe::SanitizationPipelineResult &pipelineResult);
+
+    void updateTargetPanelFromDevice(
+        const StorageDevice &device);
+
+    void updatePipelineUiForResult(
+        const SecureWipe::SanitizationPipelineResult &pipelineResult);
+
+    void showSelectedDeviceDetails();
+
+    void showDeviceDetails(
+        const StorageDevice &device);
+
+    void logout();
+
+    QString sanitizationMethodName(
+        SanitizationMethod method) const;
+
+    QString formatCapacity(
+        std::uint64_t bytes) const;
+
+    QString formatBytes(
+        std::uint64_t bytes) const;
+
+    QString formatDuration(
+        std::uint64_t milliseconds) const;
+
+    QString statusText(
+        SecureWipe::SanitizationStatus status) const;
+
+    QString verificationText(
+        SecureWipe::VerificationStatus status) const;
+};

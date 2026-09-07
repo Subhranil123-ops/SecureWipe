@@ -5,12 +5,20 @@ project(SecureWipe
     LANGUAGES CXX
 )
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Network Concurrent)
-
-qt_standard_project_setup()
-
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+include(GNUInstallDirs)
+
+find_package(Qt6 6.5 REQUIRED COMPONENTS
+    Core
+    Widgets
+    Network
+    Concurrent
+)
+
+qt_standard_project_setup()
 
 add_subdirectory(backend)
 
@@ -22,7 +30,6 @@ qt_add_executable(SecureWipe
 
     frontend/mainwindow.cpp
     frontend/mainwindow.h
-    frontend/mainwindow.ui
 
     frontend/AuthManager.cpp
     frontend/AuthManager.h
@@ -41,6 +48,9 @@ qt_add_executable(SecureWipe
 
     frontend/services/SanitizationRequestService.cpp
     frontend/services/SanitizationRequestService.h
+
+    frontend/services/SanitizationResultService.cpp
+    frontend/services/SanitizationResultService.h
 
     frontend/dialogs/DeviceDetailsDialog.cpp
     frontend/dialogs/DeviceDetailsDialog.h
@@ -65,12 +75,12 @@ qt_add_executable(SecureWipe
 
 target_include_directories(SecureWipe
     PRIVATE
-        frontend
-        frontend/controllers
-        frontend/models
-        frontend/services
-        frontend/dialogs
-        frontend/pages
+        ${CMAKE_CURRENT_SOURCE_DIR}/frontend
+        ${CMAKE_CURRENT_SOURCE_DIR}/frontend/controllers
+        ${CMAKE_CURRENT_SOURCE_DIR}/frontend/models
+        ${CMAKE_CURRENT_SOURCE_DIR}/frontend/services
+        ${CMAKE_CURRENT_SOURCE_DIR}/frontend/dialogs
+        ${CMAKE_CURRENT_SOURCE_DIR}/frontend/pages
 )
 
 target_link_libraries(SecureWipe
