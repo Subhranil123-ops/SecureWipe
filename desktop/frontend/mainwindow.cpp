@@ -5,6 +5,8 @@
 #include "models/DeviceTableModel.h"
 #include "services/SanitizationRequestService.h"
 #include "services/SanitizationResultService.h"
+#include "pages/ForensicPage.h"
+#include "pages/DeviceDetailsPage.h"
 
 #include "../../backend/classification/include/ClassificationResult.h"
 #include "../../backend/classification/include/DeviceClassifier.h"
@@ -12,6 +14,12 @@
 
 #include <QAbstractItemView>
 #include <QApplication>
+#include <QIcon>
+#include <QPainter>
+#include <QPen>
+#include <QPixmap>
+#include <QToolButton>
+#include <QBrush>
 #include <QColor>
 #include <QComboBox>
 #include <QFrame>
@@ -29,9 +37,11 @@
 #include <QTableWidgetItem>
 #include <QVBoxLayout>
 #include <QFutureWatcher>
-#include <QMetaType>
 
 #include <QtConcurrent/QtConcurrentRun>
+
+#include <exception>
+#include <cstddef>
 
 namespace
 {
@@ -39,83 +49,106 @@ namespace
 QFrame *makeCard(QWidget *parent)
 {
     auto *card = new QFrame(parent);
-
+    card->setObjectName(QStringLiteral("surfaceCard"));
     card->setStyleSheet(
-        "QFrame {"
+        "QFrame#surfaceCard {"
         "background:#FFFFFF;"
         "border:1px solid #E4E7EC;"
-        "border-radius:14px;"
+        "border-radius:16px;"
         "}");
-
     return card;
 }
 
-QLabel *makeTitle(
-    const QString &text,
-    QWidget *parent)
+QLabel *makeTitle(const QString &text, QWidget *parent)
 {
     auto *label = new QLabel(text, parent);
-
     label->setStyleSheet(
         "QLabel {"
+        "background:transparent;"
+        "border:none;"
         "color:#101828;"
-        "font-size:25px;"
+        "font-size:26px;"
         "font-weight:700;"
         "}");
-
     return label;
 }
 
-QLabel *makeSubtitle(
-    const QString &text,
-    QWidget *parent)
+QLabel *makeSubtitle(const QString &text, QWidget *parent)
 {
     auto *label = new QLabel(text, parent);
-
     label->setWordWrap(true);
-
     label->setStyleSheet(
         "QLabel {"
+        "background:transparent;"
+        "border:none;"
         "color:#667085;"
         "font-size:13px;"
+        "font-weight:400;"
         "}");
-
     return label;
 }
 
-QLabel *makeCaption(
-    const QString &text,
-    QWidget *parent)
+QLabel *makeCaption(const QString &text, QWidget *parent)
 {
     auto *label = new QLabel(text, parent);
-
     label->setStyleSheet(
         "QLabel {"
+        "background:transparent;"
+        "border:none;"
         "color:#667085;"
-        "font-size:11px;"
-        "font-weight:600;"
+        "font-size:10px;"
+        "font-weight:700;"
         "}");
-
     return label;
 }
 
-QLabel *makeValue(
-    const QString &text,
-    QWidget *parent)
+QLabel *makeValue(const QString &text, QWidget *parent)
 {
     auto *label = new QLabel(text, parent);
-
     label->setWordWrap(true);
     label->setTextInteractionFlags(
         Qt::TextSelectableByMouse);
-
     label->setStyleSheet(
         "QLabel {"
+        "background:transparent;"
+        "border:none;"
         "color:#172033;"
         "font-size:13px;"
         "font-weight:600;"
         "}");
+    return label;
+}
 
+QLabel *makeFeatureTitle(
+    const QString &text,
+    QWidget *parent)
+{
+    auto *label = new QLabel(text, parent);
+    label->setStyleSheet(
+        "QLabel {"
+        "background:transparent;"
+        "border:none;"
+        "color:#172033;"
+        "font-size:12px;"
+        "font-weight:700;"
+        "}");
+    return label;
+}
+
+QLabel *makeFeatureText(
+    const QString &text,
+    QWidget *parent)
+{
+    auto *label = new QLabel(text, parent);
+    label->setWordWrap(true);
+    label->setStyleSheet(
+        "QLabel {"
+        "background:transparent;"
+        "border:none;"
+        "color:#667085;"
+        "font-size:11px;"
+        "line-height:17px;"
+        "}");
     return label;
 }
 
@@ -123,31 +156,29 @@ QPushButton *makePrimaryButton(
     const QString &text,
     QWidget *parent)
 {
-    auto *button =
-        new QPushButton(text, parent);
-
-    button->setCursor(
-        Qt::PointingHandCursor);
-
-    button->setMinimumHeight(40);
-
+    auto *button = new QPushButton(text, parent);
+    button->setCursor(Qt::PointingHandCursor);
+    button->setMinimumHeight(44);
     button->setStyleSheet(
         "QPushButton {"
         "background:#2563EB;"
         "color:#FFFFFF;"
         "border:none;"
-        "border-radius:9px;"
-        "padding:9px 16px;"
+        "border-radius:10px;"
+        "padding:10px 18px;"
         "font-size:12px;"
         "font-weight:700;"
         "}"
-        "QPushButton:hover {background:#1D4ED8;}"
-        "QPushButton:pressed {background:#1E40AF;}"
+        "QPushButton:hover {"
+        "background:#1D4ED8;"
+        "}"
+        "QPushButton:pressed {"
+        "background:#1E40AF;"
+        "}"
         "QPushButton:disabled {"
         "background:#CBD5E1;"
         "color:#64748B;"
         "}");
-
     return button;
 }
 
@@ -155,21 +186,16 @@ QPushButton *makeSecondaryButton(
     const QString &text,
     QWidget *parent)
 {
-    auto *button =
-        new QPushButton(text, parent);
-
-    button->setCursor(
-        Qt::PointingHandCursor);
-
-    button->setMinimumHeight(38);
-
+    auto *button = new QPushButton(text, parent);
+    button->setCursor(Qt::PointingHandCursor);
+    button->setMinimumHeight(40);
     button->setStyleSheet(
         "QPushButton {"
         "background:#FFFFFF;"
         "color:#344054;"
         "border:1px solid #D0D5DD;"
-        "border-radius:9px;"
-        "padding:8px 14px;"
+        "border-radius:10px;"
+        "padding:9px 15px;"
         "font-size:12px;"
         "font-weight:600;"
         "}"
@@ -177,12 +203,59 @@ QPushButton *makeSecondaryButton(
         "background:#F9FAFB;"
         "border-color:#98A2B3;"
         "}"
+        "QPushButton:pressed {"
+        "background:#F2F4F7;"
+        "}"
         "QPushButton:disabled {"
         "background:#F2F4F7;"
         "color:#98A2B3;"
         "}");
-
     return button;
+}
+
+QPushButton *makeNavButton(
+    const QString &text,
+    QWidget *parent)
+{
+    auto *button = new QPushButton(text, parent);
+    button->setCursor(Qt::PointingHandCursor);
+    button->setMinimumHeight(44);
+    button->setStyleSheet(
+        "QPushButton {"
+        "background:transparent;"
+        "color:#475467;"
+        "border:none;"
+        "border-radius:10px;"
+        "text-align:left;"
+        "padding:0 14px;"
+        "font-size:12px;"
+        "font-weight:600;"
+        "}"
+        "QPushButton:hover {"
+        "background:#F2F4F7;"
+        "}");
+    return button;
+}
+
+QLabel *makeBadge(
+    const QString &text,
+    QWidget *parent)
+{
+    auto *label =
+        new QLabel(
+            text,
+            parent);
+
+    label->setAlignment(
+        Qt::AlignCenter);
+
+    label->setMinimumHeight(
+        28);
+
+    label->setMinimumWidth(
+        96);
+
+    return label;
 }
 
 QString badgeStyle(
@@ -191,33 +264,36 @@ QString badgeStyle(
     const QString value =
         status.trimmed().toUpper();
 
-    if (value == "SAFE" ||
-        value == "COMPLETED" ||
-        value == "PASSED")
+    if (value == QStringLiteral("SAFE") ||
+        value == QStringLiteral("COMPLETED") ||
+        value == QStringLiteral("PASSED") ||
+        value == QStringLiteral("CONNECTED"))
     {
         return
             "QLabel {"
             "background:#ECFDF3;"
             "color:#027A48;"
             "border:1px solid #ABEFC6;"
-            "border-radius:9px;"
+            "border-radius:8px;"
             "padding:5px 10px;"
-            "font-size:11px;"
+            "font-size:10px;"
             "font-weight:700;"
             "}";
     }
 
-    if (value == "FAILED" ||
-        value == "BLOCKED")
+    if (value == QStringLiteral("FAILED") ||
+        value == QStringLiteral("BLOCKED") ||
+        value == QStringLiteral("DISCONNECTED") ||
+        value == QStringLiteral("UNSUPPORTED"))
     {
         return
             "QLabel {"
             "background:#FEF3F2;"
             "color:#B42318;"
             "border:1px solid #FECDCA;"
-            "border-radius:9px;"
+            "border-radius:8px;"
             "padding:5px 10px;"
-            "font-size:11px;"
+            "font-size:10px;"
             "font-weight:700;"
             "}";
     }
@@ -227,11 +303,90 @@ QString badgeStyle(
         "background:#EFF6FF;"
         "color:#175CD3;"
         "border:1px solid #B2CCFF;"
-        "border-radius:9px;"
+        "border-radius:8px;"
         "padding:5px 10px;"
-        "font-size:11px;"
+        "font-size:10px;"
         "font-weight:700;"
         "}";
+}
+
+QFrame *makeFeatureCard(
+    const QString &iconText,
+    const QString &title,
+    const QString &description,
+    QWidget *parent)
+{
+    auto *card =
+        new QFrame(parent);
+
+    card->setObjectName(
+        QStringLiteral("loginFeatureCard"));
+
+    card->setStyleSheet(
+        "QFrame#loginFeatureCard {"
+        "background:#FFFFFF;"
+        "border:1px solid #E4E7EC;"
+        "border-radius:14px;"
+        "}");
+
+    auto *layout =
+        new QHBoxLayout(card);
+
+    layout->setContentsMargins(
+        14,
+        13,
+        14,
+        13);
+
+    layout->setSpacing(
+        12);
+
+    auto *icon =
+        new QLabel(
+            iconText,
+            card);
+
+    icon->setAlignment(
+        Qt::AlignCenter);
+
+    icon->setFixedSize(
+        38,
+        38);
+
+    icon->setStyleSheet(
+        "QLabel {"
+        "background:#EFF6FF;"
+        "border:1px solid #BFDBFE;"
+        "border-radius:11px;"
+        "color:#2563EB;"
+        "font-size:17px;"
+        "font-weight:700;"
+        "}");
+
+    layout->addWidget(
+        icon);
+
+    auto *textLayout =
+        new QVBoxLayout;
+
+    textLayout->setSpacing(
+        3);
+
+    textLayout->addWidget(
+        makeFeatureTitle(
+            title,
+            card));
+
+    textLayout->addWidget(
+        makeFeatureText(
+            description,
+            card));
+
+    layout->addLayout(
+        textLayout,
+        1);
+
+    return card;
 }
 
 bool requestMatchesDeviceImpl(
@@ -247,7 +402,7 @@ bool requestMatchesDeviceImpl(
         requestedType.trimmed();
 
     if (type.compare(
-            "SSD",
+            QStringLiteral("SSD"),
             Qt::CaseInsensitive) == 0)
     {
         return classification.mediaType ==
@@ -255,7 +410,7 @@ bool requestMatchesDeviceImpl(
     }
 
     if (type.compare(
-            "HDD",
+            QStringLiteral("HDD"),
             Qt::CaseInsensitive) == 0)
     {
         return classification.mediaType ==
@@ -263,7 +418,7 @@ bool requestMatchesDeviceImpl(
     }
 
     if (type.compare(
-            "USB Drive",
+            QStringLiteral("USB Drive"),
             Qt::CaseInsensitive) == 0)
     {
         return classification.busType ==
@@ -271,7 +426,7 @@ bool requestMatchesDeviceImpl(
     }
 
     if (type.compare(
-            "NVMe SSD",
+            QStringLiteral("NVMe SSD"),
             Qt::CaseInsensitive) == 0)
     {
         return classification.busType ==
@@ -283,12 +438,92 @@ bool requestMatchesDeviceImpl(
     return false;
 }
 
+void configureTable(
+    QTableWidget *table)
+{
+    if (!table)
+        return;
+
+    table->setSelectionBehavior(
+        QAbstractItemView::SelectRows);
+
+    table->setSelectionMode(
+        QAbstractItemView::SingleSelection);
+
+    table->setEditTriggers(
+        QAbstractItemView::NoEditTriggers);
+
+    table->setShowGrid(false);
+    table->setAlternatingRowColors(true);
+    table->setWordWrap(false);
+
+    table->verticalHeader()->setVisible(
+        false);
+
+    table->verticalHeader()
+        ->setDefaultSectionSize(46);
+
+    table->horizontalHeader()
+        ->setHighlightSections(false);
+
+    table->setFocusPolicy(
+        Qt::NoFocus);
+}
+
+void addStatCard(
+    QHBoxLayout *layout,
+    const QString &caption,
+    QLabel **value)
+{
+    auto *card =
+        makeCard(
+            layout->parentWidget());
+
+    auto *box =
+        new QVBoxLayout(card);
+
+    box->setContentsMargins(
+        18,
+        16,
+        18,
+        16);
+
+    box->setSpacing(
+        6);
+
+    box->addWidget(
+        makeCaption(
+            caption,
+            card));
+
+    *value =
+        new QLabel(
+            QStringLiteral("0"),
+            card);
+
+    (*value)->setStyleSheet(
+        "QLabel {"
+        "background:transparent;"
+        "border:none;"
+        "color:#101828;"
+        "font-size:25px;"
+        "font-weight:700;"
+        "}");
+
+    box->addWidget(
+        *value);
+
+    layout->addWidget(
+        card);
+}
+
 }
 
 MainWindow::MainWindow(
     QWidget *parent)
     : QMainWindow(parent)
-    , authManager_(new AuthManager(this))
+    , authManager_(
+          new AuthManager(this))
     , requestService_(
           new SanitizationRequestService(this))
     , resultService_(
@@ -325,6 +560,7 @@ MainWindow::MainWindow(
     , dashboardJobsTable_(nullptr)
     , assignedJobsTable_(nullptr)
     , deviceTable_(nullptr)
+    , devicesInventoryTable_(nullptr)
     , totalJobsValue_(nullptr)
     , activeJobsValue_(nullptr)
     , completedJobsValue_(nullptr)
@@ -362,8 +598,13 @@ MainWindow::MainWindow(
     setWindowTitle(
         QStringLiteral("SecureWipe"));
 
-    resize(1420, 900);
-    setMinimumSize(1180, 760);
+    resize(
+        1420,
+        900);
+
+    setMinimumSize(
+        1180,
+        760);
 
     buildUi();
     applyTheme();
@@ -375,8 +616,28 @@ MainWindow::MainWindow(
         [this]()
         {
             loginButton_->setEnabled(true);
+
             loginButton_->setText(
                 QStringLiteral("Sign in"));
+
+            operatorNameLabel_->setText(
+                emailEdit_->text().trimmed());
+
+            QString operatorRole =
+                authManager_->role();
+            if (operatorRole.isEmpty())
+            {
+                operatorRoleLabel_->setText(
+                    QStringLiteral("UNKNOWN ROLE"));
+            }
+            else
+            {
+                operatorRole.replace(
+                    QStringLiteral("_"),
+                    QStringLiteral(" "));
+                operatorRoleLabel_->setText(
+                    operatorRole);
+            }
 
             rootStack_->setCurrentWidget(
                 appPage_);
@@ -391,7 +652,17 @@ MainWindow::MainWindow(
                 true,
                 QStringLiteral("Connected"));
 
-            refreshAssignedRequests();
+            if (authManager_->role() ==
+                QStringLiteral("WORKSTATION_EMPLOYEE"))
+            {
+                refreshAssignedRequests();
+            }
+            else
+            {
+                assignedRequests_ = QJsonArray();
+                populateJobDetails();
+            }
+
             refreshPhysicalDevices();
         });
 
@@ -402,6 +673,7 @@ MainWindow::MainWindow(
         [this](const QString &message)
         {
             loginButton_->setEnabled(true);
+
             loginButton_->setText(
                 QStringLiteral("Sign in"));
 
@@ -410,7 +682,8 @@ MainWindow::MainWindow(
 
             setConnectionState(
                 false,
-                QStringLiteral("Authentication failed"));
+                QStringLiteral(
+                    "Authentication failed"));
         });
 
     connect(
@@ -439,7 +712,8 @@ MainWindow::MainWindow(
                 QStringLiteral(
                     R"(^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$)"));
 
-            if (!pattern.match(email).hasMatch())
+            if (!pattern.match(
+                    email).hasMatch())
             {
                 loginErrorLabel_->setText(
                     QStringLiteral(
@@ -455,9 +729,12 @@ MainWindow::MainWindow(
                 return;
             }
 
-            loginButton_->setEnabled(false);
+            loginButton_->setEnabled(
+                false);
+
             loginButton_->setText(
-                QStringLiteral("Signing in..."));
+                QStringLiteral(
+                    "Authenticating..."));
 
             authManager_->login(
                 email,
@@ -466,13 +743,15 @@ MainWindow::MainWindow(
 
     connect(
         requestService_,
-        &SanitizationRequestService::assignedRequestsFetched,
+        &SanitizationRequestService::
+            assignedRequestsFetched,
         this,
         &MainWindow::handleAssignedRequests);
 
     connect(
         requestService_,
-        &SanitizationRequestService::requestFetchFailed,
+        &SanitizationRequestService::
+            requestFetchFailed,
         this,
         [this](const QString &message)
         {
@@ -482,24 +761,40 @@ MainWindow::MainWindow(
                     .arg(message));
 
             jobMessageLabel_->setStyleSheet(
+                "QLabel {"
+                "background:transparent;"
+                "border:none;"
                 "color:#B42318;"
                 "font-size:12px;"
-                "font-weight:600;");
+                "font-weight:600;"
+                "}");
+
+            const bool accessDenied =
+                message.contains(
+                    QStringLiteral("HTTP 403"),
+                    Qt::CaseInsensitive) ||
+                message.contains(
+                    QStringLiteral("Forbidden"),
+                    Qt::CaseInsensitive);
 
             setConnectionState(
                 false,
-                QStringLiteral("API unavailable"));
+                accessDenied
+                    ? QStringLiteral("API access denied")
+                    : QStringLiteral("API unavailable"));
         });
 
     connect(
         requestService_,
-        &SanitizationRequestService::requestStatusUpdated,
+        &SanitizationRequestService::
+            requestStatusUpdated,
         this,
         [this](
             const QString &requestId,
             const QString &status)
         {
-            if (requestId == selectedRequestId_)
+            if (requestId ==
+                selectedRequestId_)
             {
                 jobMessageLabel_->setText(
                     QStringLiteral(
@@ -509,9 +804,13 @@ MainWindow::MainWindow(
                             status));
 
                 jobMessageLabel_->setStyleSheet(
+                    "QLabel {"
+                    "background:transparent;"
+                    "border:none;"
                     "color:#027A48;"
                     "font-size:12px;"
-                    "font-weight:600;");
+                    "font-weight:600;"
+                    "}");
             }
 
             refreshAssignedRequests();
@@ -519,7 +818,8 @@ MainWindow::MainWindow(
 
     connect(
         requestService_,
-        &SanitizationRequestService::requestStatusUpdateFailed,
+        &SanitizationRequestService::
+            requestStatusUpdateFailed,
         this,
         [this](const QString &message)
         {
@@ -529,25 +829,35 @@ MainWindow::MainWindow(
                     .arg(message));
 
             jobMessageLabel_->setStyleSheet(
+                "QLabel {"
+                "background:transparent;"
+                "border:none;"
                 "color:#B42318;"
                 "font-size:12px;"
-                "font-weight:600;");
+                "font-weight:600;"
+                "}");
         });
 
     connect(
         resultService_,
-        &SanitizationResultService::resultSubmitted,
+        &SanitizationResultService::
+            resultSubmitted,
         this,
         [this](const QString &requestId)
         {
-            if (requestId != selectedRequestId_)
+            if (requestId !=
+                selectedRequestId_)
+            {
                 return;
+            }
 
             pipelineStatusValue_->setText(
-                QStringLiteral("VERIFYING"));
+                QStringLiteral(
+                    "VERIFYING"));
 
             pipelineStatusValue_->setStyleSheet(
-                badgeStyle("VERIFYING"));
+                badgeStyle(
+                    "VERIFYING"));
 
             jobMessageLabel_->setText(
                 QStringLiteral(
@@ -556,7 +866,8 @@ MainWindow::MainWindow(
 
     connect(
         resultService_,
-        &SanitizationResultService::resultSubmissionFailed,
+        &SanitizationResultService::
+            resultSubmissionFailed,
         this,
         [this](const QString &message)
         {
@@ -566,48 +877,64 @@ MainWindow::MainWindow(
                     .arg(message));
 
             jobMessageLabel_->setStyleSheet(
+                "QLabel {"
+                "background:transparent;"
+                "border:none;"
                 "color:#B42318;"
                 "font-size:12px;"
-                "font-weight:600;");
+                "font-weight:600;"
+                "}");
         });
 
     connect(
         resultService_,
-        &SanitizationResultService::certificateSubmitted,
+        &SanitizationResultService::
+            certificateSubmitted,
         this,
         [this](
             const QString &requestId,
             const QString &certificateId)
         {
-            if (requestId != selectedRequestId_)
+            if (requestId !=
+                selectedRequestId_)
+            {
                 return;
+            }
 
             certificateValue_->setText(
                 certificateId.isEmpty()
-                    ? QStringLiteral("Generated")
+                    ? QStringLiteral(
+                          "Generated")
                     : certificateId);
 
             pipelineStatusValue_->setText(
-                QStringLiteral("COMPLETED"));
+                QStringLiteral(
+                    "COMPLETED"));
 
             pipelineStatusValue_->setStyleSheet(
-                badgeStyle("COMPLETED"));
+                badgeStyle(
+                    "COMPLETED"));
 
             jobMessageLabel_->setText(
                 QStringLiteral(
                     "Certificate synchronized successfully. Sanitization request completed."));
 
             jobMessageLabel_->setStyleSheet(
+                "QLabel {"
+                "background:transparent;"
+                "border:none;"
                 "color:#027A48;"
                 "font-size:12px;"
-                "font-weight:700;");
+                "font-weight:700;"
+                "}");
 
             refreshAssignedRequests();
         });
 
     connect(
         resultService_,
-        &SanitizationResultService::certificateSubmissionFailed,
+        &SanitizationResultService::
+            certificateSubmissionFailed,
         this,
         [this](const QString &message)
         {
@@ -617,9 +944,13 @@ MainWindow::MainWindow(
                     .arg(message));
 
             jobMessageLabel_->setStyleSheet(
+                "QLabel {"
+                "background:transparent;"
+                "border:none;"
                 "color:#B42318;"
                 "font-size:12px;"
-                "font-weight:600;");
+                "font-weight:600;"
+                "}");
         });
 
     connect(
@@ -646,9 +977,13 @@ MainWindow::MainWindow(
                     .arg(message));
 
             jobMessageLabel_->setStyleSheet(
+                "QLabel {"
+                "background:transparent;"
+                "border:none;"
                 "color:#B42318;"
                 "font-size:12px;"
-                "font-weight:600;");
+                "font-weight:600;"
+                "}");
         });
 
     connect(
@@ -660,7 +995,8 @@ MainWindow::MainWindow(
 
     connect(
         assignedJobsTable_,
-        &QTableWidget::itemSelectionChanged,
+        &QTableWidget::
+            itemSelectionChanged,
         this,
         [this]()
         {
@@ -687,17 +1023,43 @@ MainWindow::MainWindow(
                     Qt::UserRole);
 
             if (index >= 0)
-                jobComboBox_->setCurrentIndex(index);
+            {
+                jobComboBox_->setCurrentIndex(
+                    index);
+            }
         });
 
     connect(
         deviceTable_,
-        &QTableWidget::itemSelectionChanged,
+        &QTableWidget::
+            itemSelectionChanged,
         this,
         [this]()
         {
             selectTargetDevice(
                 deviceTable_->currentRow());
+        });
+
+    connect(
+        devicesInventoryTable_,
+        &QTableWidget::
+            cellDoubleClicked,
+        this,
+        [this](
+            int row,
+            int column)
+        {
+            Q_UNUSED(column);
+
+            if (!devicesInventoryTable_ ||
+                row < 0 ||
+                row >= devicesInventoryTable_->rowCount())
+            {
+                return;
+            }
+
+            devicesInventoryTable_->selectRow(row);
+            showSelectedDeviceDetails();
         });
 
     connect(
@@ -799,7 +1161,8 @@ MainWindow::~MainWindow() = default;
 
 void MainWindow::buildUi()
 {
-    root_ = new QWidget(this);
+    root_ =
+        new QWidget(this);
 
     rootStack_ =
         new QStackedWidget(root_);
@@ -817,7 +1180,10 @@ void MainWindow::buildUi()
         new QVBoxLayout(root_);
 
     layout->setContentsMargins(
-        0, 0, 0, 0);
+        0,
+        0,
+        0,
+        0);
 
     layout->addWidget(
         rootStack_);
@@ -832,172 +1198,704 @@ void MainWindow::buildLoginPage()
         new QWidget;
 
     auto *outer =
-        new QVBoxLayout(
+        new QHBoxLayout(
             loginPage_);
 
     outer->setContentsMargins(
-        40, 40, 40, 40);
+        64,
+        50,
+        64,
+        50);
 
-    outer->addStretch();
+    outer->setSpacing(
+        54);
 
-    auto *card =
-        makeCard(loginPage_);
+    auto *left =
+        new QWidget(
+            loginPage_);
 
-    card->setMaximumWidth(
-        470);
+    auto *leftLayout =
+        new QVBoxLayout(
+            left);
 
-    auto *layout =
-        new QVBoxLayout(card);
+    leftLayout->setContentsMargins(
+        18,
+        22,
+        12,
+        22);
 
-    layout->setContentsMargins(
-        34, 34, 34, 34);
+    leftLayout->setSpacing(
+        16);
 
-    layout->setSpacing(
-        13);
+    auto *brandRow =
+        new QHBoxLayout;
+
+    brandRow->setSpacing(
+        12);
+
+    auto *logoBox =
+        new QFrame(left);
+
+    logoBox->setFixedSize(
+        56,
+        56);
+
+    logoBox->setObjectName(
+        QStringLiteral(
+            "brandLogo"));
+
+    logoBox->setStyleSheet(
+        "QFrame#brandLogo {"
+        "background:#EFF6FF;"
+        "border:1px solid #BFDBFE;"
+        "border-radius:16px;"
+        "}");
+
+    auto *logoLayout =
+        new QVBoxLayout(
+            logoBox);
+
+    logoLayout->setContentsMargins(
+        0,
+        0,
+        0,
+        0);
 
     auto *logo =
         new QLabel(
-            QStringLiteral("◈"),
-            card);
+            QStringLiteral(
+                "◈"),
+            logoBox);
 
     logo->setAlignment(
         Qt::AlignCenter);
 
-    logo->setFixedSize(
-        58,
-        58);
-
     logo->setStyleSheet(
         "QLabel {"
-        "background:#EFF6FF;"
+        "background:transparent;"
+        "border:none;"
         "color:#2563EB;"
-        "border:1px solid #BFDBFE;"
-        "border-radius:16px;"
-        "font-size:28px;"
+        "font-size:25px;"
         "font-weight:700;"
         "}");
 
-    layout->addWidget(
-        logo,
-        0,
-        Qt::AlignHCenter);
+    logoLayout->addWidget(
+        logo);
+
+    brandRow->addWidget(
+        logoBox);
+
+    auto *brandBlock =
+        new QVBoxLayout;
+
+    brandBlock->setSpacing(
+        2);
 
     auto *brand =
         new QLabel(
-            QStringLiteral("SecureWipe"),
-            card);
-
-    brand->setAlignment(
-        Qt::AlignCenter);
+            QStringLiteral(
+                "SecureWipe"),
+            left);
 
     brand->setStyleSheet(
+        "QLabel {"
+        "background:transparent;"
+        "border:none;"
         "color:#101828;"
-        "font-size:28px;"
-        "font-weight:750;");
+        "font-size:27px;"
+        "font-weight:700;"
+        "}");
 
-    layout->addWidget(
+    auto *brandSub =
+        new QLabel(
+            QStringLiteral(
+                "Secure storage lifecycle"),
+            left);
+
+    brandSub->setStyleSheet(
+        "QLabel {"
+        "background:transparent;"
+        "border:none;"
+        "color:#667085;"
+        "font-size:11px;"
+        "font-weight:600;"
+        "}");
+
+    brandBlock->addWidget(
         brand);
 
-    auto *subtitle =
-        makeSubtitle(
-            QStringLiteral(
-                "Authorized workstation console for physical storage sanitization"),
-            card);
+    brandBlock->addWidget(
+        brandSub);
 
-    subtitle->setAlignment(
+    brandRow->addLayout(
+        brandBlock);
+
+    brandRow->addStretch();
+
+    leftLayout->addLayout(
+        brandRow);
+
+    auto *headline =
+        new QLabel(
+            QStringLiteral(
+                "Secure sanitization\nand forensic recovery."),
+            left);
+
+    headline->setStyleSheet(
+        "QLabel {"
+        "background:transparent;"
+        "border:none;"
+        "color:#101828;"
+        "font-size:31px;"
+        "font-weight:700;"
+        "}");
+
+    leftLayout->addWidget(
+        headline);
+
+    auto *description =
+        new QLabel(
+            QStringLiteral(
+                "A controlled workstation console for physical storage sanitization, forensic acquisition, evidence recovery and auditable results."),
+            left);
+
+    description->setWordWrap(
+        true);
+
+    description->setMaximumWidth(
+        610);
+
+    description->setStyleSheet(
+        "QLabel {"
+        "background:transparent;"
+        "border:none;"
+        "color:#667085;"
+        "font-size:13px;"
+        "line-height:20px;"
+        "}");
+
+    leftLayout->addWidget(
+        description);
+
+    leftLayout->addSpacing(
+        6);
+
+    leftLayout->addWidget(
+        makeFeatureCard(
+            QStringLiteral("✓"),
+            QStringLiteral(
+                "Secure Sanitization"),
+            QStringLiteral(
+                "NVMe Sanitize, ATA Sanitize and controlled host overwrite with target validation and verification."),
+            left));
+
+    leftLayout->addWidget(
+        makeFeatureCard(
+            QStringLiteral("⌕"),
+            QStringLiteral(
+                "Forensic Recovery"),
+            QStringLiteral(
+                "Read-only physical or forensic-image acquisition with validated artifact recovery and evidence inspection."),
+            left));
+
+    leftLayout->addWidget(
+        makeFeatureCard(
+            QStringLiteral("#"),
+            QStringLiteral(
+                "Evidence & Audit"),
+            QStringLiteral(
+                "Certificates, hashes, operation records and audit evidence remain tied to the executed pipeline."),
+            left));
+
+    auto *workflow =
+        makeCard(left);
+
+    auto *workflowLayout =
+        new QVBoxLayout(
+            workflow);
+
+    workflowLayout->setContentsMargins(
+        16,
+        14,
+        16,
+        14);
+
+    workflowLayout->setSpacing(
+        7);
+
+    workflowLayout->addWidget(
+        makeCaption(
+            QStringLiteral(
+                "CONTROLLED WORKFLOW"),
+            workflow));
+
+    auto *workflowText =
+        new QLabel(
+            QStringLiteral(
+                "Authorize → acquire / sanitize → verify → preserve evidence"),
+            workflow);
+
+    workflowText->setWordWrap(
+        true);
+
+    workflowText->setStyleSheet(
+        "QLabel {"
+        "background:transparent;"
+        "border:none;"
+        "color:#344054;"
+        "font-size:11px;"
+        "font-weight:600;"
+        "}");
+
+    workflowLayout->addWidget(
+        workflowText);
+
+    leftLayout->addWidget(
+        workflow);
+
+    leftLayout->addStretch();
+
+    auto *right =
+        new QFrame(
+            loginPage_);
+
+    right->setObjectName(
+        QStringLiteral(
+            "loginCard"));
+
+    right->setMinimumWidth(
+        390);
+
+    right->setMaximumWidth(
+        430);
+
+    right->setSizePolicy(
+        QSizePolicy::Preferred,
+        QSizePolicy::Fixed);
+
+    right->setStyleSheet(
+        "QFrame#loginCard {"
+        "background:#FFFFFF;"
+        "border:1px solid #DCE3EC;"
+        "border-radius:22px;"
+        "}");
+
+    auto *cardLayout =
+        new QVBoxLayout(
+            right);
+
+    cardLayout->setContentsMargins(
+        34,
+        32,
+        34,
+        30);
+
+    cardLayout->setSpacing(
+        13);
+
+    auto *secureBadge =
+        new QLabel(
+            QStringLiteral(
+                "WORKSTATION AUTHENTICATION"),
+            right);
+
+    secureBadge->setAlignment(
         Qt::AlignCenter);
 
-    layout->addWidget(
-        subtitle);
+    secureBadge->setStyleSheet(
+        "QLabel {"
+        "background:#EFF6FF;"
+        "border:1px solid #BFDBFE;"
+        "border-radius:7px;"
+        "padding:6px 9px;"
+        "color:#175CD3;"
+        "font-size:9px;"
+        "font-weight:700;"
+        "}");
 
-    layout->addSpacing(
-        10);
+    cardLayout->addWidget(
+        secureBadge,
+        0,
+        Qt::AlignLeft);
 
-    layout->addWidget(
+    auto *title =
+        new QLabel(
+            QStringLiteral(
+                "Welcome back"),
+            right);
+
+    title->setStyleSheet(
+        "QLabel {"
+        "background:transparent;"
+        "border:none;"
+        "color:#101828;"
+        "font-size:24px;"
+        "font-weight:700;"
+        "}");
+
+    cardLayout->addWidget(
+        title);
+
+    auto *sub =
+        new QLabel(
+            QStringLiteral(
+                "Sign in to access your authorized SecureWipe workstation."),
+            right);
+
+    sub->setWordWrap(
+        true);
+
+    sub->setStyleSheet(
+        "QLabel {"
+        "background:transparent;"
+        "border:none;"
+        "color:#667085;"
+        "font-size:12px;"
+        "}");
+
+    cardLayout->addWidget(
+        sub);
+
+    cardLayout->addSpacing(
+        8);
+
+    auto *emailCaption =
         makeCaption(
-            QStringLiteral("Work email"),
-            card));
+            QStringLiteral(
+                "WORK EMAIL"),
+            right);
+
+    emailCaption->setStyleSheet(
+        "QLabel {"
+        "background:transparent;"
+        "border:none;"
+        "color:#475467;"
+        "font-size:10px;"
+        "font-weight:700;"
+        "}");
+
+    cardLayout->addWidget(
+        emailCaption);
 
     emailEdit_ =
-        new QLineEdit(card);
+        new QLineEdit(
+            right);
 
     emailEdit_->setPlaceholderText(
         QStringLiteral(
-            "employee@example.com"));
+            "name@securewipe.com"));
 
     emailEdit_->setMinimumHeight(
-        44);
+        48);
 
-    layout->addWidget(
+    emailEdit_->setStyleSheet(
+        "QLineEdit {"
+        "background:#FFFFFF;"
+        "border:1px solid #D0D5DD;"
+        "border-radius:10px;"
+        "padding:11px 13px;"
+        "color:#172033;"
+        "font-size:12px;"
+        "}"
+        "QLineEdit:focus {"
+        "border:1px solid #2563EB;"
+        "background:#FFFFFF;"
+        "}");
+
+    cardLayout->addWidget(
         emailEdit_);
 
-    layout->addWidget(
+    auto *passwordCaption =
         makeCaption(
-            QStringLiteral("Password"),
-            card));
+            QStringLiteral(
+                "PASSWORD"),
+            right);
+
+    passwordCaption->setStyleSheet(
+        "QLabel {"
+        "background:transparent;"
+        "border:none;"
+        "color:#475467;"
+        "font-size:10px;"
+        "font-weight:700;"
+        "}");
+
+    cardLayout->addWidget(
+        passwordCaption);
+
+    auto *passwordRow =
+        new QWidget(
+            right);
+
+    auto *passwordLayout =
+        new QHBoxLayout(
+            passwordRow);
+
+    passwordLayout->setContentsMargins(
+        0,
+        0,
+        0,
+        0);
+
+    passwordLayout->setSpacing(
+        0);
 
     passwordEdit_ =
-        new QLineEdit(card);
+        new QLineEdit(
+            passwordRow);
 
     passwordEdit_->setEchoMode(
         QLineEdit::Password);
 
-    passwordEdit_->setMinimumHeight(
-        44);
+    passwordEdit_->setPlaceholderText(
+        QStringLiteral(
+            "Enter your password"));
 
-    layout->addWidget(
-        passwordEdit_);
+    passwordEdit_->setMinimumHeight(
+        48);
+
+    passwordEdit_->setStyleSheet(
+        "QLineEdit {"
+        "background:#FFFFFF;"
+        "border:1px solid #D0D5DD;"
+        "border-right:none;"
+        "border-radius:10px 0 0 10px;"
+        "padding:11px 13px;"
+        "color:#172033;"
+        "font-size:12px;"
+        "}"
+        "QLineEdit:focus {"
+        "border:1px solid #2563EB;"
+        "border-right:none;"
+        "background:#FFFFFF;"
+        "}");
+
+    auto *passwordVisibilityButton =
+        new QToolButton(
+            passwordRow);
+
+    passwordVisibilityButton->setFixedSize(
+        48,
+        48);
+
+    passwordVisibilityButton->setCursor(
+        Qt::PointingHandCursor);
+
+    passwordVisibilityButton->setToolTip(
+        QStringLiteral(
+            "Show password"));
+
+    passwordVisibilityButton->setStyleSheet(
+        "QToolButton {"
+        "background:#FFFFFF;"
+        "border:1px solid #D0D5DD;"
+        "border-left:none;"
+        "border-radius:0 10px 10px 0;"
+        "padding:0;"
+        "}"
+        "QToolButton:hover {"
+        "background:#F8FAFC;"
+        "}");
+
+    const auto makeEyeIcon = [](
+        bool visible)
+    {
+        QPixmap pixmap(
+            22,
+            22);
+        pixmap.fill(
+            Qt::transparent);
+
+        QPainter painter(
+            &pixmap);
+        painter.setRenderHint(
+            QPainter::Antialiasing,
+            true);
+
+        QPen pen(
+            QColor(
+                "#667085"));
+        pen.setWidth(2);
+        pen.setCapStyle(
+            Qt::RoundCap);
+        painter.setPen(
+            pen);
+        painter.setBrush(
+            Qt::NoBrush);
+
+        QRectF eye(
+            2.0,
+            6.0,
+            18.0,
+            10.0);
+        painter.drawEllipse(
+            eye);
+
+        painter.setBrush(
+            QColor(
+                "#667085"));
+        painter.drawEllipse(
+            QRectF(
+                8.0,
+                9.0,
+                6.0,
+                6.0));
+
+        if (!visible)
+        {
+            painter.setPen(
+                pen);
+            painter.drawLine(
+                QPointF(
+                    3.0,
+                    3.0),
+                QPointF(
+                    19.0,
+                    19.0));
+        }
+
+        return QIcon(
+            pixmap);
+    };
+
+    passwordVisibilityButton->setIcon(
+        makeEyeIcon(
+            false));
+
+    passwordVisibilityButton->setIconSize(
+        QSize(22, 22));
+
+    connect(
+        passwordVisibilityButton,
+        &QToolButton::clicked,
+        right,
+        [this, passwordVisibilityButton, makeEyeIcon]() mutable
+        {
+            const bool showPassword =
+                passwordEdit_->echoMode() ==
+                QLineEdit::Password;
+
+            passwordEdit_->setEchoMode(
+                showPassword
+                    ? QLineEdit::Normal
+                    : QLineEdit::Password);
+
+            passwordVisibilityButton->setIcon(
+                makeEyeIcon(
+                    showPassword));
+
+            passwordVisibilityButton->setToolTip(
+                showPassword
+                    ? QStringLiteral(
+                          "Hide password")
+                    : QStringLiteral(
+                          "Show password"));
+
+            passwordEdit_->setFocus();
+        });
+
+    passwordLayout->addWidget(
+        passwordEdit_,
+        1);
+
+    passwordLayout->addWidget(
+        passwordVisibilityButton);
+
+    cardLayout->addWidget(
+        passwordRow);
 
     loginErrorLabel_ =
-        new QLabel(card);
+        new QLabel(
+            right);
 
     loginErrorLabel_->setWordWrap(
         true);
 
-    loginErrorLabel_->setStyleSheet(
-        "color:#B42318;"
-        "font-size:12px;"
-        "font-weight:600;");
+    loginErrorLabel_->setMinimumHeight(
+        22);
 
-    layout->addWidget(
+    loginErrorLabel_->setStyleSheet(
+        "QLabel {"
+        "background:transparent;"
+        "border:none;"
+        "color:#B42318;"
+        "font-size:11px;"
+        "font-weight:600;"
+        "}");
+
+    cardLayout->addWidget(
         loginErrorLabel_);
 
     loginButton_ =
         makePrimaryButton(
-            QStringLiteral("Sign in"),
-            card);
+            QStringLiteral(
+                "Sign in"),
+            right);
 
     loginButton_->setMinimumHeight(
-        46);
+        50);
 
-    layout->addWidget(
+    cardLayout->addWidget(
         loginButton_);
 
-    auto *notice =
+    cardLayout->addSpacing(
+        4);
+
+    auto *securityRow =
+        new QHBoxLayout;
+
+    securityRow->setSpacing(
+        8);
+
+    auto *dot =
         new QLabel(
             QStringLiteral(
-                "Only authorized workstation roles can access this console."),
-            card);
+                "●"),
+            right);
 
-    notice->setAlignment(
-        Qt::AlignCenter);
+    dot->setStyleSheet(
+        "QLabel {"
+        "background:transparent;"
+        "border:none;"
+        "color:#12B76A;"
+        "font-size:8px;"
+        "}");
 
-    notice->setStyleSheet(
+    auto *securityText =
+        new QLabel(
+            QStringLiteral(
+                "Protected workstation • Authorized operators only"),
+            right);
+
+    securityText->setStyleSheet(
+        "QLabel {"
+        "background:transparent;"
+        "border:none;"
         "color:#98A2B3;"
-        "font-size:10px;");
+        "font-size:10px;"
+        "}");
 
-    notice->setWordWrap(
-        true);
+    securityRow->addWidget(
+        dot,
+        0,
+        Qt::AlignVCenter);
 
-    layout->addWidget(
-        notice);
+    securityRow->addWidget(
+        securityText);
+
+    securityRow->addStretch();
+
+    cardLayout->addLayout(
+        securityRow);
 
     outer->addWidget(
-        card,
-        0,
-        Qt::AlignHCenter);
+        left,
+        1);
 
-    outer->addStretch();
+    outer->addWidget(
+        right,
+        0,
+        Qt::AlignVCenter);
 }
 
 void MainWindow::buildAppShell()
@@ -1010,16 +1908,20 @@ void MainWindow::buildAppShell()
             appPage_);
 
     mainLayout->setContentsMargins(
-        0, 0, 0, 0);
+        0,
+        0,
+        0,
+        0);
 
     mainLayout->setSpacing(
         0);
 
     auto *sidebar =
-        new QFrame(appPage_);
+        new QFrame(
+            appPage_);
 
     sidebar->setFixedWidth(
-        238);
+        248);
 
     sidebar->setStyleSheet(
         "QFrame {"
@@ -1028,51 +1930,103 @@ void MainWindow::buildAppShell()
         "}");
 
     auto *sidebarLayout =
-        new QVBoxLayout(sidebar);
+        new QVBoxLayout(
+            sidebar);
 
     sidebarLayout->setContentsMargins(
-        18, 20, 18, 18);
+        18,
+        22,
+        18,
+        18);
 
     sidebarLayout->setSpacing(
-        6);
+        7);
+
+    auto *brandRow =
+        new QHBoxLayout;
+
+    brandRow->setSpacing(
+        10);
+
+    auto *brandIcon =
+        new QLabel(
+            QStringLiteral("◈"),
+            sidebar);
+
+    brandIcon->setAlignment(
+        Qt::AlignCenter);
+
+    brandIcon->setFixedSize(
+        34,
+        34);
+
+    brandIcon->setStyleSheet(
+        "QLabel {"
+        "background:#EFF6FF;"
+        "color:#2563EB;"
+        "border:1px solid #BFDBFE;"
+        "border-radius:10px;"
+        "font-size:18px;"
+        "font-weight:700;"
+        "}");
 
     auto *brand =
         new QLabel(
-            QStringLiteral("◈  SecureWipe"),
+            QStringLiteral(
+                "SecureWipe"),
             sidebar);
 
     brand->setStyleSheet(
+        "QLabel {"
+        "background:transparent;"
+        "border:none;"
         "color:#101828;"
-        "font-size:18px;"
-        "font-weight:750;"
-        "padding-bottom:18px;");
+        "font-size:17px;"
+        "font-weight:700;"
+        "}");
 
-    sidebarLayout->addWidget(
+    brandRow->addWidget(
+        brandIcon);
+
+    brandRow->addWidget(
         brand);
 
+    brandRow->addStretch();
+
+    sidebarLayout->addLayout(
+        brandRow);
+
+    sidebarLayout->addSpacing(
+        18);
+
     dashboardNavButton_ =
-        new QPushButton(
-            QStringLiteral("Overview"),
+        makeNavButton(
+            QStringLiteral(
+                "Overview"),
             sidebar);
 
     jobsNavButton_ =
-        new QPushButton(
-            QStringLiteral("Assigned Jobs"),
+        makeNavButton(
+            QStringLiteral(
+                "Assigned Jobs"),
             sidebar);
 
     devicesNavButton_ =
-        new QPushButton(
-            QStringLiteral("Devices"),
+        makeNavButton(
+            QStringLiteral(
+                "Physical Devices"),
             sidebar);
 
     forensicsNavButton_ =
-        new QPushButton(
-            QStringLiteral("Evidence & Forensics"),
+        makeNavButton(
+            QStringLiteral(
+                "Forensic Recovery"),
             sidebar);
 
     settingsNavButton_ =
-        new QPushButton(
-            QStringLiteral("Settings"),
+        makeNavButton(
+            QStringLiteral(
+                "Settings"),
             sidebar);
 
     sidebarLayout->addWidget(
@@ -1100,27 +2054,48 @@ void MainWindow::buildAppShell()
             operatorCard);
 
     operatorLayout->setContentsMargins(
-        12, 12, 12, 12);
+        13,
+        13,
+        13,
+        13);
+
+    operatorLayout->setSpacing(
+        4);
+
+    operatorLayout->addWidget(
+        makeCaption(
+            QStringLiteral(
+                "CURRENT OPERATOR"),
+            operatorCard));
 
     operatorNameLabel_ =
         new QLabel(
-            QStringLiteral("Operator"),
+            QStringLiteral(
+                "Operator"),
             operatorCard);
 
     operatorNameLabel_->setStyleSheet(
+        "QLabel {"
+        "background:transparent;"
+        "border:none;"
         "color:#172033;"
         "font-size:12px;"
-        "font-weight:700;");
+        "font-weight:700;"
+        "}");
 
     operatorRoleLabel_ =
         new QLabel(
             QStringLiteral(
-                "WORKSTATION EMPLOYEE"),
+                "NOT SIGNED IN"),
             operatorCard);
 
     operatorRoleLabel_->setStyleSheet(
+        "QLabel {"
+        "background:transparent;"
+        "border:none;"
         "color:#667085;"
-        "font-size:10px;");
+        "font-size:10px;"
+        "}");
 
     operatorLayout->addWidget(
         operatorNameLabel_);
@@ -1132,22 +2107,26 @@ void MainWindow::buildAppShell()
         operatorCard);
 
     sidebarLayout->addSpacing(
-        8);
+        9);
 
     logoutButton_ =
         new QPushButton(
-            QStringLiteral("Sign out"),
+            QStringLiteral(
+                "Sign out"),
             sidebar);
 
+    logoutButton_->setCursor(
+        Qt::PointingHandCursor);
+
     logoutButton_->setMinimumHeight(
-        38);
+        40);
 
     logoutButton_->setStyleSheet(
         "QPushButton {"
         "background:#FFF5F5;"
         "color:#B42318;"
         "border:1px solid #FECACA;"
-        "border-radius:9px;"
+        "border-radius:10px;"
         "font-size:12px;"
         "font-weight:600;"
         "}"
@@ -1162,22 +2141,28 @@ void MainWindow::buildAppShell()
         sidebar);
 
     auto *right =
-        new QWidget(appPage_);
+        new QWidget(
+            appPage_);
 
     auto *rightLayout =
-        new QVBoxLayout(right);
+        new QVBoxLayout(
+            right);
 
     rightLayout->setContentsMargins(
-        0, 0, 0, 0);
+        0,
+        0,
+        0,
+        0);
 
     rightLayout->setSpacing(
         0);
 
     auto *topbar =
-        new QFrame(right);
+        new QFrame(
+            right);
 
     topbar->setFixedHeight(
-        68);
+        72);
 
     topbar->setStyleSheet(
         "QFrame {"
@@ -1186,35 +2171,44 @@ void MainWindow::buildAppShell()
         "}");
 
     auto *topLayout =
-        new QHBoxLayout(topbar);
-
-    topLayout->setContentsMargins(
-        24, 0, 24, 0);
-
-    auto *consoleLabel =
-        new QLabel(
-            QStringLiteral("Workstation Console"),
+        new QHBoxLayout(
             topbar);
 
-    consoleLabel->setStyleSheet(
-        "color:#667085;"
-        "font-size:12px;");
+    topLayout->setContentsMargins(
+        28,
+        0,
+        28,
+        0);
+
+    auto *console =
+        new QLabel(
+            QStringLiteral(
+                "Workstation Console"),
+            topbar);
+
+    console->setStyleSheet(
+        "QLabel {"
+        "background:transparent;"
+        "border:none;"
+        "color:#344054;"
+        "font-size:13px;"
+        "font-weight:600;"
+        "}");
 
     topLayout->addWidget(
-        consoleLabel);
+        console);
 
     topLayout->addStretch();
 
     connectionBadgeLabel_ =
-        new QLabel(
-            QStringLiteral("Disconnected"),
+        makeBadge(
+            QStringLiteral(
+                "Disconnected"),
             topbar);
 
-    connectionBadgeLabel_->setAlignment(
-        Qt::AlignCenter);
-
-    connectionBadgeLabel_->setMinimumWidth(
-        110);
+    connectionBadgeLabel_->setStyleSheet(
+        badgeStyle(
+            "DISCONNECTED"));
 
     topLayout->addWidget(
         connectionBadgeLabel_);
@@ -1223,7 +2217,8 @@ void MainWindow::buildAppShell()
         topbar);
 
     contentStack_ =
-        new QStackedWidget(right);
+        new QStackedWidget(
+            right);
 
     rightLayout->addWidget(
         contentStack_);
@@ -1269,6 +2264,9 @@ void MainWindow::buildDashboardPage()
     scroll->setFrameShape(
         QFrame::NoFrame);
 
+    scroll->setHorizontalScrollBarPolicy(
+        Qt::ScrollBarAlwaysOff);
+
     auto *page =
         new QWidget;
 
@@ -1276,118 +2274,195 @@ void MainWindow::buildDashboardPage()
         new QVBoxLayout(page);
 
     root->setContentsMargins(
-        28, 26, 28, 28);
+        30,
+        28,
+        30,
+        30);
 
     root->setSpacing(
-        16);
+        18);
 
     root->addWidget(
         makeTitle(
-            QStringLiteral("Overview"),
+            QStringLiteral(
+                "Overview"),
             page));
 
     root->addWidget(
         makeSubtitle(
             QStringLiteral(
-                "Monitor assigned jobs, physical target readiness and evidence."),
+                "A live view of assigned sanitization work, physical target readiness and forensic capabilities."),
             page));
 
     auto *metrics =
         new QHBoxLayout;
 
     metrics->setSpacing(
-        12);
+        14);
 
-    auto createMetric =
-        [&](const QString &caption,
-            QLabel **value)
-    {
-        auto *card =
-            makeCard(page);
-
-        auto *layout =
-            new QVBoxLayout(card);
-
-        layout->setContentsMargins(
-            16, 14, 16, 14);
-
-        layout->addWidget(
-            makeCaption(
-                caption,
-                card));
-
-        *value =
-            new QLabel(
-                QStringLiteral("0"),
-                card);
-
-        (*value)->setStyleSheet(
-            "color:#101828;"
-            "font-size:25px;"
-            "font-weight:750;");
-
-        layout->addWidget(
-            *value);
-
-        metrics->addWidget(
-            card);
-    };
-
-    createMetric(
-        QStringLiteral("Total jobs"),
+    addStatCard(
+        metrics,
+        QStringLiteral(
+            "TOTAL JOBS"),
         &totalJobsValue_);
 
-    createMetric(
-        QStringLiteral("Active"),
+    addStatCard(
+        metrics,
+        QStringLiteral(
+            "ACTIVE"),
         &activeJobsValue_);
 
-    createMetric(
-        QStringLiteral("Completed"),
+    addStatCard(
+        metrics,
+        QStringLiteral(
+            "COMPLETED"),
         &completedJobsValue_);
 
-    createMetric(
-        QStringLiteral("Failed"),
+    addStatCard(
+        metrics,
+        QStringLiteral(
+            "FAILED"),
         &failedJobsValue_);
 
     root->addLayout(
         metrics);
 
-    auto *infoCard =
+    auto *capabilityRow =
+        new QHBoxLayout;
+
+    capabilityRow->setSpacing(
+        14);
+
+    auto *sanitizeCard =
         makeCard(page);
 
-    auto *infoLayout =
+    auto *sanitizeLayout =
         new QVBoxLayout(
-            infoCard);
+            sanitizeCard);
 
-    infoLayout->setContentsMargins(
-        18, 18, 18, 18);
+    sanitizeLayout->setContentsMargins(
+        18,
+        18,
+        18,
+        18);
 
-    infoLayout->addWidget(
+    sanitizeLayout->setSpacing(
+        7);
+
+    sanitizeLayout->addWidget(
         makeCaption(
             QStringLiteral(
-                "SecureWipe execution policy"),
-            infoCard));
+                "SANITIZATION"),
+            sanitizeCard));
 
-    auto *info =
+    auto *sanitizeTitle =
         new QLabel(
             QStringLiteral(
-                "The operator follows the assigned work order. "
-                "The exact physical target is validated before sanitization, "
-                "and the backend sanitization pipeline produces the operation, verification, certificate and audit evidence."),
-            infoCard);
+                "Physical storage sanitization"),
+            sanitizeCard);
 
-    info->setWordWrap(
+    sanitizeTitle->setStyleSheet(
+        "QLabel {"
+        "background:transparent;"
+        "border:none;"
+        "color:#172033;"
+        "font-size:15px;"
+        "font-weight:700;"
+        "}");
+
+    sanitizeLayout->addWidget(
+        sanitizeTitle);
+
+    auto *sanitizeText =
+        new QLabel(
+            QStringLiteral(
+                "Assigned work orders are executed against an exact physical target only after fresh validation and safety checks."),
+            sanitizeCard);
+
+    sanitizeText->setWordWrap(
         true);
 
-    info->setStyleSheet(
+    sanitizeText->setStyleSheet(
+        "QLabel {"
+        "background:transparent;"
+        "border:none;"
         "color:#667085;"
-        "font-size:12px;");
+        "font-size:11px;"
+        "}");
 
-    infoLayout->addWidget(
-        info);
+    sanitizeLayout->addWidget(
+        sanitizeText);
 
-    root->addWidget(
-        infoCard);
+    capabilityRow->addWidget(
+        sanitizeCard,
+        1);
+
+    auto *forensicCard =
+        makeCard(page);
+
+    auto *forensicLayout =
+        new QVBoxLayout(
+            forensicCard);
+
+    forensicLayout->setContentsMargins(
+        18,
+        18,
+        18,
+        18);
+
+    forensicLayout->setSpacing(
+        7);
+
+    forensicLayout->addWidget(
+        makeCaption(
+            QStringLiteral(
+                "FORENSIC RECOVERY"),
+            forensicCard));
+
+    auto *forensicTitle =
+        new QLabel(
+            QStringLiteral(
+                "Read-only acquisition and recovery"),
+            forensicCard);
+
+    forensicTitle->setStyleSheet(
+        "QLabel {"
+        "background:transparent;"
+        "border:none;"
+        "color:#172033;"
+        "font-size:15px;"
+        "font-weight:700;"
+        "}");
+
+    forensicLayout->addWidget(
+        forensicTitle);
+
+    auto *forensicText =
+        new QLabel(
+            QStringLiteral(
+                "Acquire from a physical storage device or forensic image and inspect validated recovered artifacts."),
+            forensicCard);
+
+    forensicText->setWordWrap(
+        true);
+
+    forensicText->setStyleSheet(
+        "QLabel {"
+        "background:transparent;"
+        "border:none;"
+        "color:#667085;"
+        "font-size:11px;"
+        "}");
+
+    forensicLayout->addWidget(
+        forensicText);
+
+    capabilityRow->addWidget(
+        forensicCard,
+        1);
+
+    root->addLayout(
+        capabilityRow);
 
     auto *jobsCard =
         makeCard(page);
@@ -1397,39 +2472,69 @@ void MainWindow::buildDashboardPage()
             jobsCard);
 
     jobsLayout->setContentsMargins(
-        16, 16, 16, 16);
+        18,
+        18,
+        18,
+        18);
 
-    jobsLayout->addWidget(
+    jobsLayout->setSpacing(
+        10);
+
+    auto *jobsHeader =
+        new QHBoxLayout;
+
+    jobsHeader->addWidget(
         makeCaption(
             QStringLiteral(
-                "Recent assigned jobs"),
+                "RECENT ASSIGNED JOBS"),
             jobsCard));
 
+    jobsHeader->addStretch();
+
+    auto *openJobs =
+        makeSecondaryButton(
+            QStringLiteral(
+                "Open assigned jobs"),
+            jobsCard);
+
+    connect(
+        openJobs,
+        &QPushButton::clicked,
+        this,
+        [this]()
+        {
+            showPage(
+                jobsPage_,
+                jobsNavButton_);
+        });
+
+    jobsHeader->addWidget(
+        openJobs);
+
+    jobsLayout->addLayout(
+        jobsHeader);
+
     dashboardJobsTable_ =
-        new QTableWidget(jobsCard);
+        new QTableWidget(
+            jobsCard);
 
     dashboardJobsTable_->setColumnCount(
         4);
 
     dashboardJobsTable_->setHorizontalHeaderLabels(
         {
-            QStringLiteral("Request"),
-            QStringLiteral("Device"),
-            QStringLiteral("Method"),
-            QStringLiteral("Status")
+            QStringLiteral(
+                "Request"),
+            QStringLiteral(
+                "Device"),
+            QStringLiteral(
+                "Method"),
+            QStringLiteral(
+                "Status")
         });
 
-    dashboardJobsTable_->setSelectionBehavior(
-        QAbstractItemView::SelectRows);
-
-    dashboardJobsTable_->setEditTriggers(
-        QAbstractItemView::NoEditTriggers);
-
-    dashboardJobsTable_->setShowGrid(
-        false);
-
-    dashboardJobsTable_->verticalHeader()
-        ->setVisible(false);
+    configureTable(
+        dashboardJobsTable_);
 
     dashboardJobsTable_->horizontalHeader()
         ->setSectionResizeMode(
@@ -1466,7 +2571,10 @@ void MainWindow::buildDashboardPage()
             dashboardPage_);
 
     outer->setContentsMargins(
-        0, 0, 0, 0);
+        0,
+        0,
+        0,
+        0);
 
     outer->addWidget(
         scroll);
@@ -1487,6 +2595,9 @@ void MainWindow::buildJobsPage()
     scroll->setFrameShape(
         QFrame::NoFrame);
 
+    scroll->setHorizontalScrollBarPolicy(
+        Qt::ScrollBarAlwaysOff);
+
     auto *page =
         new QWidget;
 
@@ -1494,7 +2605,10 @@ void MainWindow::buildJobsPage()
         new QVBoxLayout(page);
 
     root->setContentsMargins(
-        28, 26, 28, 28);
+        30,
+        28,
+        30,
+        30);
 
     root->setSpacing(
         16);
@@ -1502,29 +2616,33 @@ void MainWindow::buildJobsPage()
     auto *header =
         new QHBoxLayout;
 
-    auto *block =
+    auto *titleBlock =
         new QVBoxLayout;
 
-    block->addWidget(
+    titleBlock->setSpacing(
+        4);
+
+    titleBlock->addWidget(
         makeTitle(
             QStringLiteral(
                 "Assigned Sanitization Jobs"),
             page));
 
-    block->addWidget(
+    titleBlock->addWidget(
         makeSubtitle(
             QStringLiteral(
-                "Requests authorized for this workstation employee."),
+                "Requests authorized for physical execution at this workstation."),
             page));
 
     header->addLayout(
-        block);
+        titleBlock);
 
     header->addStretch();
 
     refreshJobsButton_ =
         makeSecondaryButton(
-            QStringLiteral("Refresh jobs"),
+            QStringLiteral(
+                "Refresh jobs"),
             page);
 
     header->addWidget(
@@ -1541,37 +2659,34 @@ void MainWindow::buildJobsPage()
             tableCard);
 
     tableLayout->setContentsMargins(
-        16, 16, 16, 16);
+        16,
+        16,
+        16,
+        16);
 
     assignedJobsTable_ =
-        new QTableWidget(tableCard);
+        new QTableWidget(
+            tableCard);
 
     assignedJobsTable_->setColumnCount(
         5);
 
     assignedJobsTable_->setHorizontalHeaderLabels(
         {
-            QStringLiteral("Request ID"),
-            QStringLiteral("Device Type"),
-            QStringLiteral("Method"),
-            QStringLiteral("Asset"),
-            QStringLiteral("Status")
+            QStringLiteral(
+                "Request ID"),
+            QStringLiteral(
+                "Device Type"),
+            QStringLiteral(
+                "Method"),
+            QStringLiteral(
+                "Asset"),
+            QStringLiteral(
+                "Status")
         });
 
-    assignedJobsTable_->setSelectionBehavior(
-        QAbstractItemView::SelectRows);
-
-    assignedJobsTable_->setSelectionMode(
-        QAbstractItemView::SingleSelection);
-
-    assignedJobsTable_->setEditTriggers(
-        QAbstractItemView::NoEditTriggers);
-
-    assignedJobsTable_->setShowGrid(
-        false);
-
-    assignedJobsTable_->verticalHeader()
-        ->setVisible(false);
+    configureTable(
+        assignedJobsTable_);
 
     assignedJobsTable_->horizontalHeader()
         ->setSectionResizeMode(
@@ -1612,19 +2727,23 @@ void MainWindow::buildJobsPage()
             detailCard);
 
     detailLayout->setContentsMargins(
-        18, 18, 18, 18);
+        18,
+        18,
+        18,
+        18);
 
     detailLayout->setSpacing(
-        10);
+        12);
 
     detailLayout->addWidget(
         makeCaption(
             QStringLiteral(
-                "Selected work order"),
+                "SELECTED WORK ORDER"),
             detailCard));
 
     jobComboBox_ =
-        new QComboBox(detailCard);
+        new QComboBox(
+            detailCard);
 
     jobComboBox_->setMinimumHeight(
         42);
@@ -1632,102 +2751,112 @@ void MainWindow::buildJobsPage()
     detailLayout->addWidget(
         jobComboBox_);
 
-    auto *grid =
+    auto *jobGrid =
         new QGridLayout;
 
-    grid->setHorizontalSpacing(
-        24);
+    jobGrid->setHorizontalSpacing(
+        22);
 
-    grid->setVerticalSpacing(
+    jobGrid->setVerticalSpacing(
         12);
 
     jobRequestIdValue_ =
         makeValue(
-            QStringLiteral("—"),
+            QStringLiteral(
+                "—"),
             detailCard);
 
     jobDeviceTypeValue_ =
         makeValue(
-            QStringLiteral("—"),
+            QStringLiteral(
+                "—"),
             detailCard);
 
     jobRequestedMethodValue_ =
         makeValue(
-            QStringLiteral("—"),
+            QStringLiteral(
+                "—"),
             detailCard);
 
     jobAssetValue_ =
         makeValue(
-            QStringLiteral("—"),
+            QStringLiteral(
+                "—"),
             detailCard);
 
     jobWorkstationValue_ =
         makeValue(
-            QStringLiteral("—"),
+            QStringLiteral(
+                "—"),
             detailCard);
 
-    grid->addWidget(
+    jobGrid->addWidget(
         makeCaption(
-            QStringLiteral("Request ID"),
+            QStringLiteral(
+                "Request ID"),
             detailCard),
         0,
         0);
 
-    grid->addWidget(
+    jobGrid->addWidget(
         jobRequestIdValue_,
         1,
         0);
 
-    grid->addWidget(
+    jobGrid->addWidget(
         makeCaption(
-            QStringLiteral("Device type"),
+            QStringLiteral(
+                "Device type"),
             detailCard),
         0,
         1);
 
-    grid->addWidget(
+    jobGrid->addWidget(
         jobDeviceTypeValue_,
         1,
         1);
 
-    grid->addWidget(
+    jobGrid->addWidget(
         makeCaption(
-            QStringLiteral("Assigned method"),
+            QStringLiteral(
+                "Assigned method"),
             detailCard),
         0,
         2);
 
-    grid->addWidget(
+    jobGrid->addWidget(
         jobRequestedMethodValue_,
         1,
         2);
 
-    grid->addWidget(
+    jobGrid->addWidget(
         makeCaption(
-            QStringLiteral("Asset"),
+            QStringLiteral(
+                "Asset"),
             detailCard),
         2,
         0);
 
-    grid->addWidget(
+    jobGrid->addWidget(
         jobAssetValue_,
         3,
         0);
 
-    grid->addWidget(
+    jobGrid->addWidget(
         makeCaption(
-            QStringLiteral("Workstation"),
+            QStringLiteral(
+                "Workstation"),
             detailCard),
         2,
         1);
 
-    grid->addWidget(
+    jobGrid->addWidget(
         jobWorkstationValue_,
         3,
         1);
 
     detailLayout->addLayout(
-        grid);
+        jobGrid);
 
     root->addWidget(
         detailCard);
@@ -1740,24 +2869,44 @@ void MainWindow::buildJobsPage()
             targetCard);
 
     targetLayout->setContentsMargins(
-        18, 18, 18, 18);
+        18,
+        18,
+        18,
+        18);
 
     targetLayout->setSpacing(
-        10);
+        11);
 
     auto *targetHeader =
         new QHBoxLayout;
 
-    targetHeader->addWidget(
+    auto *targetTitleBlock =
+        new QVBoxLayout;
+
+    targetTitleBlock->setSpacing(
+        3);
+
+    targetTitleBlock->addWidget(
         makeCaption(
-            QStringLiteral("Physical target"),
+            QStringLiteral(
+                "PHYSICAL TARGET"),
             targetCard));
+
+    targetTitleBlock->addWidget(
+        makeSubtitle(
+            QStringLiteral(
+                "Only compatible physical devices are shown for the selected request."),
+            targetCard));
+
+    targetHeader->addLayout(
+        targetTitleBlock);
 
     targetHeader->addStretch();
 
     refreshDevicesButton_ =
         makeSecondaryButton(
-            QStringLiteral("Refresh devices"),
+            QStringLiteral(
+                "Refresh devices"),
             targetCard);
 
     targetHeader->addWidget(
@@ -1767,35 +2916,30 @@ void MainWindow::buildJobsPage()
         targetHeader);
 
     deviceTable_ =
-        new QTableWidget(targetCard);
+        new QTableWidget(
+            targetCard);
 
     deviceTable_->setColumnCount(
         6);
 
     deviceTable_->setHorizontalHeaderLabels(
         {
-            QStringLiteral("Model"),
-            QStringLiteral("Serial"),
-            QStringLiteral("Interface"),
-            QStringLiteral("Capacity"),
-            QStringLiteral("System"),
-            QStringLiteral("Device ID")
+            QStringLiteral(
+                "Model"),
+            QStringLiteral(
+                "Serial"),
+            QStringLiteral(
+                "Interface"),
+            QStringLiteral(
+                "Capacity"),
+            QStringLiteral(
+                "System"),
+            QStringLiteral(
+                "Device ID")
         });
 
-    deviceTable_->setSelectionBehavior(
-        QAbstractItemView::SelectRows);
-
-    deviceTable_->setSelectionMode(
-        QAbstractItemView::SingleSelection);
-
-    deviceTable_->setEditTriggers(
-        QAbstractItemView::NoEditTriggers);
-
-    deviceTable_->setShowGrid(
-        false);
-
-    deviceTable_->verticalHeader()
-        ->setVisible(false);
+    configureTable(
+        deviceTable_);
 
     deviceTable_->horizontalHeader()
         ->setSectionResizeMode(
@@ -1847,42 +2991,75 @@ void MainWindow::buildJobsPage()
             safetyCard);
 
     safetyLayout->setContentsMargins(
-        18, 18, 18, 18);
+        18,
+        18,
+        18,
+        18);
 
     safetyLayout->setSpacing(
         9);
 
-    safetyLayout->addWidget(
+    auto *safetyHeader =
+        new QHBoxLayout;
+
+    auto *safetyBlock =
+        new QVBoxLayout;
+
+    safetyBlock->setSpacing(
+        3);
+
+    safetyBlock->addWidget(
         makeCaption(
-            QStringLiteral("Target safety"),
+            QStringLiteral(
+                "TARGET SAFETY"),
             safetyCard));
 
+    safetyBlock->addWidget(
+        makeSubtitle(
+            QStringLiteral(
+                "Fresh validation is required before a destructive operation."),
+            safetyCard));
+
+    safetyHeader->addLayout(
+        safetyBlock);
+
+    safetyHeader->addStretch();
+
     targetSafetyBadge_ =
-        new QLabel(
-            QStringLiteral("NOT CHECKED"),
+        makeBadge(
+            QStringLiteral(
+                "NOT CHECKED"),
             safetyCard);
 
-    targetSafetyBadge_->setAlignment(
-        Qt::AlignCenter);
-
     targetSafetyBadge_->setStyleSheet(
-        badgeStyle("NOT_CHECKED"));
+        badgeStyle(
+            "NOT_CHECKED"));
 
-    safetyLayout->addWidget(
+    safetyHeader->addWidget(
         targetSafetyBadge_);
+
+    safetyLayout->addLayout(
+        safetyHeader);
 
     targetSafetyText_ =
         new QLabel(
             QStringLiteral(
-                "Select a physical target and run a fresh safety check."),
+                "Select an exact physical target."),
             safetyCard);
 
     targetSafetyText_->setWordWrap(
         true);
 
+    targetSafetyText_->setMinimumHeight(
+        56);
+
     targetSafetyText_->setStyleSheet(
+        "QLabel {"
+        "background:transparent;"
+        "border:none;"
         "color:#667085;"
-        "font-size:11px;");
+        "font-size:11px;"
+        "}");
 
     safetyLayout->addWidget(
         targetSafetyText_);
@@ -1894,36 +3071,42 @@ void MainWindow::buildJobsPage()
         18);
 
     targetGrid->setVerticalSpacing(
-        8);
+        9);
 
     targetModelValue_ =
         makeValue(
-            QStringLiteral("—"),
+            QStringLiteral(
+                "—"),
             safetyCard);
 
     targetSerialValue_ =
         makeValue(
-            QStringLiteral("—"),
+            QStringLiteral(
+                "—"),
             safetyCard);
 
     targetCapacityValue_ =
         makeValue(
-            QStringLiteral("—"),
+            QStringLiteral(
+                "—"),
             safetyCard);
 
     targetInterfaceValue_ =
         makeValue(
-            QStringLiteral("—"),
+            QStringLiteral(
+                "—"),
             safetyCard);
 
     targetPathValue_ =
         makeValue(
-            QStringLiteral("—"),
+            QStringLiteral(
+                "—"),
             safetyCard);
 
     targetGrid->addWidget(
         makeCaption(
-            QStringLiteral("Model"),
+            QStringLiteral(
+                "Model"),
             safetyCard),
         0,
         0);
@@ -1935,7 +3118,8 @@ void MainWindow::buildJobsPage()
 
     targetGrid->addWidget(
         makeCaption(
-            QStringLiteral("Serial"),
+            QStringLiteral(
+                "Serial"),
             safetyCard),
         0,
         1);
@@ -1947,7 +3131,8 @@ void MainWindow::buildJobsPage()
 
     targetGrid->addWidget(
         makeCaption(
-            QStringLiteral("Capacity"),
+            QStringLiteral(
+                "Capacity"),
             safetyCard),
         2,
         0);
@@ -1959,7 +3144,8 @@ void MainWindow::buildJobsPage()
 
     targetGrid->addWidget(
         makeCaption(
-            QStringLiteral("Interface"),
+            QStringLiteral(
+                "Interface"),
             safetyCard),
         2,
         1);
@@ -1971,7 +3157,8 @@ void MainWindow::buildJobsPage()
 
     targetGrid->addWidget(
         makeCaption(
-            QStringLiteral("Physical device"),
+            QStringLiteral(
+                "Physical device"),
             safetyCard),
         4,
         0,
@@ -1990,17 +3177,20 @@ void MainWindow::buildJobsPage()
 
     capabilityValue_ =
         makeValue(
-            QStringLiteral("—"),
+            QStringLiteral(
+                "—"),
             safetyCard);
 
     selectedMethodValue_ =
         makeValue(
-            QStringLiteral("—"),
+            QStringLiteral(
+                "—"),
             safetyCard);
 
     safetyLayout->addWidget(
         makeCaption(
-            QStringLiteral("Capability"),
+            QStringLiteral(
+                "Capability"),
             safetyCard));
 
     safetyLayout->addWidget(
@@ -2008,7 +3198,8 @@ void MainWindow::buildJobsPage()
 
     safetyLayout->addWidget(
         makeCaption(
-            QStringLiteral("Detected method"),
+            QStringLiteral(
+                "Detected method"),
             safetyCard));
 
     safetyLayout->addWidget(
@@ -2016,7 +3207,7 @@ void MainWindow::buildJobsPage()
 
     workspace->addWidget(
         safetyCard,
-        2);
+        1);
 
     auto *executionCard =
         makeCard(page);
@@ -2026,30 +3217,55 @@ void MainWindow::buildJobsPage()
             executionCard);
 
     executionLayout->setContentsMargins(
-        18, 18, 18, 18);
+        18,
+        18,
+        18,
+        18);
 
     executionLayout->setSpacing(
-        9);
+        8);
 
-    executionLayout->addWidget(
+    auto *executionHeader =
+        new QHBoxLayout;
+
+    auto *executionBlock =
+        new QVBoxLayout;
+
+    executionBlock->setSpacing(
+        3);
+
+    executionBlock->addWidget(
         makeCaption(
             QStringLiteral(
-                "Sanitization pipeline"),
+                "SANITIZATION PIPELINE"),
             executionCard));
 
+    executionBlock->addWidget(
+        makeSubtitle(
+            QStringLiteral(
+                "Physical execution, verification and evidence state."),
+            executionCard));
+
+    executionHeader->addLayout(
+        executionBlock);
+
+    executionHeader->addStretch();
+
     pipelineStatusValue_ =
-        new QLabel(
-            QStringLiteral("NOT STARTED"),
+        makeBadge(
+            QStringLiteral(
+                "NOT STARTED"),
             executionCard);
 
-    pipelineStatusValue_->setAlignment(
-        Qt::AlignCenter);
-
     pipelineStatusValue_->setStyleSheet(
-        badgeStyle("NOT_STARTED"));
+        badgeStyle(
+            "NOT_STARTED"));
 
-    executionLayout->addWidget(
+    executionHeader->addWidget(
         pipelineStatusValue_);
+
+    executionLayout->addLayout(
+        executionHeader);
 
     operationProgress_ =
         new QProgressBar(
@@ -2073,37 +3289,44 @@ void MainWindow::buildJobsPage()
 
     verificationValue_ =
         makeValue(
-            QStringLiteral("—"),
+            QStringLiteral(
+                "—"),
             executionCard);
 
     operationValue_ =
         makeValue(
-            QStringLiteral("—"),
+            QStringLiteral(
+                "—"),
             executionCard);
 
     bytesProcessedValue_ =
         makeValue(
-            QStringLiteral("—"),
+            QStringLiteral(
+                "—"),
             executionCard);
 
     bytesVerifiedValue_ =
         makeValue(
-            QStringLiteral("—"),
+            QStringLiteral(
+                "—"),
             executionCard);
 
     samplesValue_ =
         makeValue(
-            QStringLiteral("—"),
+            QStringLiteral(
+                "—"),
             executionCard);
 
     certificateValue_ =
         makeValue(
-            QStringLiteral("—"),
+            QStringLiteral(
+                "—"),
             executionCard);
 
     executionLayout->addWidget(
         makeCaption(
-            QStringLiteral("Verification"),
+            QStringLiteral(
+                "Verification"),
             executionCard));
 
     executionLayout->addWidget(
@@ -2111,7 +3334,8 @@ void MainWindow::buildJobsPage()
 
     executionLayout->addWidget(
         makeCaption(
-            QStringLiteral("Operation ID"),
+            QStringLiteral(
+                "Operation ID"),
             executionCard));
 
     executionLayout->addWidget(
@@ -2119,7 +3343,8 @@ void MainWindow::buildJobsPage()
 
     executionLayout->addWidget(
         makeCaption(
-            QStringLiteral("Bytes processed"),
+            QStringLiteral(
+                "Bytes processed"),
             executionCard));
 
     executionLayout->addWidget(
@@ -2127,7 +3352,8 @@ void MainWindow::buildJobsPage()
 
     executionLayout->addWidget(
         makeCaption(
-            QStringLiteral("Bytes verified"),
+            QStringLiteral(
+                "Bytes verified"),
             executionCard));
 
     executionLayout->addWidget(
@@ -2135,7 +3361,8 @@ void MainWindow::buildJobsPage()
 
     executionLayout->addWidget(
         makeCaption(
-            QStringLiteral("Samples"),
+            QStringLiteral(
+                "Samples"),
             executionCard));
 
     executionLayout->addWidget(
@@ -2143,7 +3370,8 @@ void MainWindow::buildJobsPage()
 
     executionLayout->addWidget(
         makeCaption(
-            QStringLiteral("Certificate"),
+            QStringLiteral(
+                "Certificate"),
             executionCard));
 
     executionLayout->addWidget(
@@ -2164,7 +3392,13 @@ void MainWindow::buildJobsPage()
             actionCard);
 
     actionLayout->setContentsMargins(
-        18, 16, 18, 16);
+        18,
+        16,
+        18,
+        16);
+
+    actionLayout->setSpacing(
+        12);
 
     jobMessageLabel_ =
         new QLabel(
@@ -2176,9 +3410,13 @@ void MainWindow::buildJobsPage()
         true);
 
     jobMessageLabel_->setStyleSheet(
+        "QLabel {"
+        "background:transparent;"
+        "border:none;"
         "color:#667085;"
         "font-size:12px;"
-        "font-weight:600;");
+        "font-weight:600;"
+        "}");
 
     actionLayout->addWidget(
         jobMessageLabel_);
@@ -2221,14 +3459,17 @@ void MainWindow::buildJobsPage()
     scroll->setWidget(
         page);
 
-    auto *layout =
+    auto *outer =
         new QVBoxLayout(
             jobsPage_);
 
-    layout->setContentsMargins(
-        0, 0, 0, 0);
+    outer->setContentsMargins(
+        0,
+        0,
+        0,
+        0);
 
-    layout->addWidget(
+    outer->addWidget(
         scroll);
 }
 
@@ -2247,14 +3488,21 @@ void MainWindow::buildDevicesPage()
     scroll->setFrameShape(
         QFrame::NoFrame);
 
+    scroll->setHorizontalScrollBarPolicy(
+        Qt::ScrollBarAlwaysOff);
+
     auto *page =
         new QWidget;
 
     auto *root =
-        new QVBoxLayout(page);
+        new QVBoxLayout(
+            page);
 
     root->setContentsMargins(
-        28, 26, 28, 28);
+        30,
+        28,
+        30,
+        30);
 
     root->setSpacing(
         16);
@@ -2264,6 +3512,9 @@ void MainWindow::buildDevicesPage()
 
     auto *titleBlock =
         new QVBoxLayout;
+
+    titleBlock->setSpacing(
+        4);
 
     titleBlock->addWidget(
         makeTitle(
@@ -2284,7 +3535,8 @@ void MainWindow::buildDevicesPage()
 
     auto *refreshButton =
         makeSecondaryButton(
-            QStringLiteral("Refresh"),
+            QStringLiteral(
+                "Refresh"),
             page);
 
     connect(
@@ -2299,72 +3551,148 @@ void MainWindow::buildDevicesPage()
     root->addLayout(
         header);
 
-    auto *card =
+    auto *intro =
+        makeCard(page);
+
+    auto *introLayout =
+        new QHBoxLayout(
+            intro);
+
+    introLayout->setContentsMargins(
+        18,
+        16,
+        18,
+        16);
+
+    introLayout->setSpacing(
+        14);
+
+    auto *icon =
+        new QLabel(
+            QStringLiteral(
+                "◉"),
+            intro);
+
+    icon->setAlignment(
+        Qt::AlignCenter);
+
+    icon->setFixedSize(
+        42,
+        42);
+
+    icon->setStyleSheet(
+        "QLabel {"
+        "background:#EFF6FF;"
+        "color:#2563EB;"
+        "border:1px solid #BFDBFE;"
+        "border-radius:12px;"
+        "font-size:18px;"
+        "font-weight:700;"
+        "}");
+
+    introLayout->addWidget(
+        icon);
+
+    auto *introText =
+        new QVBoxLayout;
+
+    introText->setSpacing(
+        3);
+
+    introText->addWidget(
+        makeFeatureTitle(
+            QStringLiteral(
+                "Physical inventory"),
+            intro));
+
+    introText->addWidget(
+        makeFeatureText(
+            QStringLiteral(
+                "Every physical storage device returned by the desktop discovery layer is shown here. System disks remain visibly blocked."),
+            intro));
+
+    introLayout->addLayout(
+        introText,
+        1);
+
+    root->addWidget(
+        intro);
+
+    auto *tableCard =
         makeCard(page);
 
     auto *layout =
-        new QVBoxLayout(card);
+        new QVBoxLayout(
+            tableCard);
 
     layout->setContentsMargins(
-        16, 16, 16, 16);
+        16,
+        16,
+        16,
+        16);
 
-    auto *table =
-        new QTableWidget(card);
+    devicesInventoryTable_ =
+        new QTableWidget(
+            tableCard);
 
-    table->setColumnCount(
-        5);
+    devicesInventoryTable_->setColumnCount(
+        6);
 
-    table->setHorizontalHeaderLabels(
+    devicesInventoryTable_->setHorizontalHeaderLabels(
         {
-            QStringLiteral("Model"),
-            QStringLiteral("Serial"),
-            QStringLiteral("Interface"),
-            QStringLiteral("Capacity"),
-            QStringLiteral("Device ID")
+            QStringLiteral(
+                "Model"),
+            QStringLiteral(
+                "Serial"),
+            QStringLiteral(
+                "Interface"),
+            QStringLiteral(
+                "Capacity"),
+            QStringLiteral(
+                "System"),
+            QStringLiteral(
+                "Device ID")
         });
 
-    table->setSelectionBehavior(
-        QAbstractItemView::SelectRows);
+    configureTable(
+        devicesInventoryTable_);
 
-    table->setEditTriggers(
-        QAbstractItemView::NoEditTriggers);
-
-    table->setShowGrid(
-        false);
-
-    table->verticalHeader()
-        ->setVisible(false);
-
-    table->horizontalHeader()
+    devicesInventoryTable_->horizontalHeader()
         ->setSectionResizeMode(
             0,
             QHeaderView::Stretch);
 
-    table->horizontalHeader()
+    devicesInventoryTable_->horizontalHeader()
         ->setSectionResizeMode(
             1,
             QHeaderView::Stretch);
 
-    table->horizontalHeader()
+    devicesInventoryTable_->horizontalHeader()
         ->setSectionResizeMode(
             2,
             QHeaderView::ResizeToContents);
 
-    table->horizontalHeader()
+    devicesInventoryTable_->horizontalHeader()
         ->setSectionResizeMode(
             3,
             QHeaderView::ResizeToContents);
 
-    table->horizontalHeader()
+    devicesInventoryTable_->horizontalHeader()
         ->setSectionResizeMode(
             4,
+            QHeaderView::ResizeToContents);
+
+    devicesInventoryTable_->horizontalHeader()
+        ->setSectionResizeMode(
+            5,
             QHeaderView::Stretch);
 
     layout->addWidget(
-        table);
+        devicesInventoryTable_);
 
     root->addWidget(
-        card);
+        tableCard,
+        1);
 
     scroll->setWidget(
         page);
@@ -2374,7 +3702,10 @@ void MainWindow::buildDevicesPage()
             devicesPage_);
 
     outer->setContentsMargins(
-        0, 0, 0, 0);
+        0,
+        0,
+        0,
+        0);
 
     outer->addWidget(
         scroll);
@@ -2385,75 +3716,209 @@ void MainWindow::buildForensicsPage()
     forensicsPage_ =
         new QWidget;
 
-    forensicPage_ =
-        forensicsPage_;
-
     auto *root =
         new QVBoxLayout(
             forensicsPage_);
 
     root->setContentsMargins(
-        28, 26, 28, 28);
+        0,
+        0,
+        0,
+        0);
 
     root->setSpacing(
+        0);
+
+    auto *scroll =
+        new QScrollArea(
+            forensicsPage_);
+
+    scroll->setWidgetResizable(
+        true);
+
+    scroll->setFrameShape(
+        QFrame::NoFrame);
+
+    scroll->setHorizontalScrollBarPolicy(
+        Qt::ScrollBarAlwaysOff);
+
+    auto *page =
+        new QWidget;
+
+    auto *pageLayout =
+        new QVBoxLayout(
+            page);
+
+    pageLayout->setContentsMargins(
+        30,
+        28,
+        30,
+        30);
+
+    pageLayout->setSpacing(
         16);
 
-    root->addWidget(
+    auto *header =
+        new QHBoxLayout;
+
+    auto *titleBlock =
+        new QVBoxLayout;
+
+    titleBlock->setSpacing(
+        4);
+
+    titleBlock->addWidget(
         makeTitle(
             QStringLiteral(
-                "Evidence & Forensics"),
-            forensicsPage_));
+                "Forensic Recovery"),
+            page));
 
-    root->addWidget(
+    titleBlock->addWidget(
         makeSubtitle(
             QStringLiteral(
-                "Audit, operation and certificate evidence produced by the sanitization pipeline."),
-            forensicsPage_));
+                "Read-only acquisition, artifact recovery, validation and evidence inspection."),
+            page));
 
-    auto *card =
-        makeCard(forensicsPage_);
+    header->addLayout(
+        titleBlock);
 
-    auto *layout =
-        new QVBoxLayout(card);
+    header->addStretch();
 
-    layout->setContentsMargins(
-        18, 18, 18, 18);
+    auto *forensicBadge =
+        makeBadge(
+            QStringLiteral(
+                "READ ONLY"),
+            page);
 
-    layout->addWidget(
+    forensicBadge->setStyleSheet(
+        badgeStyle(
+            "SAFE"));
+
+    header->addWidget(
+        forensicBadge);
+
+    pageLayout->addLayout(
+        header);
+
+    auto *infoCard =
+        makeCard(page);
+
+    auto *infoLayout =
+        new QHBoxLayout(
+            infoCard);
+
+    infoLayout->setContentsMargins(
+        18,
+        15,
+        18,
+        15);
+
+    infoLayout->setSpacing(
+        12);
+
+    auto *infoIcon =
+        new QLabel(
+            QStringLiteral(
+                "⌕"),
+            infoCard);
+
+    infoIcon->setAlignment(
+        Qt::AlignCenter);
+
+    infoIcon->setFixedSize(
+        40,
+        40);
+
+    infoIcon->setStyleSheet(
+        "QLabel {"
+        "background:#F5F3FF;"
+        "border:1px solid #DDD6FE;"
+        "border-radius:11px;"
+        "color:#6941C6;"
+        "font-size:18px;"
+        "font-weight:700;"
+        "}");
+
+    infoLayout->addWidget(
+        infoIcon);
+
+    auto *infoText =
+        new QVBoxLayout;
+
+    infoText->setSpacing(
+        3);
+
+    infoText->addWidget(
+        makeFeatureTitle(
+            QStringLiteral(
+                "Forensic acquisition"),
+            infoCard));
+
+    infoText->addWidget(
+        makeFeatureText(
+            QStringLiteral(
+                "The recovery engine can acquire from a physical storage device or a forensic image and present validated recovered artifacts for inspection."),
+            infoCard));
+
+    infoLayout->addLayout(
+        infoText,
+        1);
+
+    pageLayout->addWidget(
+        infoCard);
+
+    forensicPage_ =
+        new ForensicPage(
+            deviceController_,
+            page);
+
+    forensicPage_->setSizePolicy(
+        QSizePolicy::Expanding,
+        QSizePolicy::Expanding);
+
+    pageLayout->addWidget(
+        forensicPage_,
+        1);
+
+    auto *evidenceCard =
+        makeCard(page);
+
+    auto *evidenceLayout =
+        new QVBoxLayout(
+            evidenceCard);
+
+    evidenceLayout->setContentsMargins(
+        18,
+        16,
+        18,
+        16);
+
+    evidenceLayout->setSpacing(
+        7);
+
+    evidenceLayout->addWidget(
         makeCaption(
             QStringLiteral(
-                "Latest evidence"),
-            card));
+                "LATEST SANITIZATION EVIDENCE"),
+            evidenceCard));
 
     evidenceValue_ =
         makeValue(
             QStringLiteral(
-                "No pipeline evidence generated yet."),
-            card);
+                "No sanitization pipeline evidence generated yet."),
+            evidenceCard);
 
-    layout->addWidget(
+    evidenceLayout->addWidget(
         evidenceValue_);
 
-    auto *info =
-        new QLabel(
-            QStringLiteral(
-                "Evidence is generated by the sanitization pipeline and should not be modified manually from the workstation UI."),
-            card);
+    pageLayout->addWidget(
+        evidenceCard);
 
-    info->setWordWrap(
-        true);
-
-    info->setStyleSheet(
-        "color:#667085;"
-        "font-size:11px;");
-
-    layout->addWidget(
-        info);
+    scroll->setWidget(
+        page);
 
     root->addWidget(
-        card);
-
-    root->addStretch();
+        scroll);
 }
 
 void MainWindow::buildSettingsPage()
@@ -2461,41 +3926,67 @@ void MainWindow::buildSettingsPage()
     settingsPage_ =
         new QWidget;
 
-    auto *root =
-        new QVBoxLayout(
+    auto *scroll =
+        new QScrollArea(
             settingsPage_);
 
+    scroll->setWidgetResizable(
+        true);
+
+    scroll->setFrameShape(
+        QFrame::NoFrame);
+
+    scroll->setHorizontalScrollBarPolicy(
+        Qt::ScrollBarAlwaysOff);
+
+    auto *page =
+        new QWidget;
+
+    auto *root =
+        new QVBoxLayout(
+            page);
+
     root->setContentsMargins(
-        28, 26, 28, 28);
+        30,
+        28,
+        30,
+        30);
 
     root->setSpacing(
         16);
 
     root->addWidget(
         makeTitle(
-            QStringLiteral("Settings"),
-            settingsPage_));
+            QStringLiteral(
+                "Settings"),
+            page));
 
     root->addWidget(
         makeSubtitle(
             QStringLiteral(
-                "Workstation configuration and execution policy."),
-            settingsPage_));
+                "Workstation configuration, backend connectivity and execution policy."),
+            page));
 
     auto *apiCard =
-        makeCard(settingsPage_);
+        makeCard(page);
 
     auto *apiLayout =
         new QVBoxLayout(
             apiCard);
 
     apiLayout->setContentsMargins(
-        18, 18, 18, 18);
+        18,
+        18,
+        18,
+        18);
+
+    apiLayout->setSpacing(
+        7);
 
     apiLayout->addWidget(
         makeCaption(
             QStringLiteral(
-                "Backend API"),
+                "BACKEND API"),
             apiCard));
 
     apiLayout->addWidget(
@@ -2507,100 +3998,234 @@ void MainWindow::buildSettingsPage()
     root->addWidget(
         apiCard);
 
-    auto *safetyCard =
-        makeCard(settingsPage_);
+    auto *executionCard =
+        makeCard(page);
 
-    auto *safetyLayout =
+    auto *executionLayout =
         new QVBoxLayout(
-            safetyCard);
+            executionCard);
 
-    safetyLayout->setContentsMargins(
-        18, 18, 18, 18);
+    executionLayout->setContentsMargins(
+        18,
+        18,
+        18,
+        18);
 
-    safetyLayout->addWidget(
+    executionLayout->setSpacing(
+        8);
+
+    executionLayout->addWidget(
         makeCaption(
             QStringLiteral(
-                "Destructive-operation policy"),
-            safetyCard));
+                "DESTRUCTIVE-OPERATION POLICY"),
+            executionCard));
 
-    auto *safety =
+    auto *policyTitle =
         new QLabel(
             QStringLiteral(
-                "Never authorize an operating-system disk or an unintended storage device. "
-                "The exact target must pass identity validation and safety checks before physical sanitization."),
-            safetyCard);
+                "Target identity is always checked before execution."),
+            executionCard);
 
-    safety->setWordWrap(
+    policyTitle->setStyleSheet(
+        "QLabel {"
+        "background:transparent;"
+        "border:none;"
+        "color:#172033;"
+        "font-size:14px;"
+        "font-weight:700;"
+        "}");
+
+    executionLayout->addWidget(
+        policyTitle);
+
+    auto *policyText =
+        new QLabel(
+            QStringLiteral(
+                "Never authorize an operating-system disk or an unintended storage device. The exact target must pass identity validation and safety checks before physical sanitization."),
+            executionCard);
+
+    policyText->setWordWrap(
         true);
 
-    safety->setStyleSheet(
+    policyText->setStyleSheet(
+        "QLabel {"
+        "background:transparent;"
+        "border:none;"
         "color:#667085;"
-        "font-size:12px;");
+        "font-size:11px;"
+        "}");
 
-    safetyLayout->addWidget(
-        safety);
+    executionLayout->addWidget(
+        policyText);
 
     root->addWidget(
-        safetyCard);
+        executionCard);
+
+    auto *workflowCard =
+        makeCard(page);
+
+    auto *workflowLayout =
+        new QVBoxLayout(
+            workflowCard);
+
+    workflowLayout->setContentsMargins(
+        18,
+        18,
+        18,
+        18);
+
+    workflowLayout->setSpacing(
+        7);
+
+    workflowLayout->addWidget(
+        makeCaption(
+            QStringLiteral(
+                "SECUREWIPE WORKFLOW"),
+            workflowCard));
+
+    workflowLayout->addWidget(
+        makeValue(
+            QStringLiteral(
+                "Sanitization: assigned request → physical target → safety → sanitize → verify → certificate → audit evidence"),
+            workflowCard));
+
+    workflowLayout->addWidget(
+        makeValue(
+            QStringLiteral(
+                "Forensics: read-only source → acquisition → carving → validation → recovered evidence"),
+            workflowCard));
+
+    root->addWidget(
+        workflowCard);
 
     root->addStretch();
+
+    scroll->setWidget(
+        page);
+
+    auto *outer =
+        new QVBoxLayout(
+            settingsPage_);
+
+    outer->setContentsMargins(
+        0,
+        0,
+        0,
+        0);
+
+    outer->addWidget(
+        scroll);
 }
 
 void MainWindow::applyTheme()
 {
     qApp->setStyleSheet(
-        "QWidget {font-family:'Segoe UI';}"
-        "QMainWindow {background:#F6F8FB;}"
+        "QWidget {"
+        "font-family:'Segoe UI';"
+        "color:#172033;"
+        "}"
+        "QMainWindow {"
+        "background:#F5F7FB;"
+        "}"
+        "QScrollArea {"
+        "background:#F5F7FB;"
+        "border:none;"
+        "}"
+        "QScrollArea > QWidget > QWidget {"
+        "background:#F5F7FB;"
+        "}"
+        "QLabel {"
+        "background:transparent;"
+        "border:none;"
+        "}"
         "QLineEdit {"
         "background:#FFFFFF;"
         "color:#172033;"
         "border:1px solid #D0D5DD;"
-        "border-radius:9px;"
-        "padding:8px 12px;"
+        "border-radius:10px;"
+        "padding:10px 12px;"
         "font-size:12px;"
         "}"
-        "QLineEdit:focus {border-color:#2563EB;}"
+        "QLineEdit:focus {"
+        "border:1px solid #2563EB;"
+        "}"
         "QComboBox {"
         "background:#FFFFFF;"
         "color:#172033;"
         "border:1px solid #D0D5DD;"
-        "border-radius:9px;"
-        "padding:8px 12px;"
+        "border-radius:10px;"
+        "padding:9px 12px;"
         "font-size:12px;"
         "}"
-        "QComboBox:focus {border-color:#2563EB;}"
-        "QTableWidget {"
+        "QComboBox:focus {"
+        "border:1px solid #2563EB;"
+        "}"
+        "QComboBox QAbstractItemView {"
         "background:#FFFFFF;"
         "color:#172033;"
-        "border:1px solid #E4E7EC;"
-        "border-radius:10px;"
-        "gridline-color:transparent;"
+        "border:1px solid #D0D5DD;"
         "selection-background-color:#EFF6FF;"
         "selection-color:#172033;"
+        "padding:4px;"
+        "}"
+        "QTableWidget {"
+        "background:#FFFFFF;"
+        "alternate-background-color:#FAFBFC;"
+        "color:#172033;"
+        "border:1px solid #E4E7EC;"
+        "border-radius:12px;"
+        "gridline-color:transparent;"
+        "outline:none;"
         "font-size:12px;"
         "}"
-        "QTableWidget::item {padding:8px;}"
+        "QTableWidget::item {"
+        "padding:9px;"
+        "border:none;"
+        "}"
+        "QTableWidget::item:selected {"
+        "background:#EFF6FF;"
+        "color:#172033;"
+        "}"
         "QHeaderView::section {"
         "background:#F8FAFC;"
         "color:#667085;"
         "border:none;"
         "border-bottom:1px solid #E4E7EC;"
-        "padding:9px;"
+        "padding:10px 9px;"
         "font-size:10px;"
         "font-weight:700;"
         "}"
         "QProgressBar {"
-        "background:#F2F4F7;"
+        "background:#E9EEF5;"
         "border:none;"
-        "border-radius:4px;"
+        "border-radius:5px;"
+        "min-height:8px;"
+        "max-height:8px;"
         "}"
         "QProgressBar::chunk {"
         "background:#2563EB;"
+        "border-radius:5px;"
+        "}"
+        "QScrollBar:vertical {"
+        "background:#F2F4F7;"
+        "width:9px;"
+        "border:none;"
+        "}"
+        "QScrollBar::handle:vertical {"
+        "background:#CBD5E1;"
+        "min-height:35px;"
         "border-radius:4px;"
         "}"
-        "QScrollArea {"
-        "background:#F6F8FB;"
+        "QScrollBar::add-line:vertical,"
+        "QScrollBar::sub-line:vertical {"
+        "height:0;"
+        "}"
+        "QToolTip {"
+        "background:#172033;"
+        "color:#FFFFFF;"
         "border:none;"
+        "padding:7px 9px;"
+        "border-radius:6px;"
         "}");
 }
 
@@ -2615,13 +4240,11 @@ void MainWindow::setActiveNav(
         settingsNavButton_
     };
 
-    for (QPushButton *item : buttons)
+    for (QPushButton *item :
+         buttons)
     {
         if (!item)
             continue;
-
-        item->setMinimumHeight(
-            40);
 
         if (item == button)
         {
@@ -2630,9 +4253,9 @@ void MainWindow::setActiveNav(
                 "background:#EFF6FF;"
                 "color:#1D4ED8;"
                 "border:none;"
-                "border-radius:9px;"
+                "border-radius:10px;"
                 "text-align:left;"
-                "padding:9px 12px;"
+                "padding:0 14px;"
                 "font-size:12px;"
                 "font-weight:700;"
                 "}"
@@ -2647,9 +4270,9 @@ void MainWindow::setActiveNav(
                 "background:transparent;"
                 "color:#475467;"
                 "border:none;"
-                "border-radius:9px;"
+                "border-radius:10px;"
                 "text-align:left;"
-                "padding:9px 12px;"
+                "padding:0 14px;"
                 "font-size:12px;"
                 "font-weight:600;"
                 "}"
@@ -2664,26 +4287,39 @@ void MainWindow::setConnectionState(
     bool connected,
     const QString &text)
 {
-    connectionBadgeLabel_->setText(
+    if (!connectionBadgeLabel_)
+        return;
+
+    const QString display =
         text.isEmpty()
             ? (connected
-                   ? QStringLiteral("Connected")
-                   : QStringLiteral("Disconnected"))
-            : text);
+                   ? QStringLiteral(
+                         "Connected")
+                   : QStringLiteral(
+                         "Disconnected"))
+            : text;
+
+    connectionBadgeLabel_->setText(
+        display);
 
     connectionBadgeLabel_->setStyleSheet(
         badgeStyle(
             connected
-                ? QStringLiteral("SAFE")
-                : QStringLiteral("FAILED")));
+                ? QStringLiteral(
+                      "CONNECTED")
+                : QStringLiteral(
+                      "DISCONNECTED")));
 }
 
 void MainWindow::showPage(
     QWidget *page,
     QPushButton *navButton)
 {
-    if (!page)
+    if (!page ||
+        !contentStack_)
+    {
         return;
+    }
 
     contentStack_->setCurrentWidget(
         page);
@@ -2719,10 +4355,12 @@ void MainWindow::handleAssignedRequests(
     int failed = 0;
 
     dashboardJobsTable_->clearContents();
-    dashboardJobsTable_->setRowCount(0);
+    dashboardJobsTable_->setRowCount(
+        0);
 
     assignedJobsTable_->clearContents();
-    assignedJobsTable_->setRowCount(0);
+    assignedJobsTable_->setRowCount(
+        0);
 
     jobComboBox_->blockSignals(
         true);
@@ -2740,38 +4378,36 @@ void MainWindow::handleAssignedRequests(
 
         const QString requestId =
             request.value(
-                QStringLiteral("requestId"))
+                QStringLiteral(
+                    "requestId"))
                 .toString();
 
         const QString deviceType =
             request.value(
-                QStringLiteral("deviceType"))
+                QStringLiteral(
+                    "deviceType"))
                 .toString();
 
         const QString method =
             request.value(
-                QStringLiteral("sanitizationMethod"))
+                QStringLiteral(
+                    "sanitizationMethod"))
                 .toString();
 
         const QString status =
             request.value(
-                QStringLiteral("status"))
+                QStringLiteral(
+                    "status"))
                 .toString();
 
         const QString asset =
             request.value(
-                QStringLiteral("asset"))
+                QStringLiteral(
+                    "asset"))
                 .toString(
                     request.value(
-                        QStringLiteral("customer"))
-                        .toString());
-
-        const QString workstation =
-            request.value(
-                QStringLiteral("workstationCenter"))
-                .toString(
-                    request.value(
-                        QStringLiteral("center"))
+                        QStringLiteral(
+                            "customer"))
                         .toString());
 
         if (requestId.isEmpty())
@@ -2779,18 +4415,32 @@ void MainWindow::handleAssignedRequests(
 
         ++total;
 
-        if (status == "ASSIGNED" ||
-            status == "IN_PROGRESS" ||
-            status == "VERIFYING")
+        if (status ==
+                QStringLiteral(
+                    "ASSIGNED") ||
+            status ==
+                QStringLiteral(
+                    "IN_PROGRESS") ||
+            status ==
+                QStringLiteral(
+                    "VERIFYING"))
         {
             ++active;
         }
 
-        if (status == "COMPLETED")
+        if (status ==
+            QStringLiteral(
+                "COMPLETED"))
+        {
             ++completed;
+        }
 
-        if (status == "FAILED")
+        if (status ==
+            QStringLiteral(
+                "FAILED"))
+        {
             ++failed;
+        }
 
         if (dashboardJobsTable_->rowCount() <
             8)
@@ -2818,14 +4468,29 @@ void MainWindow::handleAssignedRequests(
                 2,
                 new QTableWidgetItem(
                     method.isEmpty()
-                        ? QStringLiteral("—")
+                        ? QStringLiteral(
+                              "—")
                         : method));
+
+            auto *statusItem =
+                new QTableWidgetItem(
+                    status);
+
+            statusItem->setForeground(
+                status ==
+                        QStringLiteral(
+                            "FAILED")
+                    ? QBrush(
+                          QColor(
+                              "#B42318"))
+                    : QBrush(
+                          QColor(
+                              "#344054")));
 
             dashboardJobsTable_->setItem(
                 row,
                 3,
-                new QTableWidgetItem(
-                    status));
+                statusItem);
         }
 
         const int row =
@@ -2851,7 +4516,8 @@ void MainWindow::handleAssignedRequests(
             2,
             new QTableWidgetItem(
                 method.isEmpty()
-                    ? QStringLiteral("—")
+                    ? QStringLiteral(
+                          "—")
                     : method));
 
         assignedJobsTable_->setItem(
@@ -2859,7 +4525,8 @@ void MainWindow::handleAssignedRequests(
             3,
             new QTableWidgetItem(
                 asset.isEmpty()
-                    ? QStringLiteral("—")
+                    ? QStringLiteral(
+                          "—")
                     : asset));
 
         assignedJobsTable_->setItem(
@@ -2876,14 +4543,14 @@ void MainWindow::handleAssignedRequests(
                     deviceType,
                     method.isEmpty()
                         ? QStringLiteral(
-                            "Method not specified")
+                              "Method not specified")
                         : method);
+
+        const int index =
+            jobComboBox_->count();
 
         jobComboBox_->addItem(
             display);
-
-        const int index =
-            jobComboBox_->count() - 1;
 
         jobComboBox_->setItemData(
             index,
@@ -2901,7 +4568,8 @@ void MainWindow::handleAssignedRequests(
             Qt::UserRole + 2);
 
         if (!selectedRequestId_.isEmpty() &&
-            requestId == selectedRequestId_)
+            requestId ==
+                selectedRequestId_)
         {
             jobComboBox_->setCurrentIndex(
                 index);
@@ -2909,16 +4577,20 @@ void MainWindow::handleAssignedRequests(
     }
 
     totalJobsValue_->setText(
-        QString::number(total));
+        QString::number(
+            total));
 
     activeJobsValue_->setText(
-        QString::number(active));
+        QString::number(
+            active));
 
     completedJobsValue_->setText(
-        QString::number(completed));
+        QString::number(
+            completed));
 
     failedJobsValue_->setText(
-        QString::number(failed));
+        QString::number(
+            failed));
 
     jobComboBox_->blockSignals(
         false);
@@ -2946,9 +4618,10 @@ QJsonObject MainWindow::selectedRequestObject() const
             value.toObject();
 
         if (request.value(
-                QStringLiteral("requestId"))
-            .toString()
-            == selectedRequestId_)
+                QStringLiteral(
+                    "requestId"))
+                .toString() ==
+            selectedRequestId_)
         {
             return request;
         }
@@ -2974,17 +4647,20 @@ void MainWindow::selectRequestFromJobs(
     selectedRequestId_ =
         jobComboBox_->itemData(
             index,
-            Qt::UserRole).toString();
+            Qt::UserRole)
+            .toString();
 
     selectedRequestDeviceType_ =
         jobComboBox_->itemData(
             index,
-            Qt::UserRole + 1).toString();
+            Qt::UserRole + 1)
+            .toString();
 
     selectedRequestMethod_ =
         jobComboBox_->itemData(
             index,
-            Qt::UserRole + 2).toString();
+            Qt::UserRole + 2)
+            .toString();
 
     populateJobDetails();
     resetTargetPanel();
@@ -2998,70 +4674,102 @@ void MainWindow::populateJobDetails()
 
     jobRequestIdValue_->setText(
         request.value(
-            QStringLiteral("requestId"))
+            QStringLiteral(
+                "requestId"))
             .toString(
-                QStringLiteral("—")));
+                QStringLiteral(
+                    "—")));
 
     jobDeviceTypeValue_->setText(
         request.value(
-            QStringLiteral("deviceType"))
+            QStringLiteral(
+                "deviceType"))
             .toString(
-                QStringLiteral("—")));
+                QStringLiteral(
+                    "—")));
 
     jobRequestedMethodValue_->setText(
         request.value(
-            QStringLiteral("sanitizationMethod"))
+            QStringLiteral(
+                "sanitizationMethod"))
             .toString(
-                QStringLiteral("—")));
+                QStringLiteral(
+                    "—")));
 
     jobAssetValue_->setText(
         request.value(
-            QStringLiteral("asset"))
+            QStringLiteral(
+                "asset"))
             .toString(
                 request.value(
-                    QStringLiteral("customer"))
+                    QStringLiteral(
+                        "customer"))
                     .toString(
-                        QStringLiteral("—"))));
+                        QStringLiteral(
+                            "—"))));
 
     jobWorkstationValue_->setText(
         request.value(
-            QStringLiteral("workstationCenter"))
+            QStringLiteral(
+                "workstationCenter"))
             .toString(
                 request.value(
-                    QStringLiteral("center"))
+                    QStringLiteral(
+                        "center"))
                     .toString(
-                        QStringLiteral("—"))));
+                        QStringLiteral(
+                            "—"))));
 
     const QString status =
         request.value(
-            QStringLiteral("status"))
+            QStringLiteral(
+                "status"))
             .toString();
 
-    if (status == "ASSIGNED")
+    if (status ==
+        QStringLiteral(
+            "ASSIGNED"))
     {
         jobMessageLabel_->setText(
             QStringLiteral(
                 "This request is ready for physical workstation execution."));
+
+        jobMessageLabel_->setStyleSheet(
+            "QLabel {"
+            "background:transparent;"
+            "border:none;"
+            "color:#667085;"
+            "font-size:12px;"
+            "font-weight:600;"
+            "}");
     }
-    else if (status == "IN_PROGRESS")
+    else if (status ==
+             QStringLiteral(
+                 "IN_PROGRESS"))
     {
         jobMessageLabel_->setText(
             QStringLiteral(
                 "This request is currently in physical sanitization."));
     }
-    else if (status == "VERIFYING")
+    else if (status ==
+             QStringLiteral(
+                 "VERIFYING"))
     {
         jobMessageLabel_->setText(
             QStringLiteral(
                 "The sanitization result is in verification/evidence state."));
     }
-    else if (status == "COMPLETED")
+    else if (status ==
+             QStringLiteral(
+                 "COMPLETED"))
     {
         jobMessageLabel_->setText(
             QStringLiteral(
                 "This sanitization request is completed."));
     }
-    else if (status == "FAILED")
+    else if (status ==
+             QStringLiteral(
+                 "FAILED"))
     {
         jobMessageLabel_->setText(
             QStringLiteral(
@@ -3089,6 +4797,95 @@ void MainWindow::refreshPhysicalDevices()
 
 void MainWindow::populateDeviceTable()
 {
+    const auto &devices =
+        deviceController_->devices();
+
+    if (devicesInventoryTable_)
+    {
+        devicesInventoryTable_->blockSignals(
+            true);
+
+        devicesInventoryTable_->clearContents();
+
+        devicesInventoryTable_->setRowCount(
+            0);
+
+        for (int i = 0;
+             i < static_cast<int>(devices.size());
+             ++i)
+        {
+            const StorageDevice &device =
+                devices[static_cast<std::size_t>(i)];
+
+            const int row =
+                devicesInventoryTable_->rowCount();
+
+            devicesInventoryTable_->insertRow(
+                row);
+
+            auto *modelItem =
+                new QTableWidgetItem(
+                    QString::fromStdString(
+                        device.getModel()));
+
+            modelItem->setData(
+                Qt::UserRole,
+                i);
+
+            devicesInventoryTable_->setItem(
+                row,
+                0,
+                modelItem);
+
+            devicesInventoryTable_->setItem(
+                row,
+                1,
+                new QTableWidgetItem(
+                    QString::fromStdString(
+                        device.getSerialNumber())));
+
+            devicesInventoryTable_->setItem(
+                row,
+                2,
+                new QTableWidgetItem(
+                    QString::fromStdString(
+                        device.getInterfaceType())));
+
+            devicesInventoryTable_->setItem(
+                row,
+                3,
+                new QTableWidgetItem(
+                    formatCapacity(
+                        device.getCapacityBytes())));
+
+            auto *systemItem =
+                new QTableWidgetItem(
+                    device.isSystemDisk()
+                        ? QStringLiteral("BLOCKED")
+                        : QStringLiteral("Available"));
+
+            systemItem->setForeground(
+                device.isSystemDisk()
+                    ? QBrush(QColor("#B42318"))
+                    : QBrush(QColor("#027A48")));
+
+            devicesInventoryTable_->setItem(
+                row,
+                4,
+                systemItem);
+
+            devicesInventoryTable_->setItem(
+                row,
+                5,
+                new QTableWidgetItem(
+                    QString::fromStdString(
+                        device.getDeviceId())));
+        }
+
+        devicesInventoryTable_->blockSignals(
+            false);
+    }
+
     if (!deviceTable_)
         return;
 
@@ -3096,24 +4893,18 @@ void MainWindow::populateDeviceTable()
         true);
 
     deviceTable_->clearContents();
+
     deviceTable_->setRowCount(
         0);
 
-    const auto &devices =
-        deviceController_->devices();
-
     for (int i = 0;
-         i < static_cast<int>(
-             devices.size());
+         i < static_cast<int>(devices.size());
          ++i)
     {
         const StorageDevice &device =
-            devices[
-                static_cast<std::size_t>(
-                    i)];
+            devices[static_cast<std::size_t>(i)];
 
-        if (!selectedRequestDeviceType_
-                 .isEmpty() &&
+        if (!selectedRequestDeviceType_.isEmpty() &&
             !requestMatchesDevice(
                 selectedRequestDeviceType_,
                 device))
@@ -3127,19 +4918,19 @@ void MainWindow::populateDeviceTable()
         deviceTable_->insertRow(
             row);
 
-        auto *model =
+        auto *modelItem =
             new QTableWidgetItem(
                 QString::fromStdString(
                     device.getModel()));
 
-        model->setData(
+        modelItem->setData(
             Qt::UserRole,
             i);
 
         deviceTable_->setItem(
             row,
             0,
-            model);
+            modelItem);
 
         deviceTable_->setItem(
             row,
@@ -3165,14 +4956,19 @@ void MainWindow::populateDeviceTable()
         auto *systemItem =
             new QTableWidgetItem(
                 device.isSystemDisk()
-                    ? QStringLiteral("BLOCKED")
-                    : QStringLiteral("No"));
+                    ? QStringLiteral(
+                          "BLOCKED")
+                    : QStringLiteral(
+                          "Available"));
 
-        if (device.isSystemDisk())
-        {
-            systemItem->setForeground(
-                QColor("#B42318"));
-        }
+        systemItem->setForeground(
+            device.isSystemDisk()
+                ? QBrush(
+                      QColor(
+                          "#B42318"))
+                : QBrush(
+                      QColor(
+                          "#027A48")));
 
         deviceTable_->setItem(
             row,
@@ -3224,7 +5020,7 @@ void MainWindow::selectTargetDevice(
 
     const int deviceIndex =
         item->data(
-            Qt::UserRole)
+                Qt::UserRole)
             .toInt(
                 &ok);
 
@@ -3252,23 +5048,28 @@ void MainWindow::selectTargetDevice(
         deviceController_->detectSelectedTargetMethod();
 
     capabilityValue_->setText(
-        method == SanitizationMethod::Unsupported
-            ? QStringLiteral("Unsupported")
-            : QStringLiteral("Available"));
+        method ==
+                SanitizationMethod::Unsupported
+            ? QStringLiteral(
+                  "Unsupported")
+            : QStringLiteral(
+                  "Available"));
 
     selectedMethodValue_->setText(
         sanitizationMethodName(
             method));
 
     targetSafetyBadge_->setText(
-        QStringLiteral("NOT CHECKED"));
+        QStringLiteral(
+            "NOT CHECKED"));
 
     targetSafetyBadge_->setStyleSheet(
-        badgeStyle("NOT_CHECKED"));
+        badgeStyle(
+            "NOT_CHECKED"));
 
     targetSafetyText_->setText(
         QStringLiteral(
-            "Exact target selected. Run fresh target validation and safety checks before sanitization."));
+            "Exact target selected. Run a fresh safety check before sanitization."));
 
     validateTargetButton_->setEnabled(
         !selectedRequestId_.isEmpty());
@@ -3306,20 +5107,24 @@ void MainWindow::resetTargetPanel()
         QStringLiteral("—"));
 
     targetSafetyBadge_->setText(
-        QStringLiteral("NOT CHECKED"));
+        QStringLiteral(
+            "NOT CHECKED"));
 
     targetSafetyBadge_->setStyleSheet(
-        badgeStyle("NOT_CHECKED"));
+        badgeStyle(
+            "NOT_CHECKED"));
 
     targetSafetyText_->setText(
         QStringLiteral(
             "Select an exact physical target."));
 
     pipelineStatusValue_->setText(
-        QStringLiteral("NOT STARTED"));
+        QStringLiteral(
+            "NOT STARTED"));
 
     pipelineStatusValue_->setStyleSheet(
-        badgeStyle("NOT_STARTED"));
+        badgeStyle(
+            "NOT_STARTED"));
 
     verificationValue_->setText(
         QStringLiteral("—"));
@@ -3338,6 +5143,10 @@ void MainWindow::resetTargetPanel()
 
     certificateValue_->setText(
         QStringLiteral("—"));
+
+    evidenceValue_->setText(
+        QStringLiteral(
+            "No sanitization pipeline evidence generated yet."));
 
     operationProgress_->setRange(
         0,
@@ -3358,260 +5167,229 @@ void MainWindow::runTargetSafetyCheck()
     if (operationRunning_)
         return;
 
-    if (!deviceController_->selectedTarget()
-             .has_value())
+    if (!deviceController_->selectedTarget().has_value())
     {
-        targetSafetyBadge_->setText(
-            QStringLiteral("BLOCKED"));
-
-        targetSafetyBadge_->setStyleSheet(
-            badgeStyle("BLOCKED"));
-
+        targetSafetyBadge_->setText(QStringLiteral("BLOCKED"));
+        targetSafetyBadge_->setStyleSheet(badgeStyle("BLOCKED"));
         targetSafetyText_->setText(
-            QStringLiteral(
-                "Select a physical target device first."));
-
+            QStringLiteral("Select an exact physical target before running the safety gate."));
+        startSanitizationButton_->setEnabled(false);
         return;
     }
 
-    validateTargetButton_->setEnabled(
-        false);
+    validateTargetButton_->setEnabled(false);
+    startSanitizationButton_->setEnabled(false);
 
-    startSanitizationButton_->setEnabled(
-        false);
-
-    targetSafetyBadge_->setText(
-        QStringLiteral("CHECKING"));
-
-    targetSafetyBadge_->setStyleSheet(
-        badgeStyle("CHECKING"));
-
+    targetSafetyBadge_->setText(QStringLiteral("CHECKING"));
+    targetSafetyBadge_->setStyleSheet(badgeStyle("CHECKING"));
     targetSafetyText_->setText(
-        QStringLiteral(
-            "Running fresh target identity validation and safety checks..."));
+        QStringLiteral("Fresh target rediscovery and core safety evaluation are in progress..."));
+    jobMessageLabel_->setText(QStringLiteral("Running target safety gate. No destructive operation has started."));
+    jobMessageLabel_->setStyleSheet(
+        "QLabel { background:transparent; border:none; color:#667085; font-size:12px; font-weight:600; }");
 
     QApplication::processEvents();
 
     if (!deviceController_->validateSelectedTarget())
     {
-        targetSafetyBadge_->setText(
-            QStringLiteral("BLOCKED"));
+        const QString message = QStringLiteral(
+            "Fresh target validation failed. The previously selected device is no longer trusted for destructive use.\n"
+            "Select the physical device again and rerun the safety check.");
 
-        targetSafetyBadge_->setStyleSheet(
-            badgeStyle("BLOCKED"));
+        targetSafetyBadge_->setText(QStringLiteral("BLOCKED"));
+        targetSafetyBadge_->setStyleSheet(badgeStyle("BLOCKED"));
+        targetSafetyText_->setText(message);
+        validateTargetButton_->setEnabled(true);
 
-        targetSafetyText_->setText(
-            QStringLiteral(
-                "Target validation failed. Re-select the physical target."));
-        
-        validateTargetButton_->setEnabled(
-            true);
-
+        jobMessageLabel_->setText(QStringLiteral("Safety gate blocked the operation: %1").arg(message));
+        jobMessageLabel_->setStyleSheet(
+            "QLabel { background:transparent; border:none; color:#B42318; font-size:12px; font-weight:600; }");
         return;
     }
+
+    const auto validatedTarget = deviceController_->selectedTarget();
+    if (!validatedTarget.has_value())
+    {
+        targetSafetyBadge_->setText(QStringLiteral("BLOCKED"));
+        targetSafetyBadge_->setStyleSheet(badgeStyle("BLOCKED"));
+        targetSafetyText_->setText(QStringLiteral("Validation completed without a trusted target. Operation blocked."));
+        validateTargetButton_->setEnabled(true);
+        return;
+    }
+
+    updateTargetPanelFromDevice(*validatedTarget);
 
     if (!deviceController_->evaluateSelectedTarget())
     {
-        const SafetyResult &result =
-            deviceController_->lastSafetyResult();
+        const SafetyResult &result = deviceController_->lastSafetyResult();
 
-        targetSafetyBadge_->setText(
-            QStringLiteral("BLOCKED"));
+        targetSafetyBadge_->setText(QStringLiteral("BLOCKED"));
+        targetSafetyBadge_->setStyleSheet(badgeStyle("BLOCKED"));
 
-        targetSafetyBadge_->setStyleSheet(
-            badgeStyle("BLOCKED"));
+        QString details = result.summary.empty()
+            ? QStringLiteral("The core SafetyEngine did not authorize this target.")
+            : QString::fromStdString(result.summary);
 
-        QString details =
-            result.summary.empty()
-                ? QStringLiteral(
-                      "Safety checks did not authorize this target.")
-                : QString::fromStdString(
-                      result.summary);
-
-        for (const SafetyCheckResult &check :
-             result.checks)
+        for (const SafetyCheckResult &check : result.checks)
         {
             if (!details.isEmpty())
-                details += '\n';
+                details += QStringLiteral("\n");
 
-            details +=
-                QStringLiteral(
-                    "%1 %2")
-                    .arg(
-                        check.passed
-                            ? QStringLiteral("✓")
-                            : QStringLiteral("✗"),
-                        QString::fromStdString(
-                            check.checkName));
+            const QString state = check.passed
+                ? QStringLiteral("✓")
+                : QStringLiteral("✗");
+            const QString name = QString::fromStdString(check.checkName);
+            const QString message = QString::fromStdString(check.message);
+
+            details += QStringLiteral("%1 %2").arg(state, name);
+            if (!message.trimmed().isEmpty())
+                details += QStringLiteral(" — %1").arg(message.trimmed());
         }
 
-        targetSafetyText_->setText(
-            details);
+        targetSafetyText_->setText(details);
+        validateTargetButton_->setEnabled(true);
 
-        validateTargetButton_->setEnabled(
-            true);
-
+        jobMessageLabel_->setText(QStringLiteral("Sanitization blocked by the core safety gate."));
+        jobMessageLabel_->setStyleSheet(
+            "QLabel { background:transparent; border:none; color:#B42318; font-size:12px; font-weight:700; }");
         return;
     }
 
-    const auto target =
-        deviceController_->selectedTarget();
-
+    const auto target = deviceController_->selectedTarget();
     if (!target.has_value())
     {
-        validateTargetButton_->setEnabled(
-            true);
+        targetSafetyBadge_->setText(QStringLiteral("BLOCKED"));
+        targetSafetyBadge_->setStyleSheet(badgeStyle("BLOCKED"));
+        targetSafetyText_->setText(QStringLiteral("The safety check completed without a trusted target."));
+        validateTargetButton_->setEnabled(true);
         return;
     }
 
-    updateTargetPanelFromDevice(
-        *target);
+    updateTargetPanelFromDevice(*target);
 
+    const SanitizationCapability capability =
+        deviceController_->detectSelectedTargetCapability();
     const SanitizationMethod method =
         deviceController_->detectSelectedTargetMethod();
 
-    if (method ==
-        SanitizationMethod::Unsupported)
+    QString capabilityText = QStringLiteral("Capability could not be confirmed.");
+    if (capability.nativeSanitizeSupported == NativeSanitizeSupport::SUPPORTED)
     {
-        targetSafetyBadge_->setText(
-            QStringLiteral(
-                "UNSUPPORTED"));
+        capabilityText = QStringLiteral("Native sanitization capability confirmed.");
+    }
+    else if (capability.isUsbDevice && capability.scsiPathAvailable)
+    {
+        capabilityText = QStringLiteral("USB/SCSI sanitization path confirmed.");
+    }
 
-        targetSafetyBadge_->setStyleSheet(
-            badgeStyle("BLOCKED"));
+    capabilityValue_->setText(capabilityText);
+    selectedMethodValue_->setText(sanitizationMethodName(method));
 
+    if (method == SanitizationMethod::Unsupported)
+    {
+        targetSafetyBadge_->setText(QStringLiteral("UNSUPPORTED"));
+        targetSafetyBadge_->setStyleSheet(badgeStyle("UNSUPPORTED"));
         targetSafetyText_->setText(
-            QStringLiteral(
-                "Safety checks passed, but no supported sanitization method is available for this target."));
+            QStringLiteral("Safety checks passed, but the core could not select a supported sanitization method."));
+        validateTargetButton_->setEnabled(true);
+        startSanitizationButton_->setEnabled(false);
 
-        validateTargetButton_->setEnabled(
-            true);
-
+        jobMessageLabel_->setText(
+            QStringLiteral("Target is safe, but no supported sanitization method is available."));
+        jobMessageLabel_->setStyleSheet(
+            "QLabel { background:transparent; border:none; color:#B54708; font-size:12px; font-weight:700; }");
         return;
     }
 
     QString detectedMethod;
-
     switch (method)
     {
     case SanitizationMethod::NvmeSanitize:
-        detectedMethod =
-            QStringLiteral("NVME_SANITIZE");
+        detectedMethod = QStringLiteral("NVME_SANITIZE");
         break;
-
     case SanitizationMethod::AtaSanitize:
-        detectedMethod =
-            QStringLiteral("ATA_SANITIZE");
+        detectedMethod = QStringLiteral("ATA_SANITIZE");
         break;
-
     case SanitizationMethod::HostOverwrite:
-        detectedMethod =
-            QStringLiteral("HOST_OVERWRITE");
+        detectedMethod = QStringLiteral("HOST_OVERWRITE");
         break;
-
     default:
-        detectedMethod =
-            QStringLiteral("UNSUPPORTED");
+        detectedMethod = QStringLiteral("UNSUPPORTED");
         break;
     }
 
-    QString assignedMethod =
-        selectedRequestMethod_
-            .trimmed()
-            .toUpper();
+    QString assignedMethod = selectedRequestMethod_.trimmed().toUpper();
+    assignedMethod.replace(QStringLiteral(" "), QStringLiteral("_"));
+    assignedMethod.replace(QStringLiteral("-"), QStringLiteral("_"));
 
-    assignedMethod.replace(
-        QStringLiteral(" "),
-        QStringLiteral("_"));
-
-    assignedMethod.replace(
-        QStringLiteral("-"),
-        QStringLiteral("_"));
-
-    if (assignedMethod == "NVME")
-        assignedMethod =
-            QStringLiteral("NVME_SANITIZE");
-
-    if (assignedMethod == "ATA")
-        assignedMethod =
-            QStringLiteral("ATA_SANITIZE");
+    if (assignedMethod == QStringLiteral("NVME"))
+        assignedMethod = QStringLiteral("NVME_SANITIZE");
+    if (assignedMethod == QStringLiteral("ATA"))
+        assignedMethod = QStringLiteral("ATA_SANITIZE");
 
     if (!assignedMethod.isEmpty() &&
-        assignedMethod != "UNSUPPORTED" &&
+        assignedMethod != QStringLiteral("UNSUPPORTED") &&
         assignedMethod != detectedMethod)
     {
-        targetSafetyBadge_->setText(
-            QStringLiteral(
-                "METHOD MISMATCH"));
-
-        targetSafetyBadge_->setStyleSheet(
-            badgeStyle("BLOCKED"));
-
+        targetSafetyBadge_->setText(QStringLiteral("METHOD MISMATCH"));
+        targetSafetyBadge_->setStyleSheet(badgeStyle("BLOCKED"));
         targetSafetyText_->setText(
-            QStringLiteral(
-                "The method assigned to this request does not match the method detected for the physical target."));
-
-        validateTargetButton_->setEnabled(
-            true);
-
+            QStringLiteral("The assigned request method (%1) does not match the method selected by the sanitization core (%2).")
+                .arg(assignedMethod, detectedMethod));
+        validateTargetButton_->setEnabled(true);
+        startSanitizationButton_->setEnabled(false);
         return;
     }
 
-    const SafetyResult &result =
-        deviceController_->lastSafetyResult();
+    const SafetyResult &result = deviceController_->lastSafetyResult();
 
-    targetSafetyBadge_->setText(
-        QStringLiteral("SAFE"));
+    targetSafetyBadge_->setText(QStringLiteral("SAFE"));
+    targetSafetyBadge_->setStyleSheet(badgeStyle("SAFE"));
 
-    targetSafetyBadge_->setStyleSheet(
-        badgeStyle("SAFE"));
+    QString details = result.summary.empty()
+        ? QStringLiteral("Core safety gate passed. This target is authorized to proceed to final confirmation.")
+        : QString::fromStdString(result.summary);
 
-    QString details =
-        result.summary.empty()
-            ? QStringLiteral(
-                  "All required safety checks passed.")
-            : QString::fromStdString(
-                  result.summary);
-
-    for (const SafetyCheckResult &check :
-         result.checks)
+    for (const SafetyCheckResult &check : result.checks)
     {
         if (!details.isEmpty())
-            details += '\n';
+            details += QStringLiteral("\n");
 
-        details +=
-            QStringLiteral(
-                "%1 %2")
-                .arg(
-                    check.passed
-                        ? QStringLiteral("✓")
-                        : QStringLiteral("✗"),
-                    QString::fromStdString(
-                        check.checkName));
+        const QString state = check.passed
+            ? QStringLiteral("✓")
+            : QStringLiteral("✗");
+        const QString name = QString::fromStdString(check.checkName);
+        const QString message = QString::fromStdString(check.message);
+
+        details += QStringLiteral("%1 %2").arg(state, name);
+        if (!message.trimmed().isEmpty())
+            details += QStringLiteral(" — %1").arg(message.trimmed());
     }
 
-    targetSafetyText_->setText(
-        details);
+    details += QStringLiteral("\n\nSelected method: %1").arg(sanitizationMethodName(method));
+    details += QStringLiteral("\nCapability: %1").arg(capabilityText);
+    targetSafetyText_->setText(details);
 
-    const QJsonObject request =
-        selectedRequestObject();
+    const QJsonObject request = selectedRequestObject();
+    const QString status = request.value(QStringLiteral("status")).toString();
+    const bool requestReady = status == QStringLiteral("ASSIGNED");
 
-    const QString status =
-        request.value(
-            QStringLiteral("status"))
-            .toString();
+    startSanitizationButton_->setEnabled(requestReady && result.isOverallSafe);
+    validateTargetButton_->setEnabled(true);
 
-    startSanitizationButton_->setEnabled(
-        status == QStringLiteral("ASSIGNED"));
-
-    validateTargetButton_->setEnabled(
-        true);
-
-    if (status == QStringLiteral("ASSIGNED"))
+    if (requestReady)
     {
         jobMessageLabel_->setText(
-            QStringLiteral(
-                "Safety checks passed. Final destructive confirmation is available."));
+            QStringLiteral("Safety gate passed. Final target confirmation is available."));
+        jobMessageLabel_->setStyleSheet(
+            "QLabel { background:transparent; border:none; color:#027A48; font-size:12px; font-weight:700; }");
+    }
+    else
+    {
+        jobMessageLabel_->setText(
+            QStringLiteral("Safety gate passed, but the selected request is not ASSIGNED. Destructive execution remains disabled."));
+        jobMessageLabel_->setStyleSheet(
+            "QLabel { background:transparent; border:none; color:#B54708; font-size:12px; font-weight:700; }");
     }
 }
 
@@ -3624,9 +5402,11 @@ void MainWindow::startSanitization()
     {
         QMessageBox::warning(
             this,
-            QStringLiteral("No request"),
+            QStringLiteral(
+                "No request"),
             QStringLiteral(
                 "Select an assigned sanitization request first."));
+
         return;
     }
 
@@ -3634,9 +5414,11 @@ void MainWindow::startSanitization()
         selectedRequestObject();
 
     if (request.value(
-            QStringLiteral("status"))
-            .toString()
-        != QStringLiteral("ASSIGNED"))
+            QStringLiteral(
+                "status"))
+            .toString() !=
+        QStringLiteral(
+            "ASSIGNED"))
     {
         QMessageBox::warning(
             this,
@@ -3644,19 +5426,22 @@ void MainWindow::startSanitization()
                 "Request unavailable"),
             QStringLiteral(
                 "Only an ASSIGNED request can start physical execution."));
+
         return;
     }
 
-    const auto target =
+    auto target =
         deviceController_->selectedTarget();
 
     if (!target.has_value())
     {
         QMessageBox::warning(
             this,
-            QStringLiteral("No target"),
+            QStringLiteral(
+                "No target"),
             QStringLiteral(
                 "Select a physical target device."));
+
         return;
     }
 
@@ -3666,6 +5451,21 @@ void MainWindow::startSanitization()
         runTargetSafetyCheck();
         return;
     }
+
+    const auto validatedTarget =
+        deviceController_->selectedTarget();
+
+    if (!validatedTarget.has_value())
+    {
+        QMessageBox::critical(
+            this,
+            QStringLiteral("Target validation"),
+            QStringLiteral("The selected physical target is no longer available after fresh validation. Sanitization was blocked."));
+        runTargetSafetyCheck();
+        return;
+    }
+
+    target = validatedTarget;
 
     if (!requestMatchesDevice(
             selectedRequestDeviceType_,
@@ -3677,6 +5477,7 @@ void MainWindow::startSanitization()
                 "Target mismatch"),
             QStringLiteral(
                 "The selected physical target does not match the assigned request device type."));
+
         return;
     }
 
@@ -3692,6 +5493,7 @@ void MainWindow::startSanitization()
                 "Unsupported target"),
             QStringLiteral(
                 "No supported sanitization method is available for this target."));
+
         return;
     }
 
@@ -3718,8 +5520,9 @@ void MainWindow::startSanitization()
                 "Device type: %2\n"
                 "Model: %3\n"
                 "Serial: %4\n"
-                "Physical device: %5\n"
-                "Method: %6\n\n"
+                "Capacity: %5\n"
+                "Physical device: %6\n"
+                "Method: %7\n\n"
                 "This operation is destructive and cannot be undone.\n"
                 "Continue only when this exact physical target is intentionally authorized.")
                 .arg(
@@ -3727,6 +5530,7 @@ void MainWindow::startSanitization()
                     selectedRequestDeviceType_,
                     model,
                     serial,
+                    formatCapacity(target->getCapacityBytes()),
                     deviceId,
                     sanitizationMethodName(
                         method)),
@@ -3740,6 +5544,16 @@ void MainWindow::startSanitization()
         jobMessageLabel_->setText(
             QStringLiteral(
                 "Sanitization cancelled. No destructive operation was started."));
+
+        jobMessageLabel_->setStyleSheet(
+            "QLabel {"
+            "background:transparent;"
+            "border:none;"
+            "color:#667085;"
+            "font-size:12px;"
+            "font-weight:600;"
+            "}");
+
         return;
     }
 
@@ -3754,6 +5568,7 @@ void MainWindow::startSanitization()
                 "Authentication"),
             QStringLiteral(
                 "Authentication token is missing."));
+
         return;
     }
 
@@ -3786,17 +5601,20 @@ void MainWindow::startSanitization()
         0);
 
     pipelineStatusValue_->setText(
-        QStringLiteral("STARTING"));
+        QStringLiteral(
+            "STARTING"));
 
     pipelineStatusValue_->setStyleSheet(
-        badgeStyle("IN_PROGRESS"));
+        badgeStyle(
+            "IN_PROGRESS"));
 
     operationValue_->setText(
         QStringLiteral(
             "Waiting for request synchronization"));
 
     verificationValue_->setText(
-        QStringLiteral("Pending"));
+        QStringLiteral(
+            "Pending"));
 
     jobMessageLabel_->setText(
         QStringLiteral(
@@ -3805,11 +5623,13 @@ void MainWindow::startSanitization()
     requestService_->updateRequestStatus(
         token,
         selectedRequestId_,
-        QStringLiteral("IN_PROGRESS"));
+        QStringLiteral(
+            "IN_PROGRESS"));
 
     connect(
         requestService_,
-        &SanitizationRequestService::requestStatusUpdated,
+        &SanitizationRequestService::
+            requestStatusUpdated,
         this,
         [this, targetCopy](
             const QString &requestId,
@@ -3818,7 +5638,8 @@ void MainWindow::startSanitization()
             if (requestId !=
                     selectedRequestId_ ||
                 status !=
-                    QStringLiteral("IN_PROGRESS"))
+                    QStringLiteral(
+                        "IN_PROGRESS"))
             {
                 return;
             }
@@ -3831,8 +5652,8 @@ void MainWindow::startSanitization()
             connect(
                 watcher,
                 &QFutureWatcher<
-                    SecureWipe::SanitizationPipelineResult>
-                    ::finished,
+                    SecureWipe::SanitizationPipelineResult>::
+                    finished,
                 this,
                 [this, watcher]()
                 {
@@ -3845,15 +5666,17 @@ void MainWindow::startSanitization()
                         result);
                 });
 
+            pipelineStatusValue_->setText(
+                QStringLiteral(
+                    "SANITIZING"));
+
+            pipelineStatusValue_->setStyleSheet(
+                badgeStyle(
+                    "IN_PROGRESS"));
+
             jobMessageLabel_->setText(
                 QStringLiteral(
                     "Physical sanitization is running. Do not disconnect the target device."));
-
-            pipelineStatusValue_->setText(
-                QStringLiteral("SANITIZING"));
-
-            pipelineStatusValue_->setStyleSheet(
-                badgeStyle("IN_PROGRESS"));
 
             watcher->setFuture(
                 QtConcurrent::run(
@@ -3869,7 +5692,8 @@ void MainWindow::startSanitization()
                                 requestId.toStdString(),
                                 std::string());
                         }
-                        catch (const std::exception &exception)
+                        catch (
+                            const std::exception &exception)
                         {
                             SecureWipe::SanitizationPipelineResult result;
 
@@ -4000,10 +5824,16 @@ void MainWindow::submitPipelineResult(
         jobMessageLabel_->setText(
             QStringLiteral(
                 "Local pipeline finished, but API authentication is unavailable."));
+
         jobMessageLabel_->setStyleSheet(
+            "QLabel {"
+            "background:transparent;"
+            "border:none;"
             "color:#B42318;"
             "font-size:12px;"
-            "font-weight:600;");
+            "font-weight:600;"
+            "}");
+
         return;
     }
 
@@ -4017,12 +5847,30 @@ void MainWindow::submitPipelineResult(
         jobMessageLabel_->setText(
             QStringLiteral(
                 "Physical sanitization and verification succeeded. Uploading evidence..."));
+
+        jobMessageLabel_->setStyleSheet(
+            "QLabel {"
+            "background:transparent;"
+            "border:none;"
+            "color:#027A48;"
+            "font-size:12px;"
+            "font-weight:700;"
+            "}");
     }
     else
     {
         jobMessageLabel_->setText(
             QStringLiteral(
                 "Physical sanitization failed. Uploading failure result..."));
+
+        jobMessageLabel_->setStyleSheet(
+            "QLabel {"
+            "background:transparent;"
+            "border:none;"
+            "color:#B42318;"
+            "font-size:12px;"
+            "font-weight:600;"
+            "}");
     }
 }
 
@@ -4070,8 +5918,14 @@ void MainWindow::updatePipelineUiForResult(
         badgeStyle(
             result.status ==
                     SecureWipe::SanitizationStatus::COMPLETED
-                ? QStringLiteral("COMPLETED")
-                : QStringLiteral("FAILED")));
+                ? QStringLiteral(
+                      "COMPLETED")
+                : result.status ==
+                          SecureWipe::SanitizationStatus::FAILED
+                      ? QStringLiteral(
+                            "FAILED")
+                      : QStringLiteral(
+                            "IN_PROGRESS")));
 
     verificationValue_->setText(
         verificationText(
@@ -4079,9 +5933,10 @@ void MainWindow::updatePipelineUiForResult(
 
     operationValue_->setText(
         result.operationId.empty()
-            ? QStringLiteral("—")
+            ? QStringLiteral(
+                  "—")
             : QString::fromStdString(
-                result.operationId));
+                  result.operationId));
 
     bytesProcessedValue_->setText(
         formatBytes(
@@ -4097,7 +5952,8 @@ void MainWindow::updatePipelineUiForResult(
 
     if (!pipelineResult
              .certificate
-             .certificateId.empty())
+             .certificateId
+             .empty())
     {
         certificateValue_->setText(
             QString::fromStdString(
@@ -4114,17 +5970,23 @@ void MainWindow::updatePipelineUiForResult(
 
     QString evidence;
 
-    if (!pipelineResult.auditLogPath.empty())
+    if (!pipelineResult
+             .auditLogPath
+             .empty())
     {
         evidence +=
-            QStringLiteral("Audit: ");
+            QStringLiteral(
+                "Audit: ");
 
         evidence +=
             QString::fromStdString(
-                pipelineResult.auditLogPath);
+                pipelineResult
+                    .auditLogPath);
     }
 
-    if (!pipelineResult.operationLogPath.empty())
+    if (!pipelineResult
+             .operationLogPath
+             .empty())
     {
         if (!evidence.isEmpty())
             evidence += '\n';
@@ -4135,10 +5997,13 @@ void MainWindow::updatePipelineUiForResult(
 
         evidence +=
             QString::fromStdString(
-                pipelineResult.operationLogPath);
+                pipelineResult
+                    .operationLogPath);
     }
 
-    if (!pipelineResult.certificatePath.empty())
+    if (!pipelineResult
+             .certificatePath
+             .empty())
     {
         if (!evidence.isEmpty())
             evidence += '\n';
@@ -4149,13 +6014,14 @@ void MainWindow::updatePipelineUiForResult(
 
         evidence +=
             QString::fromStdString(
-                pipelineResult.certificatePath);
+                pipelineResult
+                    .certificatePath);
     }
 
     evidenceValue_->setText(
         evidence.isEmpty()
             ? QStringLiteral(
-                "No evidence path reported.")
+                  "No sanitization evidence path reported.")
             : evidence);
 
     if (result.isSuccess())
@@ -4163,11 +6029,15 @@ void MainWindow::updatePipelineUiForResult(
         jobMessageLabel_->setText(
             QStringLiteral(
                 "Sanitization and verification completed successfully."));
-        
+
         jobMessageLabel_->setStyleSheet(
+            "QLabel {"
+            "background:transparent;"
+            "border:none;"
             "color:#027A48;"
             "font-size:12px;"
-            "font-weight:700;");
+            "font-weight:700;"
+            "}");
     }
     else
     {
@@ -4180,7 +6050,8 @@ void MainWindow::updatePipelineUiForResult(
 
         if (!result.errorMessage.empty())
         {
-            message += '\n';
+            if (!message.isEmpty())
+                message += '\n';
 
             message +=
                 QString::fromStdString(
@@ -4191,20 +6062,156 @@ void MainWindow::updatePipelineUiForResult(
             message);
 
         jobMessageLabel_->setStyleSheet(
+            "QLabel {"
+            "background:transparent;"
+            "border:none;"
             "color:#B42318;"
             "font-size:12px;"
-            "font-weight:600;");
+            "font-weight:600;"
+            "}");
     }
 }
 
 void MainWindow::showSelectedDeviceDetails()
 {
+    if (!devicesInventoryTable_)
+        return;
+
+    const int row =
+        devicesInventoryTable_->currentRow();
+
+    if (row < 0 ||
+        row >= devicesInventoryTable_->rowCount())
+    {
+        return;
+    }
+
+    QTableWidgetItem *item =
+        devicesInventoryTable_->item(
+            row,
+            0);
+
+    if (!item)
+        return;
+
+    bool ok = false;
+
+    const int deviceIndex =
+        item->data(
+                Qt::UserRole)
+            .toInt(
+                &ok);
+
+    if (!ok ||
+        deviceIndex < 0 ||
+        deviceIndex >=
+            static_cast<int>(
+                deviceController_->devices().size()))
+    {
+        QMessageBox::warning(
+            this,
+            QStringLiteral(
+                "Device details"),
+            QStringLiteral(
+                "The selected physical device is no longer available in the current discovery result."));
+        return;
+    }
+
+    showDeviceDetails(
+        deviceController_->devices()
+            .at(
+                static_cast<std::size_t>(
+                    deviceIndex)));
 }
 
 void MainWindow::showDeviceDetails(
     const StorageDevice &device)
 {
-    Q_UNUSED(device);
+    if (!contentStack_)
+        return;
+
+    if (deviceDetailsPage_)
+    {
+        contentStack_->removeWidget(
+            deviceDetailsPage_);
+
+        deviceDetailsPage_->deleteLater();
+
+        deviceDetailsPage_ =
+            nullptr;
+    }
+
+    auto *detailsPage =
+        new DeviceDetailsPage(
+            device,
+            contentStack_);
+
+    deviceDetailsPage_ =
+        detailsPage;
+
+    connect(
+        detailsPage,
+        &DeviceDetailsPage::backRequested,
+        this,
+        [this]()
+        {
+            if (deviceDetailsPage_)
+            {
+                contentStack_->removeWidget(
+                    deviceDetailsPage_);
+
+                deviceDetailsPage_->deleteLater();
+
+                deviceDetailsPage_ =
+                    nullptr;
+            }
+
+            contentStack_->setCurrentWidget(
+                devicesPage_);
+
+            setActiveNav(
+                devicesNavButton_);
+
+            refreshPhysicalDevices();
+        });
+
+    connect(
+        detailsPage,
+        &DeviceDetailsPage::refreshRequested,
+        this,
+        [this]()
+        {
+            if (operationRunning_)
+                return;
+
+            if (deviceDetailsPage_)
+            {
+                contentStack_->removeWidget(
+                    deviceDetailsPage_);
+
+                deviceDetailsPage_->deleteLater();
+
+                deviceDetailsPage_ =
+                    nullptr;
+            }
+
+            contentStack_->setCurrentWidget(
+                devicesPage_);
+
+            setActiveNav(
+                devicesNavButton_);
+
+            refreshPhysicalDevices();
+        });
+
+    contentStack_->addWidget(
+        detailsPage);
+
+    contentStack_->setCurrentWidget(
+        detailsPage);
+
+    setActiveNav(
+        devicesNavButton_);
 }
 
 void MainWindow::logout()
@@ -4217,12 +6224,17 @@ void MainWindow::logout()
                 "Operation in progress"),
             QStringLiteral(
                 "You cannot sign out while physical sanitization is running."));
+
         return;
     }
 
     emailEdit_->clear();
     passwordEdit_->clear();
     loginErrorLabel_->clear();
+
+    operatorNameLabel_->setText(
+        QStringLiteral(
+            "Operator"));
 
     selectedRequestId_.clear();
     selectedRequestDeviceType_.clear();
@@ -4235,7 +6247,8 @@ void MainWindow::logout()
 
     setConnectionState(
         false,
-        QStringLiteral("Signed out"));
+        QStringLiteral(
+            "Signed out"));
 
     rootStack_->setCurrentWidget(
         loginPage_);
@@ -4272,20 +6285,20 @@ QString MainWindow::formatCapacity(
         return QStringLiteral(
             "Unknown");
 
+    constexpr double gb =
+        1024.0 *
+        1024.0 *
+        1024.0;
+
+    constexpr double tb =
+        1024.0 *
+        1024.0 *
+        1024.0 *
+        1024.0;
+
     const double value =
         static_cast<double>(
             bytes);
-
-    const double tb =
-        1024.0 *
-        1024.0 *
-        1024.0 *
-        1024.0;
-
-    const double gb =
-        1024.0 *
-        1024.0 *
-        1024.0;
 
     if (value >= tb)
     {
@@ -4317,21 +6330,21 @@ QString MainWindow::formatBytes(
             .arg(bytes);
     }
 
+    constexpr double kb =
+        1024.0;
+
+    constexpr double mb =
+        1024.0 *
+        1024.0;
+
+    constexpr double gb =
+        1024.0 *
+        1024.0 *
+        1024.0;
+
     const double value =
         static_cast<double>(
             bytes);
-
-    const double kb =
-        1024.0;
-
-    const double mb =
-        1024.0 *
-        1024.0;
-
-    const double gb =
-        1024.0 *
-        1024.0 *
-        1024.0;
 
     if (value >= gb)
     {
@@ -4371,7 +6384,8 @@ QString MainWindow::formatDuration(
     {
         return QStringLiteral(
             "%1 ms")
-            .arg(milliseconds);
+            .arg(
+                milliseconds);
     }
 
     const std::uint64_t seconds =
@@ -4387,22 +6401,28 @@ QString MainWindow::formatDuration(
     {
         return QStringLiteral(
             "%1h %2m %3s")
-            .arg(hours)
-            .arg(minutes % 60)
-            .arg(seconds % 60);
+            .arg(
+                hours)
+            .arg(
+                minutes % 60)
+            .arg(
+                seconds % 60);
     }
 
     if (minutes > 0)
     {
         return QStringLiteral(
             "%1m %2s")
-            .arg(minutes)
-            .arg(seconds % 60);
+            .arg(
+                minutes)
+            .arg(
+                seconds % 60);
     }
 
     return QStringLiteral(
         "%1.%2 s")
-        .arg(seconds)
+        .arg(
+            seconds)
         .arg(
             (milliseconds % 1000) / 100);
 }

@@ -75,6 +75,8 @@ private:
     QTableWidget *dashboardJobsTable_;
     QTableWidget *assignedJobsTable_;
     QTableWidget *deviceTable_;
+    QTableWidget *devicesInventoryTable_;
+    QLabel *devicesStatusLabel_;
 
     QLabel *totalJobsValue_;
     QLabel *activeJobsValue_;

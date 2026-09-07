@@ -18,6 +18,7 @@ public:
     );
 
     QString token() const;
+    QString role() const;
 
     void clearToken();
 
@@ -28,6 +29,7 @@ signals:
 private:
     QNetworkAccessManager *networkManager;
     QString token_;
+    QString role_;
 };
 
 #endif // AUTHMANAGER_H
