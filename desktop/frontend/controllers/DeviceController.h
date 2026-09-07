@@ -42,7 +42,9 @@ public:
 
     // Execute sanitization using the already
     // validated target and safety result.
-    bool sanitizeSelectedTarget();
+    SecureWipe::SanitizationResult sanitizeSelectedTarget();
+
+    SanitizationMethod detectSelectedTargetMethod() const;
 
     SanitizationCapability detectSelectedTargetCapability() const;
 

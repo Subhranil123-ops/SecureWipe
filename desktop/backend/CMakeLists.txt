@@ -28,6 +28,13 @@ add_library(
 
     sanitization/src/HostOverwriteSanitizer.cpp
     sanitization/src/CertificateGenerator.cpp
+    sanitization/src/AuditLogger.cpp
+    sanitization/src/OperationLogger.cpp
+    sanitization/src/SanitizationEvent.cpp
+    sanitization/src/SanitizationPipeline.cpp
+    
+    verification/src/AuditChainVerifier.cpp
+    verification/src/CertificateVerifier.cpp
 
     forensic/evidence/src/EvidenceCollector.cpp
     forensic/validation/src/EvidenceValidator.cpp
@@ -47,6 +54,7 @@ target_include_directories(
         forensic/validation/include
         forensic/hashing/include
         forensic/scoring/include
+        verification/include
 )
 
 if(WIN32)
@@ -124,6 +132,21 @@ add_executable(
     tests/HostOverwriteSanitizerTest.cpp
 )
 
+add_executable(
+    SanitizationPipelineAuditTest
+    tests/SanitizationPipelineAuditTest.cpp
+)
+
+add_executable(
+    AuditChainVerifierTest
+    tests/AuditChainVerifierTest.cpp
+)
+
+add_executable(
+    CertificateVerifierTest
+    tests/CertificateVerifierTest.cpp
+)
+
 # ============================================================
 # REAL DEVICE HOST OVERWRITE + CERTIFICATE E2E TEST
 #
@@ -178,6 +201,12 @@ set(STORAGE_TESTS
     # Real physical-device E2E test
     HostOverwriteE2ETest
 
+    SanitizationPipelineAuditTest
+
+    CertificateVerifierTest
+
+    AuditChainVerifierTest
+
     EvidenceCollectorTest
     HashCalculatorTest
     ConfidenceScorerTest
@@ -201,6 +230,7 @@ foreach(TEST_TARGET IN LISTS STORAGE_TESTS)
             forensic/validation/include
             forensic/hashing/include
             forensic/scoring/include
+            verification/include
     )
 
     target_link_libraries(

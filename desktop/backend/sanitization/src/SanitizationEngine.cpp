@@ -67,9 +67,12 @@ SanitizationMethod SanitizationEngine::selectMethod(
         return SanitizationMethod::HostOverwrite;
     }
 
-    if (capability.isUsbDevice &&
-        capability.scsiPathAvailable)
+    if (capability.isUsbDevice)
     {
+        // Host overwrite writes the physical device directly and does
+        // not require a SCSI pass-through command to be available.
+        // Keep SCSI capability as diagnostic information rather than
+        // making it a prerequisite for the supported USB fallback.
         return SanitizationMethod::HostOverwrite;
     }
 

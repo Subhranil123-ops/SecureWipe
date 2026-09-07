@@ -47,6 +47,7 @@ qt_add_executable(SecureWipe
 
     frontend/dialogs/ForensicEvidenceDialog.cpp
     frontend/dialogs/ForensicEvidenceDialog.h
+
     frontend/dialogs/ForensicScanDialog.cpp
     frontend/dialogs/ForensicScanDialog.h
 

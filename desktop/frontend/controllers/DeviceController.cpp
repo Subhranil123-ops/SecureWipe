@@ -58,6 +58,7 @@ bool DeviceController::selectTarget(
      */
     selectedTarget_ =
         devices_[index];
+    lastSafetyResult_ = SafetyResult{};
 
     /*
      * Save the original identity inside SafetyEngine.
@@ -102,6 +103,7 @@ void DeviceController::refreshDevices()
          * The selected target must be selected again from this list.
          */
         selectedTarget_.reset();
+        lastSafetyResult_ = SafetyResult{};
 
         emit devicesUpdated();
     }
@@ -171,6 +173,7 @@ bool DeviceController::validateSelectedTarget()
             *selectedTarget_))
     {
         selectedTarget_.reset();
+        lastSafetyResult_ = SafetyResult{};
 
         emit safetyCheckFailed(
             QStringLiteral(
@@ -203,12 +206,15 @@ bool DeviceController::evaluateSelectedTarget()
     /*
      * SafetyEngine is called only after target validation.
      */
-    if (!safetyEngine_.evaluate(
-            *selectedTarget_))
+    lastSafetyResult_ =
+        safetyEngine_.evaluateWithResult(
+            *selectedTarget_);
+
+    if (!lastSafetyResult_.isOverallSafe)
     {
         emit safetyCheckFailed(
-            QStringLiteral(
-                "Safety checks blocked sanitization."));
+            QString::fromStdString(
+                lastSafetyResult_.summary));
 
         return false;
     }
@@ -216,4 +222,88 @@ bool DeviceController::evaluateSelectedTarget()
     emit safetyCheckPassed();
 
     return true;
+}
+
+// ============================================================
+// Sanitization Method
+// ============================================================
+
+SanitizationMethod DeviceController::detectSelectedTargetMethod() const
+{
+    if (!selectedTarget_.has_value())
+    {
+        return SanitizationMethod::Unsupported;
+    }
+
+    const SanitizationCapability capability =
+        detectSelectedTargetCapability();
+
+    return sanitizationEngine_.selectMethod(
+        *selectedTarget_,
+        capability
+    );
+}
+
+
+// ============================================================
+// Sanitization Execution
+// ============================================================
+
+SecureWipe::SanitizationResult
+DeviceController::sanitizeSelectedTarget()
+{
+    SecureWipe::SanitizationResult result;
+
+    if (!selectedTarget_.has_value())
+    {
+        result.status = SecureWipe::SanitizationStatus::FAILED;
+        result.error = SecureWipe::SanitizationErrorCode::SAFETY_VALIDATION_FAILED;
+        result.message = "No validated sanitization target is available.";
+        result.errorMessage = result.message;
+        emit sanitizationFailed(QString::fromStdString(result.message));
+        return result;
+    }
+
+    if (!lastSafetyResult_.isOverallSafe)
+    {
+        result.status = SecureWipe::SanitizationStatus::FAILED;
+        result.error = SecureWipe::SanitizationErrorCode::SAFETY_VALIDATION_FAILED;
+        result.message = "Safety checks did not approve the target.";
+        result.errorMessage = result.message;
+        emit sanitizationFailed(QString::fromStdString(result.message));
+        return result;
+    }
+
+    try
+    {
+        result = sanitizationEngine_.sanitize(
+            *selectedTarget_,
+            lastSafetyResult_
+        );
+    }
+    catch (const std::exception &exception)
+    {
+        result.status = SecureWipe::SanitizationStatus::FAILED;
+        result.error = SecureWipe::SanitizationErrorCode::SANITIZATION_EXECUTION_FAILED;
+        result.message = exception.what();
+        result.errorMessage = result.message;
+    }
+    catch (...)
+    {
+        result.status = SecureWipe::SanitizationStatus::FAILED;
+        result.error = SecureWipe::SanitizationErrorCode::SANITIZATION_EXECUTION_FAILED;
+        result.message = "Unknown error occurred during sanitization.";
+        result.errorMessage = result.message;
+    }
+
+    if (result.status == SecureWipe::SanitizationStatus::COMPLETED)
+    {
+        emit sanitizationSucceeded();
+    }
+    else
+    {
+        emit sanitizationFailed(QString::fromStdString(result.message));
+    }
+
+    return result;
 }
