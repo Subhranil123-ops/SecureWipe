@@ -1,110 +1,102 @@
 #include <Windows.h>
 
-#include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <string>
 #include <vector>
 
 #include "StorageDevice.h"
 #include "WindowsStorageDiscovery.h"
-#include "SafetyEngine.h"
-#include "SafetyResult.h"
 #include "SanitizationCapability.h"
 #include "SanitizationEngine.h"
 #include "SanitizationMethod.h"
+#include "SanitizationPipeline.h"
 #include "SanitizationResult.h"
-#include "CertificateGenerator.h"
 #include "SanitizationCertificate.h"
+#include "SanitizationEvent.h"
+#include "SafetyEngine.h"
+#include "SafetyResult.h"
 
 using namespace SecureWipe;
 
-static std::string methodToString(SanitizationMethod method)
+namespace
+{
+std::string readLine()
+{
+    std::string value;
+    std::getline(std::cin, value);
+    return value;
+}
+
+void separator()
+{
+    std::cout << "\n============================================================\n";
+}
+
+std::string methodToString(SanitizationMethod method)
 {
     switch (method)
     {
-    case SanitizationMethod::NvmeSanitize:
-        return "NVMe Sanitize";
-    case SanitizationMethod::AtaSanitize:
-        return "ATA Sanitize";
-    case SanitizationMethod::HostOverwrite:
-        return "Host Overwrite";
-    case SanitizationMethod::Unsupported:
-        return "Unsupported";
+    case SanitizationMethod::NvmeSanitize: return "NVMe Sanitize";
+    case SanitizationMethod::AtaSanitize: return "ATA Sanitize";
+    case SanitizationMethod::HostOverwrite: return "Host Overwrite";
+    case SanitizationMethod::Unsupported: return "Unsupported";
     }
-
     return "Unknown";
 }
 
-static std::string sanitizationStatusToString(SanitizationStatus status)
+std::string sanitizationStatusToString(SanitizationStatus status)
 {
     switch (status)
     {
-    case SanitizationStatus::NOT_STARTED:
-        return "NOT_STARTED";
-    case SanitizationStatus::IN_PROGRESS:
-        return "IN_PROGRESS";
-    case SanitizationStatus::COMPLETED:
-        return "COMPLETED";
-    case SanitizationStatus::FAILED:
-        return "FAILED";
-    case SanitizationStatus::ABORTED:
-        return "ABORTED";
+    case SanitizationStatus::NOT_STARTED: return "NOT_STARTED";
+    case SanitizationStatus::IN_PROGRESS: return "IN_PROGRESS";
+    case SanitizationStatus::COMPLETED: return "COMPLETED";
+    case SanitizationStatus::FAILED: return "FAILED";
+    case SanitizationStatus::ABORTED: return "ABORTED";
     }
-
     return "UNKNOWN";
 }
 
-static std::string verificationStatusToString(VerificationStatus status)
+std::string verificationStatusToString(VerificationStatus status)
 {
     switch (status)
     {
-    case VerificationStatus::NOT_PERFORMED:
-        return "NOT_PERFORMED";
-    case VerificationStatus::IN_PROGRESS:
-        return "IN_PROGRESS";
-    case VerificationStatus::PASSED:
-        return "PASSED";
-    case VerificationStatus::FAILED:
-        return "FAILED";
+    case VerificationStatus::NOT_PERFORMED: return "NOT_PERFORMED";
+    case VerificationStatus::IN_PROGRESS: return "IN_PROGRESS";
+    case VerificationStatus::PASSED: return "PASSED";
+    case VerificationStatus::FAILED: return "FAILED";
     }
-
     return "UNKNOWN";
 }
 
-static std::string readLine()
+bool getCurrentWindowsUser(std::string& user)
 {
-    std::string input;
-    std::getline(std::cin, input);
-    return input;
+    char buffer[256]{};
+    DWORD size = static_cast<DWORD>(sizeof(buffer));
+
+    if (!GetUserNameA(buffer, &size))
+        return false;
+
+    if (size > 0)
+        --size;
+
+    user.assign(buffer, size);
+    return !user.empty();
 }
 
-static bool parseDeviceIndex(
-    const std::string& input,
-    std::size_t deviceCount,
-    std::size_t& index)
+bool parseIndex(const std::string& input, std::size_t count, std::size_t& index)
 {
     try
     {
         std::size_t consumed = 0;
+        const unsigned long long value = std::stoull(input, &consumed);
 
-        const unsigned long long value =
-            std::stoull(
-                input,
-                &consumed);
-
-        if (consumed != input.size())
+        if (consumed != input.size() || value == 0 || value > count)
             return false;
 
-        if (value == 0 ||
-            value > deviceCount)
-        {
-            return false;
-        }
-
-        index =
-            static_cast<std::size_t>(
-                value - 1);
-
+        index = static_cast<std::size_t>(value - 1);
         return true;
     }
     catch (...)
@@ -113,277 +105,123 @@ static bool parseDeviceIndex(
     }
 }
 
-static void separator()
-{
-    std::cout
-        << "\n============================================================\n";
-}
-
-static void printDevice(
-    const StorageDevice& device,
-    std::size_t number)
+void printDevice(const StorageDevice& device, std::size_t number)
 {
     std::cout
         << "\n[" << number << "]\n"
-        << "  Device ID   : "
-        << device.getDeviceId()
-        << '\n'
-        << "  Model       : "
-        << device.getModel()
-        << '\n'
-        << "  Serial      : "
-        << device.getSerialNumber()
-        << '\n'
-        << "  Interface   : "
-        << device.getInterfaceType()
-        << '\n'
-        << "  Capacity    : "
-        << device.getCapacityBytes()
-        << " bytes\n"
-        << "  System Disk : "
-        << (device.isSystemDisk()
-                ? "YES - BLOCKED"
-                : "NO")
-        << '\n'
-        << "  Removable   : "
-        << (device.isRemovable()
-                ? "YES"
-                : "NO")
-        << '\n';
+        << "  Device ID   : " << device.getDeviceId() << '\n'
+        << "  Model       : " << device.getModel() << '\n'
+        << "  Serial      : " << device.getSerialNumber() << '\n'
+        << "  Interface   : " << device.getInterfaceType() << '\n'
+        << "  Capacity    : " << device.getCapacityBytes() << " bytes\n"
+        << "  System Disk : " << (device.isSystemDisk() ? "YES - BLOCKED" : "NO") << '\n'
+        << "  Removable   : " << (device.isRemovable() ? "YES" : "NO") << '\n';
 }
 
-static bool runSafety(
-    SafetyEngine& safetyEngine,
-    const StorageDevice& device,
-    SafetyResult& result)
+bool confirmTarget(const StorageDevice& device)
 {
     separator();
-
     std::cout
-        << "STEP 2 - SAFETY ENGINE\n"
-        << "------------------------------------------------------------\n";
-
-    safetyEngine.setExpectedTarget(device);
-
-    result =
-        safetyEngine.evaluateWithResult(
-            device);
-
-    std::cout
-        << "\nSafety Decision : "
-        << result.decision
-        << '\n'
-        << "Safety Summary  : "
-        << result.summary
-        << '\n';
-
-    std::cout
-        << "\nIndividual Checks\n"
-        << "-----------------\n";
-
-    bool allPassed = true;
-
-    for (const auto& check : result.checks)
-    {
-        std::cout
-            << "\n"
-            << (check.passed
-                    ? "[PASS] "
-                    : "[FAIL] ")
-            << check.checkName
-            << '\n'
-            << "       "
-            << check.message
-            << '\n';
-
-        if (!check.passed)
-            allPassed = false;
-    }
-
-    if (!result.isOverallSafe ||
-        !allPassed)
-    {
-        std::cout
-            << "\n"
-            << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
-            << "SANITIZATION BLOCKED\n"
-            << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n";
-
-        return false;
-    }
-
-    std::cout
-        << "\n[SAFETY PASS]\n";
-
-    return true;
-}
-
-static bool confirmTarget(
-    const StorageDevice& device)
-{
-    separator();
-
-    std::cout
-        << "DESTRUCTIVE OPERATION CONFIRMATION\n"
-        << "------------------------------------------------------------\n\n";
-
-    std::cout
-        << "WARNING: THIS OPERATION IS DESTRUCTIVE.\n\n"
-        << "The entire physical device will be overwritten with 0x00.\n"
-        << "All existing data will be destroyed.\n"
-        << "This operation cannot be undone.\n\n";
-
-    std::cout
-        << "Target Device\n"
-        << "-------------\n"
-        << "Device ID : "
-        << device.getDeviceId()
-        << '\n'
-        << "Model     : "
-        << device.getModel()
-        << '\n'
-        << "Serial    : "
-        << device.getSerialNumber()
-        << '\n'
-        << "Interface : "
-        << device.getInterfaceType()
-        << '\n'
-        << "Capacity  : "
-        << device.getCapacityBytes()
-        << " bytes\n\n";
-
-    std::cout
-        << "Enter the exact target serial number: ";
-
-    const std::string serial =
-        readLine();
-
-    if (serial !=
-        device.getSerialNumber())
-    {
-        std::cout
-            << "\n[ABORTED]\n"
-            << "Serial number does not match.\n";
-
-        return false;
-    }
-
-    std::cout
-        << "\nSerial confirmation matched.\n";
-
-    std::cout
-        << "Type YES to continue: ";
-
-    const std::string confirmation =
-        readLine();
-
-    if (confirmation != "YES")
-    {
-        std::cout
-            << "\n[ABORTED]\n"
-            << "Destructive operation was not authorized.\n";
-
-        return false;
-    }
-
-    return true;
-}
-
-static void printCertificate(
-    const SanitizationCertificate& certificate)
-{
-    separator();
-
-    std::cout
-        << "SANITIZATION CERTIFICATE\n"
+        << "FINAL DESTRUCTIVE AUTHORIZATION\n"
         << "------------------------------------------------------------\n"
-        << "Certificate ID        : "
-        << certificate.certificateId
-        << '\n'
-        << "Operation ID          : "
-        << certificate.operationId
-        << '\n'
-        << "Request ID            : "
-        << (certificate.requestId.empty()
-                ? "<not supplied - standalone E2E>"
-                : certificate.requestId)
-        << '\n'
-        << "Device ID             : "
-        << certificate.deviceId
-        << '\n'
-        << "Model                 : "
-        << certificate.model
-        << '\n'
-        << "Serial Number         : "
-        << certificate.serialNumber
-        << '\n'
-        << "Capacity              : "
-        << certificate.capacityBytes
-        << " bytes\n"
-        << "Interface             : "
-        << certificate.interfaceType
-        << '\n'
-        << "Method                : "
-        << methodToString(certificate.method)
-        << '\n'
-        << "Status                : "
-        << sanitizationStatusToString(certificate.status)
-        << '\n'
-        << "Bytes Processed       : "
-        << certificate.bytesProcessed
-        << '\n'
-        << "Operation Duration    : "
-        << certificate.operationDurationMs
-        << " ms\n"
-        << "Verification Status   : "
-        << verificationStatusToString(
-               certificate.verificationStatus)
-        << '\n'
-        << "Verification Performed: "
-        << (certificate.verificationPerformed
-                ? "YES"
-                : "NO")
-        << '\n'
-        << "Verification Passed   : "
-        << (certificate.verificationPassed
-                ? "YES"
-                : "NO")
-        << '\n'
-        << "Bytes Verified        : "
-        << certificate.bytesVerified
-        << '\n'
-        << "Verification Samples  : "
-        << certificate.verificationSamples
-        << '\n'
-        << "Native Error Code     : "
-        << certificate.nativeErrorCode
-        << '\n'
-        << "Generated At          : "
-        << certificate.generatedAt
-        << '\n'
-        << "Hash Algorithm        : "
-        << certificate.hashAlgorithm
-        << '\n'
-        << "Certificate Hash      : "
-        << certificate.certificateHash
-        << '\n'
-        << "Message               : "
-        << certificate.message
-        << '\n';
+        << "This will PERMANENTLY DESTROY ALL DATA on the selected device.\n\n"
+        << "Device ID : " << device.getDeviceId() << '\n'
+        << "Model     : " << device.getModel() << '\n'
+        << "Serial    : " << device.getSerialNumber() << '\n'
+        << "Interface : " << device.getInterfaceType() << '\n'
+        << "Capacity  : " << device.getCapacityBytes() << " bytes\n"
+        << "Method    : Host Overwrite\n"
+        << "Pattern   : 0x00\n\n"
+        << "Enter EXACT serial number: ";
+
+    if (readLine() != device.getSerialNumber())
+    {
+        std::cout << "\n[ABORTED] Serial number mismatch.\n";
+        return false;
+    }
+
+    std::cout << "Type EXACTLY: START HOST OVERWRITE\nConfirmation: ";
+
+    if (readLine() != "START HOST OVERWRITE")
+    {
+        std::cout << "\n[ABORTED] Destructive authorization failed.\n";
+        return false;
+    }
+
+    return true;
 }
 
-static bool validateCertificate(
-    const SanitizationCertificate& certificate,
-    const StorageDevice& target,
-    const SanitizationResult& result)
+bool containsText(const std::filesystem::path& file, const std::string& text)
+{
+    std::ifstream input(file, std::ios::in | std::ios::binary);
+    if (!input)
+        return false;
+
+    std::string line;
+    while (std::getline(input, line))
+    {
+        if (line.find(text) != std::string::npos)
+            return true;
+    }
+
+    return false;
+}
+
+bool validateAuditTrail(const SanitizationPipelineResult& result)
 {
     separator();
+    std::cout << "AUDIT TRAIL VALIDATION\n"
+              << "------------------------------------------------------------\n";
 
-    std::cout
-        << "CERTIFICATE VALIDATION\n"
-        << "------------------------------------------------------------\n";
+    const std::filesystem::path auditPath(result.auditLogPath);
+
+    if (!std::filesystem::exists(auditPath))
+    {
+        std::cout << "[FAIL] Audit log does not exist: " << auditPath << '\n';
+        return false;
+    }
+
+    std::cout << "[PASS] Audit log exists.\n";
+
+    const std::vector<std::string> requiredEvents = {
+        "PIPELINE_STARTED",
+        "SAFETY_CHECK_COMPLETED",
+        "TARGET_VALIDATED",
+        "METHOD_SELECTED",
+        "SANITIZATION_STARTED",
+        "SANITIZATION_COMPLETED",
+        "VERIFICATION_COMPLETED",
+        "CERTIFICATE_GENERATED",
+        "CERTIFICATE_PERSISTED",
+        "PIPELINE_COMPLETED"
+    };
 
     bool passed = true;
+
+    for (const auto& event : requiredEvents)
+    {
+        if (containsText(auditPath, "\"eventType\":\"" + event + "\""))
+            std::cout << "[PASS] " << event << '\n';
+        else
+        {
+            std::cout << "[FAIL] Missing audit event: " << event << '\n';
+            passed = false;
+        }
+    }
+
+    return passed;
+}
+
+bool validateCertificate(const SanitizationPipelineResult& result, const StorageDevice& target)
+{
+    separator();
+    std::cout << "CERTIFICATE VALIDATION\n"
+              << "------------------------------------------------------------\n";
+
+    bool passed = true;
+
+    const auto& certificate = result.certificate;
+    const auto& sanitization = result.sanitization;
 
     if (certificate.certificateId.empty())
     {
@@ -391,731 +229,408 @@ static bool validateCertificate(
         passed = false;
     }
     else
-    {
         std::cout << "[PASS] Certificate ID generated.\n";
-    }
 
-    if (certificate.operationId.empty())
+    if (certificate.operationId != sanitization.operationId || certificate.operationId.empty())
     {
-        std::cout << "[FAIL] Operation ID is empty.\n";
+        std::cout << "[FAIL] Certificate operation ID mismatch.\n";
         passed = false;
     }
     else
-    {
-        std::cout << "[PASS] Operation ID preserved.\n";
-    }
+        std::cout << "[PASS] Operation ID matches.\n";
 
-    if (certificate.deviceId !=
-        target.getDeviceId())
+    if (certificate.requestId.empty())
     {
-        std::cout
-            << "[FAIL] Certificate device ID does not match target.\n";
+        std::cout << "[FAIL] Certificate request ID is empty.\n";
         passed = false;
     }
     else
-    {
-        std::cout
-            << "[PASS] Device identity matches.\n";
-    }
+        std::cout << "[PASS] Request ID preserved.\n";
 
-    if (certificate.serialNumber !=
-        target.getSerialNumber())
+    if (certificate.deviceId != target.getDeviceId())
     {
-        std::cout
-            << "[FAIL] Certificate serial number does not match target.\n";
+        std::cout << "[FAIL] Certificate device ID mismatch.\n";
         passed = false;
     }
     else
-    {
-        std::cout
-            << "[PASS] Serial number matches.\n";
-    }
+        std::cout << "[PASS] Device ID matches.\n";
 
-    if (certificate.capacityBytes !=
-        target.getCapacityBytes())
+    if (certificate.serialNumber != target.getSerialNumber())
     {
-        std::cout
-            << "[FAIL] Certificate capacity does not match target.\n";
+        std::cout << "[FAIL] Certificate serial number mismatch.\n";
         passed = false;
     }
     else
-    {
-        std::cout
-            << "[PASS] Capacity matches.\n";
-    }
+        std::cout << "[PASS] Serial number matches.\n";
 
-    if (certificate.method !=
-        result.method)
+    if (certificate.method != SanitizationMethod::HostOverwrite)
     {
-        std::cout
-            << "[FAIL] Certificate method does not match result.\n";
+        std::cout << "[FAIL] Certificate method is not Host Overwrite.\n";
         passed = false;
     }
     else
-    {
-        std::cout
-            << "[PASS] Sanitization method preserved.\n";
-    }
+        std::cout << "[PASS] Certificate method is Host Overwrite.\n";
 
-    if (certificate.status !=
-        SanitizationStatus::COMPLETED)
+    if (certificate.status != SanitizationStatus::COMPLETED)
     {
-        std::cout
-            << "[FAIL] Certificate status is not COMPLETED.\n";
+        std::cout << "[FAIL] Certificate status is not COMPLETED.\n";
         passed = false;
     }
     else
-    {
-        std::cout
-            << "[PASS] Certificate status is COMPLETED.\n";
-    }
+        std::cout << "[PASS] Certificate status is COMPLETED.\n";
 
-    if (!certificate.verificationPerformed)
+    if (!certificate.verificationPerformed ||
+        certificate.verificationStatus != VerificationStatus::PASSED ||
+        !certificate.verificationPassed)
     {
-        std::cout
-            << "[FAIL] Certificate says verification was not performed.\n";
+        std::cout << "[FAIL] Certificate verification evidence is incomplete.\n";
         passed = false;
     }
     else
-    {
-        std::cout
-            << "[PASS] Verification evidence recorded.\n";
-    }
+        std::cout << "[PASS] Certificate verification evidence is valid.\n";
 
-    if (certificate.verificationStatus !=
-        VerificationStatus::PASSED)
+    if (certificate.bytesVerified != sanitization.bytesVerified ||
+        certificate.verificationSamples != sanitization.verificationSamples)
     {
-        std::cout
-            << "[FAIL] Certificate verification status is not PASSED.\n";
+        std::cout << "[FAIL] Certificate verification counters do not match result.\n";
         passed = false;
     }
     else
-    {
-        std::cout
-            << "[PASS] Verification status is PASSED.\n";
-    }
+        std::cout << "[PASS] Verification counters match.\n";
 
-    if (!certificate.verificationPassed)
+    if (certificate.certificateHash.empty() || certificate.certificateHash.size() != 64)
     {
-        std::cout
-            << "[FAIL] Certificate verificationPassed is false.\n";
+        std::cout << "[FAIL] Certificate SHA-256 hash is missing/invalid.\n";
         passed = false;
     }
     else
-    {
-        std::cout
-            << "[PASS] verificationPassed is TRUE.\n";
-    }
-
-    if (certificate.bytesVerified !=
-        result.bytesVerified)
-    {
-        std::cout
-            << "[FAIL] bytesVerified does not match real result.\n";
-        passed = false;
-    }
-    else
-    {
-        std::cout
-            << "[PASS] bytesVerified preserved.\n";
-    }
-
-    if (certificate.verificationSamples !=
-        result.verificationSamples)
-    {
-        std::cout
-            << "[FAIL] Verification sample count does not match.\n";
-        passed = false;
-    }
-    else
-    {
-        std::cout
-            << "[PASS] Verification sample count preserved.\n";
-    }
-
-    if (certificate.certificateHash.empty())
-    {
-        std::cout
-            << "[FAIL] Certificate SHA-256 hash is empty.\n";
-        passed = false;
-    }
-    else if (certificate.certificateHash.length() != 64)
-    {
-        std::cout
-            << "[FAIL] SHA-256 hash length is "
-            << certificate.certificateHash.length()
-            << " instead of 64.\n";
-        passed = false;
-    }
-    else
-    {
-        std::cout
-            << "[PASS] SHA-256 certificate hash generated.\n";
-    }
+        std::cout << "[PASS] Certificate SHA-256 hash is present.\n";
 
     if (!certificate.isValid())
     {
-        std::cout
-            << "[FAIL] Certificate isValid() returned FALSE.\n";
+        std::cout << "[FAIL] Certificate isValid() returned FALSE.\n";
         passed = false;
     }
     else
+        std::cout << "[PASS] Certificate isValid() returned TRUE.\n";
+
+    const std::filesystem::path certificatePath(result.certificatePath);
+
+    if (!result.certificatePersisted ||
+        result.certificatePath.empty() ||
+        !std::filesystem::exists(certificatePath))
     {
-        std::cout
-            << "[PASS] Certificate isValid() returned TRUE.\n";
+        std::cout << "[FAIL] Persisted certificate file is missing.\n";
+        passed = false;
     }
+    else
+        std::cout << "[PASS] Persisted certificate file exists.\n";
 
     return passed;
+}
 }
 
 int main()
 {
     separator();
-
     std::cout
-        << "        SECUREWIPE HOST OVERWRITE E2E TEST\n"
-        << "        REAL PHYSICAL DEVICE + CERTIFICATE TEST\n";
-
+        << "SECUREWIPE HOST OVERWRITE REAL E2E TEST\n"
+        << "Production Path: Discover -> Safety -> Host Overwrite -> Verify -> Certify -> Audit\n";
     separator();
 
     std::cout
-        << "\nIMPORTANT:\n"
-        << "This test permanently destroys data.\n"
-        << "Use ONLY a disposable/sacrificial device.\n"
-        << "NEVER select the Windows system disk.\n";
+        << "\nWARNING: THIS IS A REAL DESTRUCTIVE TEST.\n"
+        << "Use ONLY a disposable/sacrificial physical storage device.\n"
+        << "NEVER select the Windows system disk.\n\n";
+
+    std::string actorId;
+    if (!getCurrentWindowsUser(actorId))
+    {
+        std::cout << "[FAIL] Could not determine Windows user.\n";
+        return 1;
+    }
+
+    std::cout << "Actor/User: " << actorId << '\n';
+
+    std::cout << "Enter REAL sanitization request ID: ";
+    const std::string requestId = readLine();
+
+    if (requestId.empty())
+    {
+        std::cout << "[ABORTED] Request ID is required.\n";
+        return 1;
+    }
 
     // =========================================================
-    // STEP 1 - DISCOVERY
+    // 1. REAL DEVICE DISCOVERY
     // =========================================================
-
     separator();
-
-    std::cout
-        << "STEP 1 - DEVICE DISCOVERY\n"
-        << "------------------------------------------------------------\n";
+    std::cout << "STEP 1 - REAL DEVICE DISCOVERY\n"
+              << "------------------------------------------------------------\n";
 
     WindowsStorageDiscovery discovery;
-
-    std::cout
-        << "Discovering physical storage devices...\n";
-
-    std::vector<StorageDevice> devices =
-        discovery.discover();
+    const std::vector<StorageDevice> devices = discovery.discover();
 
     if (devices.empty())
     {
-        std::cout
-            << "\n[FAIL]\n"
-            << "No physical storage devices detected.\n";
-
+        std::cout << "[FAIL] No physical storage devices detected.\n";
         return 1;
     }
 
-    std::cout
-        << "\nDetected "
-        << devices.size()
-        << " physical storage device(s).\n";
+    std::cout << "Detected " << devices.size() << " physical device(s).\n";
 
-    for (std::size_t i = 0;
-         i < devices.size();
-         ++i)
-    {
-        printDevice(
-            devices[i],
-            i + 1);
-    }
+    for (std::size_t i = 0; i < devices.size(); ++i)
+        printDevice(devices[i], i + 1);
 
     // =========================================================
-    // TARGET SELECTION
+    // 2. REAL TARGET SELECTION
     // =========================================================
-
     separator();
-
-    std::cout
-        << "TARGET SELECTION\n"
-        << "------------------------------------------------------------\n";
-
-    std::cout
-        << "\nEnter the number of the SACRIFICIAL device: ";
-
-    const std::string input =
-        readLine();
+    std::cout << "STEP 2 - REAL TARGET SELECTION\n"
+              << "------------------------------------------------------------\n";
+    std::cout << "Enter the number of the disposable target device: ";
 
     std::size_t selectedIndex = 0;
-
-    if (!parseDeviceIndex(
-            input,
-            devices.size(),
-            selectedIndex))
+    if (!parseIndex(readLine(), devices.size(), selectedIndex))
     {
-        std::cout
-            << "\n[FAIL]\n"
-            << "Invalid device selection.\n";
-
+        std::cout << "[FAIL] Invalid device selection.\n";
         return 1;
     }
 
-    StorageDevice selectedDevice =
-        devices[selectedIndex];
-
-    printDevice(
-        selectedDevice,
-        selectedIndex + 1);
-
-    // =========================================================
-    // HARD SAFETY GUARDS
-    // =========================================================
+    StorageDevice selectedDevice = devices[selectedIndex];
+    printDevice(selectedDevice, selectedIndex + 1);
 
     if (selectedDevice.isSystemDisk())
     {
-        std::cout
-            << "\n"
-            << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
-            << "CRITICAL SAFETY BLOCK\n"
-            << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
-            << "Selected device is the Windows system disk.\n"
-            << "Operation will NOT continue.\n";
-
+        std::cout << "[CRITICAL BLOCK] Selected target is the Windows system disk.\n";
         return 2;
     }
 
-    if (selectedDevice.getDeviceId().empty())
+    if (selectedDevice.getDeviceId().empty() ||
+        selectedDevice.getSerialNumber().empty() ||
+        selectedDevice.getCapacityBytes() == 0)
     {
-        std::cout
-            << "\n[FAIL]\n"
-            << "Device ID is empty.\n";
-
-        return 1;
-    }
-
-    if (selectedDevice.getSerialNumber().empty())
-    {
-        std::cout
-            << "\n[FAIL]\n"
-            << "Serial number is empty.\n";
-
-        return 1;
-    }
-
-    if (selectedDevice.getCapacityBytes() == 0)
-    {
-        std::cout
-            << "\n[FAIL]\n"
-            << "Device capacity is zero.\n";
-
+        std::cout << "[FAIL] Target has incomplete physical identity/capacity information.\n";
         return 1;
     }
 
     // =========================================================
-    // STEP 2 - SAFETY
+    // 3. REAL PRE-FLIGHT SAFETY
     // =========================================================
+    separator();
+    std::cout << "STEP 3 - REAL PRE-FLIGHT SAFETY\n"
+              << "------------------------------------------------------------\n";
 
     SafetyEngine safetyEngine;
-    SafetyResult safetyResult;
+    safetyEngine.setExpectedTarget(selectedDevice);
+    const SafetyResult safetyResult =
+        safetyEngine.evaluateWithResult(selectedDevice);
 
-    if (!runSafety(
-            safetyEngine,
-            selectedDevice,
-            safetyResult))
+    std::cout << "Decision: " << safetyResult.decision << '\n'
+              << "Summary : " << safetyResult.summary << '\n';
+
+    for (const auto& check : safetyResult.checks)
     {
+        std::cout
+            << (check.passed ? "[PASS] " : "[FAIL] ")
+            << check.checkName << " - " << check.message << '\n';
+    }
+
+    if (!safetyResult.isOverallSafe)
+    {
+        std::cout << "[BLOCKED] Pre-flight safety failed.\n";
         return 2;
     }
 
     // =========================================================
-    // STEP 3 - CAPABILITY
+    // 4. REAL HOST OVERWRITE METHOD CHECK
     // =========================================================
-
     separator();
+    std::cout << "STEP 4 - REAL METHOD SELECTION\n"
+              << "------------------------------------------------------------\n";
 
-    std::cout
-        << "STEP 3 - CAPABILITY & METHOD SELECTION\n"
-        << "------------------------------------------------------------\n";
-
-    SanitizationCapability capability =
-        detectSanitizationCapability(
-            selectedDevice);
-
-    std::cout
-        << "\nCapability Summary\n"
-        << "------------------\n"
-        << "USB Device             : "
-        << (capability.isUsbDevice
-                ? "YES"
-                : "NO")
-        << '\n'
-        << "Storage Property Query : "
-        << (capability.storagePropertyQueryAvailable
-                ? "AVAILABLE"
-                : "NOT AVAILABLE")
-        << '\n'
-        << "SCSI Path              : "
-        << (capability.scsiPathAvailable
-                ? "AVAILABLE"
-                : "NOT AVAILABLE")
-        << '\n'
-        << "NVMe Identify          : "
-        << (capability.nvmeIdentifyAvailable
-                ? "AVAILABLE"
-                : "NOT AVAILABLE")
-        << '\n'
-        << "ATA Identify           : "
-        << (capability.ataIdentifyAvailable
-                ? "AVAILABLE"
-                : "NOT AVAILABLE")
-        << '\n';
+    const SanitizationCapability capability =
+        detectSanitizationCapability(selectedDevice);
 
     SanitizationEngine sanitizationEngine;
-
     const SanitizationMethod method =
-        sanitizationEngine.selectMethod(
-            selectedDevice,
-            capability);
+        sanitizationEngine.selectMethod(selectedDevice, capability);
 
-    std::cout
-        << "\nSelected Sanitization Method: "
-        << methodToString(method)
-        << '\n';
+    std::cout << "Selected method: " << methodToString(method) << '\n';
 
-    if (method !=
-        SanitizationMethod::HostOverwrite)
+    if (method != SanitizationMethod::HostOverwrite)
     {
         std::cout
-            << "\n[TEST STOPPED]\n"
-            << "This test is specifically for Host Overwrite.\n"
+            << "[STOPPED] This E2E executable is specifically for the Host Overwrite path.\n"
             << "No destructive operation was started.\n";
-
         return 3;
     }
 
-    std::cout
-        << "\n[PASS]\n"
-        << "Host Overwrite selected.\n";
+    std::cout << "[PASS] Host Overwrite path selected.\n";
 
     // =========================================================
-    // STEP 4 - CONFIRMATION
+    // 5. FINAL REAL REDISCOVERY + IDENTITY CONFIRMATION
     // =========================================================
-
-    if (!confirmTarget(
-            selectedDevice))
-    {
-        return 4;
-    }
-
-    // =========================================================
-    // STEP 5 - FRESH DISCOVERY
-    // =========================================================
-
     separator();
+    std::cout << "STEP 5 - FINAL TARGET REVALIDATION\n"
+              << "------------------------------------------------------------\n";
 
-    std::cout
-        << "STEP 5 - FINAL TARGET REVALIDATION\n"
-        << "------------------------------------------------------------\n";
+    const std::vector<StorageDevice> freshDevices = discovery.discover();
 
-    std::cout
-        << "Performing fresh device discovery...\n";
+    StorageDevice freshTarget = selectedDevice;
+    bool found = false;
 
-    std::vector<StorageDevice> freshDevices =
-        discovery.discover();
-
-    if (freshDevices.empty())
+    for (const auto& device : freshDevices)
     {
-        std::cout
-            << "\n[ABORTED]\n"
-            << "Fresh discovery returned no devices.\n";
-
-        return 5;
-    }
-
-    if (!safetyEngine.validateTarget(
-            freshDevices,
-            selectedDevice))
-    {
-        std::cout
-            << "\n[ABORTED]\n"
-            << "Original target could not be safely revalidated.\n";
-
-        return 5;
-    }
-
-    StorageDevice* freshTarget = nullptr;
-
-    for (auto& device : freshDevices)
-    {
-        if (device.getDeviceId() ==
-            selectedDevice.getDeviceId())
+        if (device.getDeviceId() == selectedDevice.getDeviceId())
         {
-            freshTarget = &device;
+            freshTarget = device;
+            found = true;
             break;
         }
     }
 
-    if (freshTarget == nullptr)
+    if (!found)
     {
-        std::cout
-            << "\n[ABORTED]\n"
-            << "Fresh target was not found.\n";
-
+        std::cout << "[ABORTED] Target disappeared before execution.\n";
         return 5;
     }
 
-    selectedDevice =
-        *freshTarget;
-
-    if (selectedDevice.isSystemDisk())
+    if (freshTarget.isSystemDisk())
     {
-        std::cout
-            << "\n[CRITICAL BLOCK]\n"
-            << "Target is now detected as system disk.\n";
-
+        std::cout << "[CRITICAL BLOCK] Target became the system disk.\n";
         return 5;
     }
 
-    SafetyResult finalSafetyResult =
-        safetyEngine.evaluateWithResult(
-            selectedDevice);
+    if (freshTarget.getSerialNumber() != selectedDevice.getSerialNumber() ||
+        freshTarget.getCapacityBytes() != selectedDevice.getCapacityBytes())
+    {
+        std::cout << "[ABORTED] Target identity changed before execution.\n";
+        return 5;
+    }
+
+    SafetyEngine finalSafetyEngine;
+    finalSafetyEngine.setExpectedTarget(freshTarget);
+    const SafetyResult finalSafetyResult =
+        finalSafetyEngine.evaluateWithResult(freshTarget);
 
     if (!finalSafetyResult.isOverallSafe)
     {
         std::cout
-            << "\n[ABORTED]\n"
-            << "Final safety validation failed.\n"
-            << finalSafetyResult.summary
-            << '\n';
-
+            << "[ABORTED] Final safety evaluation failed: "
+            << finalSafetyResult.summary << '\n';
         return 5;
     }
 
-    std::cout
-        << "\n[FINAL VALIDATION PASS]\n"
-        << "Target identity and safety state remain valid.\n";
+    selectedDevice = freshTarget;
+
+    std::cout << "[PASS] Final target identity and safety state confirmed.\n";
 
     // =========================================================
-    // STEP 6 - FINAL WARNING
+    // 6. EXPLICIT DESTRUCTIVE AUTHORIZATION
     // =========================================================
-
-    separator();
-
-    std::cout
-        << "STEP 6 - FINAL DESTRUCTIVE AUTHORIZATION\n"
-        << "------------------------------------------------------------\n";
-
-    std::cout
-        << "\nTARGET:\n"
-        << "Device ID : "
-        << selectedDevice.getDeviceId()
-        << '\n'
-        << "Model     : "
-        << selectedDevice.getModel()
-        << '\n'
-        << "Serial    : "
-        << selectedDevice.getSerialNumber()
-        << '\n'
-        << "Capacity  : "
-        << selectedDevice.getCapacityBytes()
-        << " bytes\n"
-        << "Method    : Host Overwrite\n"
-        << "Pattern   : 0x00\n\n";
-
-    std::cout
-        << "Type START WIPE to permanently erase this device: ";
-
-    const std::string wipeConfirmation =
-        readLine();
-
-    if (wipeConfirmation !=
-        "START WIPE")
-    {
-        std::cout
-            << "\n[ABORTED]\n"
-            << "Final destructive authorization failed.\n";
-
+    if (!confirmTarget(selectedDevice))
         return 6;
-    }
 
     // =========================================================
-    // STEP 7 - REAL EXECUTION
+    // 7. PRODUCTION PIPELINE
     // =========================================================
-
     separator();
+    std::cout << "STEP 7 - PRODUCTION SANITIZATION PIPELINE\n"
+              << "------------------------------------------------------------\n"
+              << "Starting real Host Overwrite pipeline...\n"
+              << "DO NOT disconnect the target device.\n"
+              << "DO NOT power off the machine.\n\n";
 
-    std::cout
-        << "STEP 7 - REAL HOST OVERWRITE EXECUTION\n"
-        << "------------------------------------------------------------\n";
-
-    std::cout
-        << "\nSTARTING DESTRUCTIVE OPERATION.\n"
-        << "DO NOT DISCONNECT THE DEVICE.\n"
-        << "DO NOT POWER OFF THE COMPUTER.\n\n";
-
-    const auto start =
-        GetTickCount64();
-
-    SanitizationResult result =
-        sanitizationEngine.sanitize(
+    SanitizationPipeline pipeline;
+    const SanitizationPipelineResult result =
+        pipeline.execute(
             selectedDevice,
-            finalSafetyResult);
-
-    const auto end =
-        GetTickCount64();
-
-    std::cout
-        << "\nExecution time: "
-        << (end - start)
-        << " ms\n";
+            requestId,
+            actorId);
 
     // =========================================================
-    // STEP 8 - REAL RESULT
+    // 8. RESULT
     // =========================================================
-
     separator();
+    std::cout << "STEP 8 - PIPELINE RESULT\n"
+              << "------------------------------------------------------------\n"
+              << "Status             : "
+              << sanitizationStatusToString(result.sanitization.status) << '\n'
+              << "Method             : "
+              << methodToString(result.sanitization.method) << '\n'
+              << "Operation ID       : "
+              << result.sanitization.operationId << '\n'
+              << "Device ID          : "
+              << result.sanitization.deviceId << '\n'
+              << "Serial             : "
+              << result.sanitization.serialNumber << '\n'
+              << "Bytes Processed    : "
+              << result.sanitization.bytesProcessed << '\n'
+              << "Verification       : "
+              << verificationStatusToString(result.sanitization.verificationStatus) << '\n'
+              << "Verification Done  : "
+              << (result.sanitization.verificationPerformed ? "YES" : "NO") << '\n'
+              << "Samples            : "
+              << result.sanitization.verificationSamples << '\n'
+              << "Bytes Verified     : "
+              << result.sanitization.bytesVerified << '\n'
+              << "Verification Msg   : "
+              << result.sanitization.verificationMessage << '\n'
+              << "Error              : "
+              << result.sanitization.errorMessage << '\n'
+              << "Pipeline Message   : "
+              << result.pipelineMessage << '\n';
 
-    std::cout
-        << "STEP 8 - REAL SANITIZATION RESULT\n"
-        << "------------------------------------------------------------\n";
-
-    std::cout
-        << "Status               : "
-        << sanitizationStatusToString(
-               result.status)
-        << '\n'
-        << "Message              : "
-        << result.message
-        << '\n'
-        << "Bytes Processed      : "
-        << result.bytesProcessed
-        << '\n'
-        << "Verification Status  : "
-        << verificationStatusToString(
-               result.verificationStatus)
-        << '\n'
-        << "Verification Performed: "
-        << (result.verificationPerformed
-                ? "YES"
-                : "NO")
-        << '\n'
-        << "Verification Samples : "
-        << result.verificationSamples
-        << '\n'
-        << "Bytes Verified       : "
-        << result.bytesVerified
-        << '\n'
-        << "Verification Message : "
-        << result.verificationMessage
-        << '\n'
-        << "Duration             : "
-        << result.operationDurationMs
-        << " ms\n"
-        << "Native Error Code    : "
-        << result.nativeErrorCode
-        << '\n'
-        << "Error                : "
-        << result.errorMessage
-        << '\n';
-
-    // =========================================================
-    // STEP 9 - REAL SUCCESS DECISION
-    // =========================================================
-
-    const bool sanitizationPassed =
-        result.status ==
-            SanitizationStatus::COMPLETED &&
-        result.verificationStatus ==
-            VerificationStatus::PASSED &&
-        result.verificationPerformed;
-
-    if (!sanitizationPassed)
+    if (!result.sanitization.isSuccess())
     {
-        separator();
-
-        std::cout
-            << "\n============================================================\n"
-            << "                 E2E TEST FAILED\n"
-            << "============================================================\n"
-            << "\n"
-            << "Real sanitization/verification criteria were not satisfied.\n"
-            << "Certificate generation will NOT be treated as successful.\n";
-
+        std::cout << "\n[FAIL] SanitizationResult is not a verified success.\n";
+        std::cout << "Audit log: " << result.auditLogPath << '\n';
         return 7;
     }
 
-    std::cout
-        << "\n[PASS] Real Host Overwrite completed.\n"
-        << "[PASS] Real post-write verification passed.\n";
-
-    // =========================================================
-    // STEP 10 - CERTIFICATE GENERATION
-    // =========================================================
-
-    separator();
-
-    std::cout
-        << "STEP 10 - CERTIFICATE GENERATION\n"
-        << "------------------------------------------------------------\n";
-
-    CertificateGenerator certificateGenerator;
-
-    /*
-     * Standalone hardware E2E test does not yet receive a request
-     * from the web backend, so requestId is intentionally empty.
-     *
-     * No fake request ID is inserted here.
-     * During Web -> Desktop integration, the actual MongoDB
-     * sanitization request ID will be supplied.
-     */
-    const std::string requestId;
-
-    SanitizationCertificate certificate =
-        certificateGenerator.generate(
-            result,
-            requestId);
-
-    printCertificate(certificate);
-
-    // =========================================================
-    // STEP 11 - CERTIFICATE VALIDATION
-    // =========================================================
-
-    if (!validateCertificate(
-            certificate,
-            selectedDevice,
-            result))
+    if (!result.certificateGenerated || !result.certificatePersisted)
     {
-        separator();
-
-        std::cout
-            << "\n============================================================\n"
-            << "       CERTIFICATE VALIDATION FAILED\n"
-            << "============================================================\n";
-
+        std::cout << "\n[FAIL] Certificate generation/persistence failed.\n";
         return 8;
     }
 
-    // =========================================================
-    // FINAL RESULT
-    // =========================================================
+    if (!validateCertificate(result, selectedDevice))
+    {
+        std::cout << "\n[FAIL] Certificate validation failed.\n";
+        return 8;
+    }
 
+    if (!result.auditTrailPersisted || !validateAuditTrail(result))
+    {
+        std::cout << "\n[FAIL] Audit trail validation failed.\n";
+        return 9;
+    }
+
+    // =========================================================
+    // 9. FINAL PASS
+    // =========================================================
     separator();
-
     std::cout
-        << "\n============================================================\n"
-        << "             REAL DEVICE E2E TEST PASSED\n"
-        << "============================================================\n"
-        << "\n"
-        << "Physical device sanitization : PASS\n"
-        << "Host Overwrite               : PASS\n"
-        << "Post-write verification      : PASS\n"
-        << "Certificate generation       : PASS\n"
-        << "Certificate validation       : PASS\n"
-        << "SHA-256 integrity hash       : PASS\n"
-        << "\n"
-        << "Certificate ID:\n"
-        << certificate.certificateId
-        << "\n\n"
-        << "Certificate SHA-256:\n"
-        << certificate.certificateHash
-        << "\n";
+        << "REAL HOST OVERWRITE VERTICAL SLICE PASSED\n"
+        << "------------------------------------------------------------\n"
+        << "Physical Device      : PASS\n"
+        << "Safety Validation    : PASS\n"
+        << "Host Overwrite       : PASS\n"
+        << "Post-write Verify    : PASS\n"
+        << "SanitizationResult   : PASS\n"
+        << "Certificate          : PASS\n"
+        << "Certificate Persist  : PASS\n"
+        << "Audit Trail          : PASS\n"
+        << "Evidence Persistence : PASS\n\n"
+        << "Request ID           : " << requestId << '\n'
+        << "Actor                : " << actorId << '\n'
+        << "Operation ID         : " << result.sanitization.operationId << '\n'
+        << "Certificate ID       : " << result.certificate.certificateId << '\n'
+        << "Certificate File     : " << result.certificatePath << '\n'
+        << "Audit Log            : " << result.auditLogPath << '\n'
+        << "Operation Log        : " << result.operationLogPath << '\n';
 
     separator();
-
     return 0;
 }

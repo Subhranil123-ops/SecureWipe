@@ -58,6 +58,7 @@ bool DeviceController::selectTarget(
      */
     selectedTarget_ =
         devices_[index];
+    lastSafetyResult_ = SafetyResult{};
 
     /*
      * Save the original identity inside SafetyEngine.
@@ -102,6 +103,7 @@ void DeviceController::refreshDevices()
          * The selected target must be selected again from this list.
          */
         selectedTarget_.reset();
+        lastSafetyResult_ = SafetyResult{};
 
         emit devicesUpdated();
     }
@@ -156,7 +158,7 @@ bool DeviceController::validateSelectedTarget()
         emit safetyCheckFailed(
             QStringLiteral(
                 "Unable to refresh storage devices."));
-        
+
         return false;
     }
 
@@ -171,6 +173,7 @@ bool DeviceController::validateSelectedTarget()
             *selectedTarget_))
     {
         selectedTarget_.reset();
+        lastSafetyResult_ = SafetyResult{};
 
         emit safetyCheckFailed(
             QStringLiteral(
@@ -201,8 +204,7 @@ bool DeviceController::evaluateSelectedTarget()
     }
 
     /*
-     * Keep the complete safety result because SanitizationEngine
-     * requires the exact result that approved this target.
+     * SafetyEngine is called only after target validation.
      */
     lastSafetyResult_ =
         safetyEngine_.evaluateWithResult(
@@ -222,53 +224,86 @@ bool DeviceController::evaluateSelectedTarget()
     return true;
 }
 
-
 // ============================================================
-// Sanitization
+// Sanitization Method
 // ============================================================
 
-bool DeviceController::sanitizeSelectedTarget()
+SanitizationMethod DeviceController::detectSelectedTargetMethod() const
 {
     if (!selectedTarget_.has_value())
     {
-        emit sanitizationFailed(
-            QStringLiteral(
-                "No validated target is available."));
-
-        return false;
+        return SanitizationMethod::Unsupported;
     }
 
-    const SecureWipe::SanitizationResult result =
-        sanitizationEngine_.sanitize(
-            *selectedTarget_,
-            lastSafetyResult_);
+    const SanitizationCapability capability =
+        detectSelectedTargetCapability();
 
-    if (result.isSuccess())
+    return sanitizationEngine_.selectMethod(
+        *selectedTarget_,
+        capability
+    );
+}
+
+
+// ============================================================
+// Sanitization Execution
+// ============================================================
+
+SecureWipe::SanitizationResult
+DeviceController::sanitizeSelectedTarget()
+{
+    SecureWipe::SanitizationResult result;
+
+    if (!selectedTarget_.has_value())
+    {
+        result.status = SecureWipe::SanitizationStatus::FAILED;
+        result.error = SecureWipe::SanitizationErrorCode::SAFETY_VALIDATION_FAILED;
+        result.message = "No validated sanitization target is available.";
+        result.errorMessage = result.message;
+        emit sanitizationFailed(QString::fromStdString(result.message));
+        return result;
+    }
+
+    if (!lastSafetyResult_.isOverallSafe)
+    {
+        result.status = SecureWipe::SanitizationStatus::FAILED;
+        result.error = SecureWipe::SanitizationErrorCode::SAFETY_VALIDATION_FAILED;
+        result.message = "Safety checks did not approve the target.";
+        result.errorMessage = result.message;
+        emit sanitizationFailed(QString::fromStdString(result.message));
+        return result;
+    }
+
+    try
+    {
+        result = sanitizationEngine_.sanitize(
+            *selectedTarget_,
+            lastSafetyResult_
+        );
+    }
+    catch (const std::exception &exception)
+    {
+        result.status = SecureWipe::SanitizationStatus::FAILED;
+        result.error = SecureWipe::SanitizationErrorCode::SANITIZATION_EXECUTION_FAILED;
+        result.message = exception.what();
+        result.errorMessage = result.message;
+    }
+    catch (...)
+    {
+        result.status = SecureWipe::SanitizationStatus::FAILED;
+        result.error = SecureWipe::SanitizationErrorCode::SANITIZATION_EXECUTION_FAILED;
+        result.message = "Unknown error occurred during sanitization.";
+        result.errorMessage = result.message;
+    }
+
+    if (result.status == SecureWipe::SanitizationStatus::COMPLETED)
     {
         emit sanitizationSucceeded();
-
-        return true;
     }
-
-    QString message =
-        QString::fromStdString(
-            result.errorMessage);
-
-    if (message.isEmpty())
+    else
     {
-        message =
-            QString::fromStdString(
-                result.message);
+        emit sanitizationFailed(QString::fromStdString(result.message));
     }
 
-    if (message.isEmpty())
-    {
-        message =
-            QStringLiteral(
-                "Sanitization failed.");
-    }
-
-    emit sanitizationFailed(message);
-
-    return false;
+    return result;
 }
