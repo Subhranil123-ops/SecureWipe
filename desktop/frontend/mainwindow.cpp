@@ -3,1955 +3,4458 @@
 #include "AuthManager.h"
 #include "controllers/DeviceController.h"
 #include "models/DeviceTableModel.h"
-#include "pages/DeviceDetailsPage.h"
-#include "pages/ForensicPage.h"
 #include "services/SanitizationRequestService.h"
-#include "ui_mainwindow.h"
-#include "styles/AppTheme.h"
+#include "services/SanitizationResultService.h"
 
 #include "../../backend/classification/include/ClassificationResult.h"
 #include "../../backend/classification/include/DeviceClassifier.h"
-#include "../../backend/sanitization/include/SanitizationCapability.h"
-#include "../../backend/sanitization/include/SanitizationEngine.h"
 #include "../../backend/safety/include/SafetyResult.h"
 
 #include <QAbstractItemView>
 #include <QApplication>
+#include <QColor>
 #include <QComboBox>
 #include <QFrame>
-#include <QFutureWatcher>
 #include <QGridLayout>
-#include <QHeaderView>
 #include <QHBoxLayout>
-#include <QJsonArray>
-#include <QJsonObject>
-#include <QJsonValue>
+#include <QHeaderView>
 #include <QLabel>
-#include <QLayout>
+#include <QLineEdit>
 #include <QMessageBox>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QRegularExpression>
-#include <QTableView>
+#include <QScrollArea>
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QVBoxLayout>
+#include <QFutureWatcher>
+#include <QMetaType>
+
 #include <QtConcurrent/QtConcurrentRun>
-
-static bool requestMatchesDevice(const QString &requestedType, const StorageDevice &device)
-{
-    DeviceClassifier classifier;
-    const ClassificationResult classification = classifier.classify(device);
-    const QString requestType = requestedType.trimmed();
-    if (requestType == QStringLiteral("SSD"))
-        return classification.mediaType == MediaType::SSD;
-    if (requestType == QStringLiteral("HDD"))
-        return classification.mediaType == MediaType::HDD;
-    if (requestType == QStringLiteral("USB Drive"))
-        return classification.busType == BusType::USB;
-    if (requestType == QStringLiteral("NVMe SSD"))
-        return classification.busType == BusType::NVMe && classification.mediaType == MediaType::SSD;
-    return false;
-}
-
-MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent)
-    , ui(new Ui::MainWindow)
-    , authManager(new AuthManager(this))
-    , sanitizationRequestService(
-          new SanitizationRequestService(this))
-    , deviceController(new DeviceController(this))
-    , deviceTableModel(new DeviceTableModel(this))
-    , deviceDetailsPage(nullptr)
-    , forensicPage(nullptr)
-    , refreshDevicesButton(nullptr)
-{
-    ui->setupUi(this);
-
-
-    /*
-     * =========================================================
-     * Assigned Request Table
-     * =========================================================
-     */
-
-    ui->recentJobsTable->setHorizontalHeaderLabels({
-        QStringLiteral("Request ID"),
-        QStringLiteral("Device"),
-        QStringLiteral("Method"),
-        QStringLiteral("Status")
-    });
-
-    ui->recentJobsTable->setSelectionBehavior(
-        QAbstractItemView::SelectRows
-    );
-
-    ui->recentJobsTable->setSelectionMode(
-        QAbstractItemView::SingleSelection
-    );
-
-    ui->recentJobsTable->setEditTriggers(
-        QAbstractItemView::NoEditTriggers
-    );
-
-
-    /*
-     * ---------------------------------------------------------
-     * Request Selection
-     * ---------------------------------------------------------
-     *
-     * The selected request is the source of truth for:
-     *
-     *   selectedRequestId
-     *   selectedRequestDeviceType
-     *   selectedRequestMethod
-     *
-     * The employee does not choose the sanitization method
-     * manually.
-     */
-
-    connect(
-        ui->recentJobsTable,
-        &QTableWidget::itemSelectionChanged,
-        this,
-        [this]()
-        {
-            const int row = ui->recentJobsTable->currentRow();
-            if (row < 0)
-            {
-                selectedRequestId.clear();
-                selectedRequestDeviceType.clear();
-                selectedRequestMethod.clear();
-                if (wipeRequestComboBox)
-                    wipeRequestComboBox->setCurrentIndex(-1);
-                populateWipeDevices();
-                return;
-            }
-
-            selectedRequestId = ui->recentJobsTable->item(row, 0)
-                ? ui->recentJobsTable->item(row, 0)->text() : QString();
-            selectedRequestDeviceType = ui->recentJobsTable->item(row, 1)
-                ? ui->recentJobsTable->item(row, 1)->text() : QString();
-            selectedRequestMethod = ui->recentJobsTable->item(row, 2)
-                ? ui->recentJobsTable->item(row, 2)->text() : QString();
-
-            if (wipeRequestComboBox)
-            {
-                const int requestIndex = wipeRequestComboBox->findData(selectedRequestId, Qt::UserRole);
-                if (requestIndex >= 0)
-                    wipeRequestComboBox->setCurrentIndex(requestIndex);
-            }
-        }
-    );
-
-    /*
-     * =========================================================
-     * Appearance
-     * =========================================================
-     */
-
-    /*
-     * The .ui file may contain older styles.
-     * Clear them so AppTheme controls the application.
-     */
-
-    const QList<QWidget *> widgets =
-        findChildren<QWidget *>();
-
-    for (QWidget *widget : widgets)
-    {
-        widget->setStyleSheet("");
-    }
-
-    AppTheme::apply(this);
-
-
-    /*
-     * =========================================================
-     * Devices Page
-     * =========================================================
-     */
-
-    setupDevicesPage();
-
-    setupWipePage();
-
-    /*
-     * =========================================================
-     * Forensics Page
-     * =========================================================
-     *
-     * The existing Reports placeholder is reused so the current
-     * desktop shell, navigation spacing and overall UI structure
-     * remain unchanged.
-     */
-
-    ui->reportsPlaceholderLabel->hide();
-    ui->reportsNavButton->setText(QStringLiteral("Forensics"));
-
-    forensicPage =
-        new ForensicPage(
-            deviceController,
-            ui->reportsPage
-        );
-
-    if (auto *reportsLayout =
-            qobject_cast<QVBoxLayout *>(
-                ui->reportsPage->layout()))
-    {
-        reportsLayout->setContentsMargins(0, 0, 0, 0);
-        reportsLayout->setSpacing(0);
-        reportsLayout->addWidget(forensicPage);
-    }
-
-
-    /*
-     * =========================================================
-     * Authentication
-     * =========================================================
-     */
-
-    connect(
-        ui->logoutButton,
-        &QPushButton::clicked,
-        this,
-        &MainWindow::logout
-    );
-
-
-    connect(
-        authManager,
-        &AuthManager::loginSuccessful,
-        this,
-        [this]()
-        {
-            ui->stackedWidget->setCurrentWidget(
-                ui->appPage
-            );
-
-            ui->contentStack->setCurrentWidget(
-                ui->dashboardPage
-            );
-
-            setActiveNavButton(
-                ui->dashboardNavButton
-            );
-
-
-            /*
-             * Fetch requests assigned to the
-             * currently logged-in employee.
-             */
-
-            sanitizationRequestService
-                ->fetchAssignedRequests(
-                    authManager->token()
-                );
-
-
-            /*
-             * Discover physical storage devices
-             * after successful login.
-             */
-
-            refreshDevices();
-        }
-    );
-
-
-    connect(
-        authManager,
-        &AuthManager::loginFailed,
-        this,
-        [this](const QString &message)
-        {
-            ui->loginErrorLabel->setText(
-                message
-            );
-        }
-    );
-
-
-    connect(
-        ui->loginButton,
-        &QPushButton::clicked,
-        this,
-        [this]()
-        {
-            ui->loginErrorLabel->clear();
-
-            const QString email =
-                ui->emailLineEdit
-                    ->text()
-                    .trimmed();
-
-
-            if (email.isEmpty())
-            {
-                ui->loginErrorLabel->setText(
-                    QStringLiteral(
-                        "Email is required."
-                    )
-                );
-
-                return;
-            }
-
-
-            QRegularExpression emailPattern(
-                R"(^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$)"
-            );
-
-
-            if (!emailPattern
-                    .match(email)
-                    .hasMatch())
-            {
-                ui->loginErrorLabel->setText(
-                    QStringLiteral(
-                        "Please enter a valid email address."
-                    )
-                );
-
-                return;
-            }
-
-
-            const QString password =
-                ui->passwordLineEdit
-                    ->text()
-                    .trimmed();
-
-
-            if (password.isEmpty())
-            {
-                ui->loginErrorLabel->setText(
-                    QStringLiteral(
-                        "Password is required."
-                    )
-                );
-
-                return;
-            }
-
-
-            authManager->login(
-                email,
-                password
-            );
-        }
-    );
-
-
-    /*
-     * =========================================================
-     * Navigation
-     * =========================================================
-     */
-
-    connect(
-        ui->dashboardNavButton,
-        &QPushButton::clicked,
-        this,
-        [this]()
-        {
-            ui->contentStack->setCurrentWidget(
-                ui->dashboardPage
-            );
-
-            setActiveNavButton(
-                ui->dashboardNavButton
-            );
-        }
-    );
-
-
-    connect(
-        ui->devicesNavButton,
-        &QPushButton::clicked,
-        this,
-        [this]()
-        {
-            ui->contentStack->setCurrentWidget(
-                ui->devicesPage
-            );
-
-            setActiveNavButton(
-                ui->devicesNavButton
-            );
-
-            /*
-             * Refresh whenever the Devices page is opened.
-             */
-
-            refreshDevices();
-        }
-    );
-
-
-    connect(
-        ui->wipeNavButton,
-        &QPushButton::clicked,
-        this,
-        [this]()
-        {
-            ui->contentStack->setCurrentWidget(ui->wipePage);
-            setActiveNavButton(ui->wipeNavButton);
-
-            if (wipeRequestComboBox)
-            {
-                int requestIndex = wipeRequestComboBox->findData(selectedRequestId, Qt::UserRole);
-                if (requestIndex < 0 && wipeRequestComboBox->count() > 0)
-                    requestIndex = 0;
-                if (requestIndex >= 0)
-                    wipeRequestComboBox->setCurrentIndex(requestIndex);
-            }
-        }
-    );
-
-    connect(
-        ui->reportsNavButton,
-        &QPushButton::clicked,
-        this,
-        [this]()
-        {
-            ui->contentStack->setCurrentWidget(
-                ui->reportsPage
-            );
-
-            setActiveNavButton(
-                ui->reportsNavButton
-            );
-        }
-    );
-
-
-    connect(
-        ui->settingsNavButton,
-        &QPushButton::clicked,
-        this,
-        [this]()
-        {
-            ui->contentStack->setCurrentWidget(
-                ui->settingsPage
-            );
-
-            setActiveNavButton(
-                ui->settingsNavButton
-            );
-        }
-    );
-
-
-    /*
-     * =========================================================
-     * Device Controller → Frontend
-     * =========================================================
-     */
-
-    connect(
-        deviceController,
-        &DeviceController::devicesUpdated,
-        this,
-        [this]()
-        {
-            deviceTableModel->setDevices(deviceController->devices());
-            populateWipeDevices();
-        }
-    );
-
-    connect(
-        deviceController,
-        &DeviceController::discoveryFailed,
-        this,
-        [this](const QString &message)
-        {
-            QMessageBox::warning(
-                this,
-                QStringLiteral(
-                    "Storage Discovery"
-                ),
-                message
-            );
-        }
-    );
-
-
-    connect(
-        deviceController,
-        &DeviceController::safetyCheckPassed,
-        this,
-        [this]()
-        {
-            if (!deviceDetailsPage)
-            {
-                return;
-            }
-
-            deviceDetailsPage->updateSafetyStatus(
-                true
-            );
-        }
-    );
-
-
-    connect(
-        deviceController,
-        &DeviceController::safetyCheckFailed,
-        this,
-        [this](const QString &message)
-        {
-            if (!deviceDetailsPage)
-            {
-                return;
-            }
-
-            deviceDetailsPage->updateSafetyStatus(
-                false,
-                message
-            );
-        }
-    );
-
-
-    /*
-     * =========================================================
-     * Assigned Requests → Dashboard
-     * =========================================================
-     */
-
-    connect(
-        sanitizationRequestService,
-        &SanitizationRequestService::assignedRequestsFetched,
-        this,
-        [this](const QJsonArray &requests)
-        {
-            int totalCount = requests.size();
-            int completedCount = 0;
-            int failedCount = 0;
-            int inProgressCount = 0;
-
-            ui->recentJobsTable->setRowCount(0);
-
-            if (wipeRequestComboBox)
-            {
-                wipeRequestComboBox->blockSignals(true);
-                wipeRequestComboBox->clear();
-            }
-
-            for (const QJsonValue &value : requests)
-            {
-                if (!value.isObject())
-                    continue;
-
-                const QJsonObject request = value.toObject();
-                const QString requestId = request.value(QStringLiteral("requestId")).toString();
-                const QString deviceType = request.value(QStringLiteral("deviceType")).toString();
-                const QString method = request.value(QStringLiteral("sanitizationMethod")).toString();
-                const QString status = request.value(QStringLiteral("status")).toString();
-
-                if (status == QStringLiteral("COMPLETED"))
-                    ++completedCount;
-                else if (status == QStringLiteral("FAILED"))
-                    ++failedCount;
-                else if (status == QStringLiteral("IN_PROGRESS"))
-                    ++inProgressCount;
-
-                const int row = ui->recentJobsTable->rowCount();
-                ui->recentJobsTable->insertRow(row);
-                ui->recentJobsTable->setItem(row, 0, new QTableWidgetItem(requestId));
-                ui->recentJobsTable->setItem(row, 1, new QTableWidgetItem(deviceType));
-                ui->recentJobsTable->setItem(row, 2, new QTableWidgetItem(method));
-                ui->recentJobsTable->setItem(row, 3, new QTableWidgetItem(status));
-
-                if (wipeRequestComboBox)
-                {
-                    const QString display = QStringLiteral("%1  •  %2  •  %3")
-                        .arg(requestId,
-                             deviceType,
-                             method.isEmpty() ? QStringLiteral("Method not specified") : method);
-                    wipeRequestComboBox->addItem(display);
-                    const int requestIndex = wipeRequestComboBox->count() - 1;
-                    wipeRequestComboBox->setItemData(requestIndex, requestId, Qt::UserRole);
-                    wipeRequestComboBox->setItemData(requestIndex, deviceType, Qt::UserRole + 1);
-                    wipeRequestComboBox->setItemData(requestIndex, method, Qt::UserRole + 2);
-                }
-            }
-
-            ui->totalJobsValue->setText(QString::number(totalCount));
-            ui->completedJobsValue->setText(QString::number(completedCount));
-            ui->failedJobsValue->setText(QString::number(failedCount));
-            ui->inProgressValue->setText(QString::number(inProgressCount));
-            ui->recentJobsTable->resizeColumnsToContents();
-
-            if (wipeRequestComboBox)
-            {
-                int requestIndex = wipeRequestComboBox->findData(selectedRequestId, Qt::UserRole);
-                if (requestIndex < 0 && wipeRequestComboBox->count() > 0)
-                    requestIndex = 0;
-                wipeRequestComboBox->blockSignals(false);
-                wipeRequestComboBox->setCurrentIndex(requestIndex);
-            }
-        }
-    );
-
-    connect(
-        sanitizationRequestService,
-        &SanitizationRequestService::requestFetchFailed,
-        this,
-        [this](const QString &message)
-        {
-            ui->recentJobsTable->setRowCount(0);
-            if (wipeRequestComboBox)
-            {
-                wipeRequestComboBox->blockSignals(true);
-                wipeRequestComboBox->clear();
-                wipeRequestComboBox->blockSignals(false);
-            }
-            wipeStatusLabel->setText(QStringLiteral("Could not load assigned requests: %1").arg(message));
-            wipeStatusLabel->setStyleSheet("color:#B42318; font-size:12px; font-weight:600;");
-            QMessageBox::warning(this, QStringLiteral("Assigned Requests"), message);
-        }
-    );
-
-    connect(
-        sanitizationRequestService,
-        &SanitizationRequestService::requestStatusUpdated,
-        this,
-        [this](const QString &requestId, const QString &status)
-        {
-            wipeStatusLabel->setText(QStringLiteral("Sanitization finished. Request %1 is now %2.").arg(requestId, status));
-        }
-    );
-
-    connect(
-        sanitizationRequestService,
-        &SanitizationRequestService::requestStatusUpdateFailed,
-        this,
-        [this](const QString &message)
-        {
-            wipeStatusLabel->setText(QStringLiteral("Sanitization finished locally, but request sync failed: %1").arg(message));
-            wipeStatusLabel->setStyleSheet("color:#B54708; font-size:12px; font-weight:600;");
-        }
-    );
-
-    /*
-     * The Wipe workspace is built programmatically in setupWipePage().
-     * The legacy Designer controls remain hidden and are not used.
-     */
-}
-
-
 
 namespace
 {
-void clearLayoutItems(QLayout *layout)
-{
-    if (!layout)
-        return;
-
-    while (QLayoutItem *item = layout->takeAt(0))
-    {
-        if (QLayout *childLayout = item->layout())
-        {
-            clearLayoutItems(childLayout);
-            delete childLayout;
-        }
-
-        if (QWidget *widget = item->widget())
-            widget->hide();
-
-        delete item;
-    }
-}
-
-QLabel *makeSectionTitle(const QString &text, QWidget *parent)
-{
-    auto *label = new QLabel(text, parent);
-    label->setStyleSheet("color:#172033; font-size:15px; font-weight:700;");
-    return label;
-}
-
-QLabel *makeFieldCaption(const QString &text, QWidget *parent)
-{
-    auto *label = new QLabel(text, parent);
-    label->setStyleSheet("color:#667085; font-size:11px; font-weight:600;");
-    return label;
-}
-
-QLabel *makeFieldValue(const QString &text, QWidget *parent)
-{
-    auto *label = new QLabel(text, parent);
-    label->setWordWrap(true);
-    label->setStyleSheet("color:#172033; font-size:13px; font-weight:600;");
-    return label;
-}
 
 QFrame *makeCard(QWidget *parent)
 {
     auto *card = new QFrame(parent);
-    card->setFrameShape(QFrame::StyledPanel);
-    card->setStyleSheet("QFrame { background:#FFFFFF; border:1px solid #E4E7EC; border-radius:12px; }");
+
+    card->setStyleSheet(
+        "QFrame {"
+        "background:#FFFFFF;"
+        "border:1px solid #E4E7EC;"
+        "border-radius:14px;"
+        "}");
+
     return card;
 }
+
+QLabel *makeTitle(
+    const QString &text,
+    QWidget *parent)
+{
+    auto *label = new QLabel(text, parent);
+
+    label->setStyleSheet(
+        "QLabel {"
+        "color:#101828;"
+        "font-size:25px;"
+        "font-weight:700;"
+        "}");
+
+    return label;
 }
 
-void MainWindow::setupWipePage()
+QLabel *makeSubtitle(
+    const QString &text,
+    QWidget *parent)
 {
-    if (!ui || !ui->wipePage)
-        return;
+    auto *label = new QLabel(text, parent);
 
-    QVBoxLayout *root = qobject_cast<QVBoxLayout *>(ui->wipePage->layout());
-    if (!root)
+    label->setWordWrap(true);
+
+    label->setStyleSheet(
+        "QLabel {"
+        "color:#667085;"
+        "font-size:13px;"
+        "}");
+
+    return label;
+}
+
+QLabel *makeCaption(
+    const QString &text,
+    QWidget *parent)
+{
+    auto *label = new QLabel(text, parent);
+
+    label->setStyleSheet(
+        "QLabel {"
+        "color:#667085;"
+        "font-size:11px;"
+        "font-weight:600;"
+        "}");
+
+    return label;
+}
+
+QLabel *makeValue(
+    const QString &text,
+    QWidget *parent)
+{
+    auto *label = new QLabel(text, parent);
+
+    label->setWordWrap(true);
+    label->setTextInteractionFlags(
+        Qt::TextSelectableByMouse);
+
+    label->setStyleSheet(
+        "QLabel {"
+        "color:#172033;"
+        "font-size:13px;"
+        "font-weight:600;"
+        "}");
+
+    return label;
+}
+
+QPushButton *makePrimaryButton(
+    const QString &text,
+    QWidget *parent)
+{
+    auto *button =
+        new QPushButton(text, parent);
+
+    button->setCursor(
+        Qt::PointingHandCursor);
+
+    button->setMinimumHeight(40);
+
+    button->setStyleSheet(
+        "QPushButton {"
+        "background:#2563EB;"
+        "color:#FFFFFF;"
+        "border:none;"
+        "border-radius:9px;"
+        "padding:9px 16px;"
+        "font-size:12px;"
+        "font-weight:700;"
+        "}"
+        "QPushButton:hover {background:#1D4ED8;}"
+        "QPushButton:pressed {background:#1E40AF;}"
+        "QPushButton:disabled {"
+        "background:#CBD5E1;"
+        "color:#64748B;"
+        "}");
+
+    return button;
+}
+
+QPushButton *makeSecondaryButton(
+    const QString &text,
+    QWidget *parent)
+{
+    auto *button =
+        new QPushButton(text, parent);
+
+    button->setCursor(
+        Qt::PointingHandCursor);
+
+    button->setMinimumHeight(38);
+
+    button->setStyleSheet(
+        "QPushButton {"
+        "background:#FFFFFF;"
+        "color:#344054;"
+        "border:1px solid #D0D5DD;"
+        "border-radius:9px;"
+        "padding:8px 14px;"
+        "font-size:12px;"
+        "font-weight:600;"
+        "}"
+        "QPushButton:hover {"
+        "background:#F9FAFB;"
+        "border-color:#98A2B3;"
+        "}"
+        "QPushButton:disabled {"
+        "background:#F2F4F7;"
+        "color:#98A2B3;"
+        "}");
+
+    return button;
+}
+
+QString badgeStyle(
+    const QString &status)
+{
+    const QString value =
+        status.trimmed().toUpper();
+
+    if (value == "SAFE" ||
+        value == "COMPLETED" ||
+        value == "PASSED")
     {
-        root = new QVBoxLayout(ui->wipePage);
-        ui->wipePage->setLayout(root);
+        return
+            "QLabel {"
+            "background:#ECFDF3;"
+            "color:#027A48;"
+            "border:1px solid #ABEFC6;"
+            "border-radius:9px;"
+            "padding:5px 10px;"
+            "font-size:11px;"
+            "font-weight:700;"
+            "}";
     }
 
-    clearLayoutItems(root);
-    root->setContentsMargins(28, 24, 28, 24);
-    root->setSpacing(14);
-    ui->wipePage->setStyleSheet("QWidget#wipePage { background:#F6F8FB; }");
-
-    auto *title = new QLabel(QStringLiteral("Sanitize Storage Device"), ui->wipePage);
-    title->setStyleSheet("color:#101828; font-size:25px; font-weight:700;");
-    auto *subtitle = new QLabel(
-        QStringLiteral("Follow the four visible steps below. SecureWipe will block the operation when the target is unsafe."),
-        ui->wipePage);
-    subtitle->setWordWrap(true);
-    subtitle->setStyleSheet("color:#667085; font-size:13px;");
-    root->addWidget(title);
-    root->addWidget(subtitle);
-
-    auto *steps = new QHBoxLayout;
-    steps->setSpacing(8);
-    const QStringList stepTexts = {QStringLiteral("1  Request"), QStringLiteral("2  Target"), QStringLiteral("3  Safety"), QStringLiteral("4  Sanitize")};
-    for (int i = 0; i < stepTexts.size(); ++i)
+    if (value == "FAILED" ||
+        value == "BLOCKED")
     {
-        auto *step = new QLabel(stepTexts.at(i), ui->wipePage);
-        step->setAlignment(Qt::AlignCenter);
-        step->setMinimumHeight(30);
-        step->setStyleSheet(i == 0
-            ? "QLabel { background:#EAF2FF; color:#175CD3; border:1px solid #B2CCFF; border-radius:8px; padding:5px 10px; font-size:11px; font-weight:700; }"
-            : "QLabel { background:#FFFFFF; color:#667085; border:1px solid #E4E7EC; border-radius:8px; padding:5px 10px; font-size:11px; font-weight:600; }");
-        steps->addWidget(step, 1);
+        return
+            "QLabel {"
+            "background:#FEF3F2;"
+            "color:#B42318;"
+            "border:1px solid #FECDCA;"
+            "border-radius:9px;"
+            "padding:5px 10px;"
+            "font-size:11px;"
+            "font-weight:700;"
+            "}";
     }
-    root->addLayout(steps);
 
-    QFrame *requestCard = makeCard(ui->wipePage);
-    auto *requestLayout = new QVBoxLayout(requestCard);
-    requestLayout->setContentsMargins(16, 14, 16, 14);
-    requestLayout->setSpacing(8);
-    requestLayout->addWidget(makeSectionTitle(QStringLiteral("1. Assigned Request"), requestCard));
+    return
+        "QLabel {"
+        "background:#EFF6FF;"
+        "color:#175CD3;"
+        "border:1px solid #B2CCFF;"
+        "border-radius:9px;"
+        "padding:5px 10px;"
+        "font-size:11px;"
+        "font-weight:700;"
+        "}";
+}
 
-    auto *requestCaption = makeFieldCaption(QStringLiteral("Select the work order you are authorized to execute"), requestCard);
-    requestLayout->addWidget(requestCaption);
+bool requestMatchesDeviceImpl(
+    const QString &requestedType,
+    const StorageDevice &device)
+{
+    DeviceClassifier classifier;
 
-    wipeRequestComboBox = new QComboBox(requestCard);
-    wipeRequestComboBox->setMinimumHeight(42);
-    wipeRequestComboBox->setCursor(Qt::PointingHandCursor);
-    wipeRequestComboBox->setStyleSheet(
-        "QComboBox { background:#FFFFFF; color:#172033; border:1px solid #D0D5DD; border-radius:8px; padding:8px 12px; font-size:13px; }"
-        "QComboBox:hover { border:1px solid #98A2B3; }"
-        "QComboBox:focus { border:1px solid #2563EB; }"
-        "QComboBox::drop-down { width:32px; border-left:1px solid #EAECF0; }"
-        "QComboBox QAbstractItemView { background:#FFFFFF; color:#172033; border:1px solid #D0D5DD; selection-background-color:#EAF2FF; selection-color:#172033; padding:4px; }"
-    );
-    requestLayout->addWidget(wipeRequestComboBox);
+    const ClassificationResult classification =
+        classifier.classify(device);
 
-    wipeRequestSummaryLabel = new QLabel(QStringLiteral("No assigned request selected."), requestCard);
-    wipeRequestSummaryLabel->setWordWrap(true);
-    wipeRequestSummaryLabel->setStyleSheet("color:#667085; font-size:12px;");
-    requestLayout->addWidget(wipeRequestSummaryLabel);
-    root->addWidget(requestCard);
+    const QString type =
+        requestedType.trimmed();
 
-    auto *workspace = new QHBoxLayout;
-    workspace->setSpacing(14);
-
-    QFrame *targetCard = makeCard(ui->wipePage);
-    auto *targetLayout = new QVBoxLayout(targetCard);
-    targetLayout->setContentsMargins(16, 14, 16, 14);
-    targetLayout->setSpacing(8);
-
-    auto *targetHeader = new QHBoxLayout;
-    targetHeader->addWidget(makeSectionTitle(QStringLiteral("2. Target Device"), targetCard));
-    targetHeader->addStretch();
-    wipeRefreshButton = new QPushButton(QStringLiteral("Refresh"), targetCard);
-    wipeRefreshButton->setMinimumHeight(34);
-    wipeRefreshButton->setCursor(Qt::PointingHandCursor);
-    wipeRefreshButton->setStyleSheet("QPushButton { background:#FFFFFF; color:#344054; border:1px solid #D0D5DD; border-radius:8px; padding:7px 12px; font-size:12px; font-weight:600; } QPushButton:hover { background:#F9FAFB; border-color:#98A2B3; }");
-    targetHeader->addWidget(wipeRefreshButton);
-    targetLayout->addLayout(targetHeader);
-
-    auto *targetHint = new QLabel(QStringLiteral("Only devices matching the selected request are shown."), targetCard);
-    targetHint->setStyleSheet("color:#667085; font-size:11px;");
-    targetLayout->addWidget(targetHint);
-
-    wipeDeviceTable = new QTableWidget(targetCard);
-    wipeDeviceTable->setColumnCount(6);
-    wipeDeviceTable->setHorizontalHeaderLabels({QStringLiteral("Model"), QStringLiteral("Interface"), QStringLiteral("Capacity"), QStringLiteral("Device"), QStringLiteral("System"), QStringLiteral("Type")});
-    wipeDeviceTable->setSelectionBehavior(QAbstractItemView::SelectRows);
-    wipeDeviceTable->setSelectionMode(QAbstractItemView::SingleSelection);
-    wipeDeviceTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    wipeDeviceTable->setFocusPolicy(Qt::StrongFocus);
-    wipeDeviceTable->setShowGrid(false);
-    wipeDeviceTable->verticalHeader()->setVisible(false);
-    wipeDeviceTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
-    wipeDeviceTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
-    wipeDeviceTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
-    wipeDeviceTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Stretch);
-    wipeDeviceTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
-    wipeDeviceTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::ResizeToContents);
-    wipeDeviceTable->setMinimumHeight(280);
-    wipeDeviceTable->setStyleSheet(
-        "QTableWidget { background:#FFFFFF; color:#172033; border:1px solid #E4E7EC; border-radius:8px; gridline-color:transparent; selection-background-color:#EAF2FF; selection-color:#172033; font-size:12px; }"
-        "QTableWidget::item { padding:7px; border-bottom:1px solid #F2F4F7; }"
-        "QHeaderView::section { background:#F9FAFB; color:#667085; border:none; border-bottom:1px solid #E4E7EC; padding:8px; font-size:10px; font-weight:700; }"
-    );
-    targetLayout->addWidget(wipeDeviceTable, 1);
-    workspace->addWidget(targetCard, 3);
-
-    QFrame *statusCard = makeCard(ui->wipePage);
-    auto *statusLayout = new QVBoxLayout(statusCard);
-    statusLayout->setContentsMargins(18, 14, 18, 14);
-    statusLayout->setSpacing(10);
-    statusLayout->addWidget(makeSectionTitle(QStringLiteral("3. Pre-flight Safety"), statusCard));
-
-    wipeSafetyBadgeLabel = new QLabel(QStringLiteral("NOT CHECKED"), statusCard);
-    wipeSafetyBadgeLabel->setAlignment(Qt::AlignCenter);
-    wipeSafetyBadgeLabel->setMinimumHeight(30);
-    wipeSafetyBadgeLabel->setStyleSheet("QLabel { background:#FFF7E8; color:#B54708; border:1px solid #FAD7A0; border-radius:8px; padding:5px 10px; font-size:11px; font-weight:700; }");
-    statusLayout->addWidget(wipeSafetyBadgeLabel);
-
-    auto *targetCaption = makeFieldCaption(QStringLiteral("Selected target"), statusCard);
-    statusLayout->addWidget(targetCaption);
-    wipeTargetValueLabel = makeFieldValue(QStringLiteral("None"), statusCard);
-    statusLayout->addWidget(wipeTargetValueLabel);
-
-    auto *grid = new QGridLayout;
-    grid->setHorizontalSpacing(16);
-    grid->setVerticalSpacing(8);
-    grid->addWidget(makeFieldCaption(QStringLiteral("Capacity"), statusCard), 0, 0);
-    grid->addWidget(makeFieldCaption(QStringLiteral("Interface"), statusCard), 0, 1);
-    wipeCapacityValueLabel = makeFieldValue(QStringLiteral("—"), statusCard);
-    wipeInterfaceValueLabel = makeFieldValue(QStringLiteral("—"), statusCard);
-    grid->addWidget(wipeCapacityValueLabel, 1, 0);
-    grid->addWidget(wipeInterfaceValueLabel, 1, 1);
-    statusLayout->addLayout(grid);
-
-    statusLayout->addWidget(makeFieldCaption(QStringLiteral("Execution method"), statusCard));
-    wipeMethodValueLabel = makeFieldValue(QStringLiteral("Select a target"), statusCard);
-    statusLayout->addWidget(wipeMethodValueLabel);
-
-    wipeSafetyChecksLabel = new QLabel(QStringLiteral("Safety checks have not been run."), statusCard);
-    wipeSafetyChecksLabel->setWordWrap(true);
-    wipeSafetyChecksLabel->setStyleSheet("color:#667085; font-size:11px; line-height:150%;");
-    statusLayout->addWidget(wipeSafetyChecksLabel, 1);
-    workspace->addWidget(statusCard, 2);
-
-    root->addLayout(workspace, 1);
-
-    QFrame *actionCard = makeCard(ui->wipePage);
-    auto *actionLayout = new QVBoxLayout(actionCard);
-    actionLayout->setContentsMargins(16, 14, 16, 14);
-    actionLayout->setSpacing(8);
-
-    auto *actionHeader = new QHBoxLayout;
-    actionHeader->addWidget(makeSectionTitle(QStringLiteral("4. Sanitization"), actionCard));
-    actionHeader->addStretch();
-    wipeStatusLabel = new QLabel(QStringLiteral("Choose a request and target device."), actionCard);
-    wipeStatusLabel->setStyleSheet("color:#667085; font-size:12px; font-weight:600;");
-    actionHeader->addWidget(wipeStatusLabel);
-    actionLayout->addLayout(actionHeader);
-
-    wipeProgressBar = new QProgressBar(actionCard);
-    wipeProgressBar->setRange(0, 100);
-    wipeProgressBar->setValue(0);
-    wipeProgressBar->setTextVisible(true);
-    wipeProgressBar->setMinimumHeight(10);
-    wipeProgressBar->setStyleSheet("QProgressBar { background:#F2F4F7; border:1px solid #D0D5DD; border-radius:5px; text-align:center; color:#475467; } QProgressBar::chunk { background:#2563EB; border-radius:5px; }");
-    actionLayout->addWidget(wipeProgressBar);
-
-    wipeVerificationLabel = new QLabel(QStringLiteral("Verification: —"), actionCard);
-    wipeVerificationLabel->setStyleSheet("color:#667085; font-size:11px;");
-    actionLayout->addWidget(wipeVerificationLabel);
-
-    auto *actionButtons = new QHBoxLayout;
-    actionButtons->addStretch();
-    wipeSafetyButton = new QPushButton(QStringLiteral("Run Safety Check"), actionCard);
-    wipeSafetyButton->setMinimumSize(160, 40);
-    wipeSafetyButton->setCursor(Qt::PointingHandCursor);
-    wipeSafetyButton->setStyleSheet("QPushButton { background:#FFFFFF; color:#344054; border:1px solid #D0D5DD; border-radius:8px; padding:9px 14px; font-size:12px; font-weight:700; } QPushButton:hover { background:#F9FAFB; border-color:#98A2B3; } QPushButton:disabled { color:#98A2B3; background:#F2F4F7; }");
-    actionButtons->addWidget(wipeSafetyButton);
-
-    wipeStartButton = new QPushButton(QStringLiteral("Start Sanitization"), actionCard);
-    wipeStartButton->setMinimumSize(180, 40);
-    wipeStartButton->setCursor(Qt::PointingHandCursor);
-    wipeStartButton->setEnabled(false);
-    wipeStartButton->setStyleSheet("QPushButton { background:#2563EB; color:#FFFFFF; border:none; border-radius:8px; padding:9px 14px; font-size:12px; font-weight:700; } QPushButton:hover { background:#1D4ED8; } QPushButton:pressed { background:#1E40AF; } QPushButton:disabled { background:#CBD5E1; color:#64748B; }");
-    actionButtons->addWidget(wipeStartButton);
-    actionLayout->addLayout(actionButtons);
-    root->addWidget(actionCard);
-
-    connect(wipeRequestComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index)
+    if (type.compare(
+            "SSD",
+            Qt::CaseInsensitive) == 0)
     {
-        selectedRequestId.clear();
-        selectedRequestDeviceType.clear();
-        selectedRequestMethod.clear();
-        selectedWipeDeviceId.clear();
-        wipeSafetyApproved = false;
-        if (index >= 0)
+        return classification.mediaType ==
+               MediaType::SSD;
+    }
+
+    if (type.compare(
+            "HDD",
+            Qt::CaseInsensitive) == 0)
+    {
+        return classification.mediaType ==
+               MediaType::HDD;
+    }
+
+    if (type.compare(
+            "USB Drive",
+            Qt::CaseInsensitive) == 0)
+    {
+        return classification.busType ==
+               BusType::USB;
+    }
+
+    if (type.compare(
+            "NVMe SSD",
+            Qt::CaseInsensitive) == 0)
+    {
+        return classification.busType ==
+                   BusType::NVMe &&
+               classification.mediaType ==
+                   MediaType::SSD;
+    }
+
+    return false;
+}
+
+}
+
+MainWindow::MainWindow(
+    QWidget *parent)
+    : QMainWindow(parent)
+    , authManager_(new AuthManager(this))
+    , requestService_(
+          new SanitizationRequestService(this))
+    , resultService_(
+          new SanitizationResultService(this))
+    , deviceController_(
+          new DeviceController(this))
+    , deviceTableModel_(
+          new DeviceTableModel(this))
+    , deviceDetailsPage_(nullptr)
+    , forensicPage_(nullptr)
+    , root_(nullptr)
+    , rootStack_(nullptr)
+    , loginPage_(nullptr)
+    , appPage_(nullptr)
+    , contentStack_(nullptr)
+    , emailEdit_(nullptr)
+    , passwordEdit_(nullptr)
+    , loginErrorLabel_(nullptr)
+    , loginButton_(nullptr)
+    , operatorNameLabel_(nullptr)
+    , operatorRoleLabel_(nullptr)
+    , connectionBadgeLabel_(nullptr)
+    , dashboardNavButton_(nullptr)
+    , devicesNavButton_(nullptr)
+    , jobsNavButton_(nullptr)
+    , forensicsNavButton_(nullptr)
+    , settingsNavButton_(nullptr)
+    , logoutButton_(nullptr)
+    , dashboardPage_(nullptr)
+    , devicesPage_(nullptr)
+    , jobsPage_(nullptr)
+    , forensicsPage_(nullptr)
+    , settingsPage_(nullptr)
+    , dashboardJobsTable_(nullptr)
+    , assignedJobsTable_(nullptr)
+    , deviceTable_(nullptr)
+    , totalJobsValue_(nullptr)
+    , activeJobsValue_(nullptr)
+    , completedJobsValue_(nullptr)
+    , failedJobsValue_(nullptr)
+    , jobComboBox_(nullptr)
+    , jobRequestIdValue_(nullptr)
+    , jobDeviceTypeValue_(nullptr)
+    , jobRequestedMethodValue_(nullptr)
+    , jobAssetValue_(nullptr)
+    , jobWorkstationValue_(nullptr)
+    , targetModelValue_(nullptr)
+    , targetSerialValue_(nullptr)
+    , targetCapacityValue_(nullptr)
+    , targetInterfaceValue_(nullptr)
+    , targetPathValue_(nullptr)
+    , targetSafetyBadge_(nullptr)
+    , targetSafetyText_(nullptr)
+    , capabilityValue_(nullptr)
+    , selectedMethodValue_(nullptr)
+    , pipelineStatusValue_(nullptr)
+    , verificationValue_(nullptr)
+    , operationValue_(nullptr)
+    , bytesProcessedValue_(nullptr)
+    , bytesVerifiedValue_(nullptr)
+    , samplesValue_(nullptr)
+    , certificateValue_(nullptr)
+    , evidenceValue_(nullptr)
+    , jobMessageLabel_(nullptr)
+    , operationProgress_(nullptr)
+    , refreshJobsButton_(nullptr)
+    , refreshDevicesButton_(nullptr)
+    , validateTargetButton_(nullptr)
+    , startSanitizationButton_(nullptr)
+{
+    setWindowTitle(
+        QStringLiteral("SecureWipe"));
+
+    resize(1420, 900);
+    setMinimumSize(1180, 760);
+
+    buildUi();
+    applyTheme();
+
+    connect(
+        authManager_,
+        &AuthManager::loginSuccessful,
+        this,
+        [this]()
         {
-            selectedRequestId = wipeRequestComboBox->itemData(index, Qt::UserRole).toString();
-            selectedRequestDeviceType = wipeRequestComboBox->itemData(index, Qt::UserRole + 1).toString();
-            selectedRequestMethod = wipeRequestComboBox->itemData(index, Qt::UserRole + 2).toString();
-            wipeRequestSummaryLabel->setText(QStringLiteral("Request %1  •  Device type: %2  •  Assigned method: %3").arg(selectedRequestId, selectedRequestDeviceType, selectedRequestMethod.isEmpty() ? QStringLiteral("Not specified") : selectedRequestMethod));
+            loginButton_->setEnabled(true);
+            loginButton_->setText(
+                QStringLiteral("Sign in"));
+
+            rootStack_->setCurrentWidget(
+                appPage_);
+
+            contentStack_->setCurrentWidget(
+                dashboardPage_);
+
+            setActiveNav(
+                dashboardNavButton_);
+
+            setConnectionState(
+                true,
+                QStringLiteral("Connected"));
+
+            refreshAssignedRequests();
+            refreshPhysicalDevices();
+        });
+
+    connect(
+        authManager_,
+        &AuthManager::loginFailed,
+        this,
+        [this](const QString &message)
+        {
+            loginButton_->setEnabled(true);
+            loginButton_->setText(
+                QStringLiteral("Sign in"));
+
+            loginErrorLabel_->setText(
+                message);
+
+            setConnectionState(
+                false,
+                QStringLiteral("Authentication failed"));
+        });
+
+    connect(
+        loginButton_,
+        &QPushButton::clicked,
+        this,
+        [this]()
+        {
+            loginErrorLabel_->clear();
+
+            const QString email =
+                emailEdit_->text().trimmed();
+
+            const QString password =
+                passwordEdit_->text();
+
+            if (email.isEmpty())
+            {
+                loginErrorLabel_->setText(
+                    QStringLiteral(
+                        "Email is required."));
+                return;
+            }
+
+            const QRegularExpression pattern(
+                QStringLiteral(
+                    R"(^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$)"));
+
+            if (!pattern.match(email).hasMatch())
+            {
+                loginErrorLabel_->setText(
+                    QStringLiteral(
+                        "Please enter a valid email address."));
+                return;
+            }
+
+            if (password.isEmpty())
+            {
+                loginErrorLabel_->setText(
+                    QStringLiteral(
+                        "Password is required."));
+                return;
+            }
+
+            loginButton_->setEnabled(false);
+            loginButton_->setText(
+                QStringLiteral("Signing in..."));
+
+            authManager_->login(
+                email,
+                password);
+        });
+
+    connect(
+        requestService_,
+        &SanitizationRequestService::assignedRequestsFetched,
+        this,
+        &MainWindow::handleAssignedRequests);
+
+    connect(
+        requestService_,
+        &SanitizationRequestService::requestFetchFailed,
+        this,
+        [this](const QString &message)
+        {
+            jobMessageLabel_->setText(
+                QStringLiteral(
+                    "Unable to load assigned jobs: %1")
+                    .arg(message));
+
+            jobMessageLabel_->setStyleSheet(
+                "color:#B42318;"
+                "font-size:12px;"
+                "font-weight:600;");
+
+            setConnectionState(
+                false,
+                QStringLiteral("API unavailable"));
+        });
+
+    connect(
+        requestService_,
+        &SanitizationRequestService::requestStatusUpdated,
+        this,
+        [this](
+            const QString &requestId,
+            const QString &status)
+        {
+            if (requestId == selectedRequestId_)
+            {
+                jobMessageLabel_->setText(
+                    QStringLiteral(
+                        "Request %1 moved to %2.")
+                        .arg(
+                            requestId,
+                            status));
+
+                jobMessageLabel_->setStyleSheet(
+                    "color:#027A48;"
+                    "font-size:12px;"
+                    "font-weight:600;");
+            }
+
+            refreshAssignedRequests();
+        });
+
+    connect(
+        requestService_,
+        &SanitizationRequestService::requestStatusUpdateFailed,
+        this,
+        [this](const QString &message)
+        {
+            jobMessageLabel_->setText(
+                QStringLiteral(
+                    "Request status update failed: %1")
+                    .arg(message));
+
+            jobMessageLabel_->setStyleSheet(
+                "color:#B42318;"
+                "font-size:12px;"
+                "font-weight:600;");
+        });
+
+    connect(
+        resultService_,
+        &SanitizationResultService::resultSubmitted,
+        this,
+        [this](const QString &requestId)
+        {
+            if (requestId != selectedRequestId_)
+                return;
+
+            pipelineStatusValue_->setText(
+                QStringLiteral("VERIFYING"));
+
+            pipelineStatusValue_->setStyleSheet(
+                badgeStyle("VERIFYING"));
+
+            jobMessageLabel_->setText(
+                QStringLiteral(
+                    "Sanitization result uploaded. Synchronizing certificate..."));
+        });
+
+    connect(
+        resultService_,
+        &SanitizationResultService::resultSubmissionFailed,
+        this,
+        [this](const QString &message)
+        {
+            jobMessageLabel_->setText(
+                QStringLiteral(
+                    "Result upload failed: %1")
+                    .arg(message));
+
+            jobMessageLabel_->setStyleSheet(
+                "color:#B42318;"
+                "font-size:12px;"
+                "font-weight:600;");
+        });
+
+    connect(
+        resultService_,
+        &SanitizationResultService::certificateSubmitted,
+        this,
+        [this](
+            const QString &requestId,
+            const QString &certificateId)
+        {
+            if (requestId != selectedRequestId_)
+                return;
+
+            certificateValue_->setText(
+                certificateId.isEmpty()
+                    ? QStringLiteral("Generated")
+                    : certificateId);
+
+            pipelineStatusValue_->setText(
+                QStringLiteral("COMPLETED"));
+
+            pipelineStatusValue_->setStyleSheet(
+                badgeStyle("COMPLETED"));
+
+            jobMessageLabel_->setText(
+                QStringLiteral(
+                    "Certificate synchronized successfully. Sanitization request completed."));
+
+            jobMessageLabel_->setStyleSheet(
+                "color:#027A48;"
+                "font-size:12px;"
+                "font-weight:700;");
+
+            refreshAssignedRequests();
+        });
+
+    connect(
+        resultService_,
+        &SanitizationResultService::certificateSubmissionFailed,
+        this,
+        [this](const QString &message)
+        {
+            jobMessageLabel_->setText(
+                QStringLiteral(
+                    "Certificate upload failed: %1")
+                    .arg(message));
+
+            jobMessageLabel_->setStyleSheet(
+                "color:#B42318;"
+                "font-size:12px;"
+                "font-weight:600;");
+        });
+
+    connect(
+        deviceController_,
+        &DeviceController::devicesUpdated,
+        this,
+        [this]()
+        {
+            deviceTableModel_->setDevices(
+                deviceController_->devices());
+
+            populateDeviceTable();
+        });
+
+    connect(
+        deviceController_,
+        &DeviceController::discoveryFailed,
+        this,
+        [this](const QString &message)
+        {
+            jobMessageLabel_->setText(
+                QStringLiteral(
+                    "Device discovery failed: %1")
+                    .arg(message));
+
+            jobMessageLabel_->setStyleSheet(
+                "color:#B42318;"
+                "font-size:12px;"
+                "font-weight:600;");
+        });
+
+    connect(
+        jobComboBox_,
+        QOverload<int>::of(
+            &QComboBox::currentIndexChanged),
+        this,
+        &MainWindow::selectRequestFromJobs);
+
+    connect(
+        assignedJobsTable_,
+        &QTableWidget::itemSelectionChanged,
+        this,
+        [this]()
+        {
+            const int row =
+                assignedJobsTable_->currentRow();
+
+            if (row < 0)
+                return;
+
+            const QTableWidgetItem *item =
+                assignedJobsTable_->item(
+                    row,
+                    0);
+
+            if (!item)
+                return;
+
+            const QString requestId =
+                item->text();
+
+            const int index =
+                jobComboBox_->findData(
+                    requestId,
+                    Qt::UserRole);
+
+            if (index >= 0)
+                jobComboBox_->setCurrentIndex(index);
+        });
+
+    connect(
+        deviceTable_,
+        &QTableWidget::itemSelectionChanged,
+        this,
+        [this]()
+        {
+            selectTargetDevice(
+                deviceTable_->currentRow());
+        });
+
+    connect(
+        refreshJobsButton_,
+        &QPushButton::clicked,
+        this,
+        &MainWindow::refreshAssignedRequests);
+
+    connect(
+        refreshDevicesButton_,
+        &QPushButton::clicked,
+        this,
+        &MainWindow::refreshPhysicalDevices);
+
+    connect(
+        validateTargetButton_,
+        &QPushButton::clicked,
+        this,
+        &MainWindow::runTargetSafetyCheck);
+
+    connect(
+        startSanitizationButton_,
+        &QPushButton::clicked,
+        this,
+        &MainWindow::startSanitization);
+
+    connect(
+        dashboardNavButton_,
+        &QPushButton::clicked,
+        this,
+        [this]()
+        {
+            showPage(
+                dashboardPage_,
+                dashboardNavButton_);
+        });
+
+    connect(
+        jobsNavButton_,
+        &QPushButton::clicked,
+        this,
+        [this]()
+        {
+            showPage(
+                jobsPage_,
+                jobsNavButton_);
+
+            refreshAssignedRequests();
+        });
+
+    connect(
+        devicesNavButton_,
+        &QPushButton::clicked,
+        this,
+        [this]()
+        {
+            showPage(
+                devicesPage_,
+                devicesNavButton_);
+
+            refreshPhysicalDevices();
+        });
+
+    connect(
+        forensicsNavButton_,
+        &QPushButton::clicked,
+        this,
+        [this]()
+        {
+            showPage(
+                forensicsPage_,
+                forensicsNavButton_);
+        });
+
+    connect(
+        settingsNavButton_,
+        &QPushButton::clicked,
+        this,
+        [this]()
+        {
+            showPage(
+                settingsPage_,
+                settingsNavButton_);
+        });
+
+    connect(
+        logoutButton_,
+        &QPushButton::clicked,
+        this,
+        &MainWindow::logout);
+
+    resetTargetPanel();
+
+    rootStack_->setCurrentWidget(
+        loginPage_);
+}
+
+MainWindow::~MainWindow() = default;
+
+void MainWindow::buildUi()
+{
+    root_ = new QWidget(this);
+
+    rootStack_ =
+        new QStackedWidget(root_);
+
+    buildLoginPage();
+    buildAppShell();
+
+    rootStack_->addWidget(
+        loginPage_);
+
+    rootStack_->addWidget(
+        appPage_);
+
+    auto *layout =
+        new QVBoxLayout(root_);
+
+    layout->setContentsMargins(
+        0, 0, 0, 0);
+
+    layout->addWidget(
+        rootStack_);
+
+    setCentralWidget(
+        root_);
+}
+
+void MainWindow::buildLoginPage()
+{
+    loginPage_ =
+        new QWidget;
+
+    auto *outer =
+        new QVBoxLayout(
+            loginPage_);
+
+    outer->setContentsMargins(
+        40, 40, 40, 40);
+
+    outer->addStretch();
+
+    auto *card =
+        makeCard(loginPage_);
+
+    card->setMaximumWidth(
+        470);
+
+    auto *layout =
+        new QVBoxLayout(card);
+
+    layout->setContentsMargins(
+        34, 34, 34, 34);
+
+    layout->setSpacing(
+        13);
+
+    auto *logo =
+        new QLabel(
+            QStringLiteral("◈"),
+            card);
+
+    logo->setAlignment(
+        Qt::AlignCenter);
+
+    logo->setFixedSize(
+        58,
+        58);
+
+    logo->setStyleSheet(
+        "QLabel {"
+        "background:#EFF6FF;"
+        "color:#2563EB;"
+        "border:1px solid #BFDBFE;"
+        "border-radius:16px;"
+        "font-size:28px;"
+        "font-weight:700;"
+        "}");
+
+    layout->addWidget(
+        logo,
+        0,
+        Qt::AlignHCenter);
+
+    auto *brand =
+        new QLabel(
+            QStringLiteral("SecureWipe"),
+            card);
+
+    brand->setAlignment(
+        Qt::AlignCenter);
+
+    brand->setStyleSheet(
+        "color:#101828;"
+        "font-size:28px;"
+        "font-weight:750;");
+
+    layout->addWidget(
+        brand);
+
+    auto *subtitle =
+        makeSubtitle(
+            QStringLiteral(
+                "Authorized workstation console for physical storage sanitization"),
+            card);
+
+    subtitle->setAlignment(
+        Qt::AlignCenter);
+
+    layout->addWidget(
+        subtitle);
+
+    layout->addSpacing(
+        10);
+
+    layout->addWidget(
+        makeCaption(
+            QStringLiteral("Work email"),
+            card));
+
+    emailEdit_ =
+        new QLineEdit(card);
+
+    emailEdit_->setPlaceholderText(
+        QStringLiteral(
+            "employee@example.com"));
+
+    emailEdit_->setMinimumHeight(
+        44);
+
+    layout->addWidget(
+        emailEdit_);
+
+    layout->addWidget(
+        makeCaption(
+            QStringLiteral("Password"),
+            card));
+
+    passwordEdit_ =
+        new QLineEdit(card);
+
+    passwordEdit_->setEchoMode(
+        QLineEdit::Password);
+
+    passwordEdit_->setMinimumHeight(
+        44);
+
+    layout->addWidget(
+        passwordEdit_);
+
+    loginErrorLabel_ =
+        new QLabel(card);
+
+    loginErrorLabel_->setWordWrap(
+        true);
+
+    loginErrorLabel_->setStyleSheet(
+        "color:#B42318;"
+        "font-size:12px;"
+        "font-weight:600;");
+
+    layout->addWidget(
+        loginErrorLabel_);
+
+    loginButton_ =
+        makePrimaryButton(
+            QStringLiteral("Sign in"),
+            card);
+
+    loginButton_->setMinimumHeight(
+        46);
+
+    layout->addWidget(
+        loginButton_);
+
+    auto *notice =
+        new QLabel(
+            QStringLiteral(
+                "Only authorized workstation roles can access this console."),
+            card);
+
+    notice->setAlignment(
+        Qt::AlignCenter);
+
+    notice->setStyleSheet(
+        "color:#98A2B3;"
+        "font-size:10px;");
+
+    notice->setWordWrap(
+        true);
+
+    layout->addWidget(
+        notice);
+
+    outer->addWidget(
+        card,
+        0,
+        Qt::AlignHCenter);
+
+    outer->addStretch();
+}
+
+void MainWindow::buildAppShell()
+{
+    appPage_ =
+        new QWidget;
+
+    auto *mainLayout =
+        new QHBoxLayout(
+            appPage_);
+
+    mainLayout->setContentsMargins(
+        0, 0, 0, 0);
+
+    mainLayout->setSpacing(
+        0);
+
+    auto *sidebar =
+        new QFrame(appPage_);
+
+    sidebar->setFixedWidth(
+        238);
+
+    sidebar->setStyleSheet(
+        "QFrame {"
+        "background:#FFFFFF;"
+        "border-right:1px solid #EAECF0;"
+        "}");
+
+    auto *sidebarLayout =
+        new QVBoxLayout(sidebar);
+
+    sidebarLayout->setContentsMargins(
+        18, 20, 18, 18);
+
+    sidebarLayout->setSpacing(
+        6);
+
+    auto *brand =
+        new QLabel(
+            QStringLiteral("◈  SecureWipe"),
+            sidebar);
+
+    brand->setStyleSheet(
+        "color:#101828;"
+        "font-size:18px;"
+        "font-weight:750;"
+        "padding-bottom:18px;");
+
+    sidebarLayout->addWidget(
+        brand);
+
+    dashboardNavButton_ =
+        new QPushButton(
+            QStringLiteral("Overview"),
+            sidebar);
+
+    jobsNavButton_ =
+        new QPushButton(
+            QStringLiteral("Assigned Jobs"),
+            sidebar);
+
+    devicesNavButton_ =
+        new QPushButton(
+            QStringLiteral("Devices"),
+            sidebar);
+
+    forensicsNavButton_ =
+        new QPushButton(
+            QStringLiteral("Evidence & Forensics"),
+            sidebar);
+
+    settingsNavButton_ =
+        new QPushButton(
+            QStringLiteral("Settings"),
+            sidebar);
+
+    sidebarLayout->addWidget(
+        dashboardNavButton_);
+
+    sidebarLayout->addWidget(
+        jobsNavButton_);
+
+    sidebarLayout->addWidget(
+        devicesNavButton_);
+
+    sidebarLayout->addWidget(
+        forensicsNavButton_);
+
+    sidebarLayout->addWidget(
+        settingsNavButton_);
+
+    sidebarLayout->addStretch();
+
+    auto *operatorCard =
+        makeCard(sidebar);
+
+    auto *operatorLayout =
+        new QVBoxLayout(
+            operatorCard);
+
+    operatorLayout->setContentsMargins(
+        12, 12, 12, 12);
+
+    operatorNameLabel_ =
+        new QLabel(
+            QStringLiteral("Operator"),
+            operatorCard);
+
+    operatorNameLabel_->setStyleSheet(
+        "color:#172033;"
+        "font-size:12px;"
+        "font-weight:700;");
+
+    operatorRoleLabel_ =
+        new QLabel(
+            QStringLiteral(
+                "WORKSTATION EMPLOYEE"),
+            operatorCard);
+
+    operatorRoleLabel_->setStyleSheet(
+        "color:#667085;"
+        "font-size:10px;");
+
+    operatorLayout->addWidget(
+        operatorNameLabel_);
+
+    operatorLayout->addWidget(
+        operatorRoleLabel_);
+
+    sidebarLayout->addWidget(
+        operatorCard);
+
+    sidebarLayout->addSpacing(
+        8);
+
+    logoutButton_ =
+        new QPushButton(
+            QStringLiteral("Sign out"),
+            sidebar);
+
+    logoutButton_->setMinimumHeight(
+        38);
+
+    logoutButton_->setStyleSheet(
+        "QPushButton {"
+        "background:#FFF5F5;"
+        "color:#B42318;"
+        "border:1px solid #FECACA;"
+        "border-radius:9px;"
+        "font-size:12px;"
+        "font-weight:600;"
+        "}"
+        "QPushButton:hover {"
+        "background:#FEF2F2;"
+        "}");
+
+    sidebarLayout->addWidget(
+        logoutButton_);
+
+    mainLayout->addWidget(
+        sidebar);
+
+    auto *right =
+        new QWidget(appPage_);
+
+    auto *rightLayout =
+        new QVBoxLayout(right);
+
+    rightLayout->setContentsMargins(
+        0, 0, 0, 0);
+
+    rightLayout->setSpacing(
+        0);
+
+    auto *topbar =
+        new QFrame(right);
+
+    topbar->setFixedHeight(
+        68);
+
+    topbar->setStyleSheet(
+        "QFrame {"
+        "background:#FFFFFF;"
+        "border-bottom:1px solid #EAECF0;"
+        "}");
+
+    auto *topLayout =
+        new QHBoxLayout(topbar);
+
+    topLayout->setContentsMargins(
+        24, 0, 24, 0);
+
+    auto *consoleLabel =
+        new QLabel(
+            QStringLiteral("Workstation Console"),
+            topbar);
+
+    consoleLabel->setStyleSheet(
+        "color:#667085;"
+        "font-size:12px;");
+
+    topLayout->addWidget(
+        consoleLabel);
+
+    topLayout->addStretch();
+
+    connectionBadgeLabel_ =
+        new QLabel(
+            QStringLiteral("Disconnected"),
+            topbar);
+
+    connectionBadgeLabel_->setAlignment(
+        Qt::AlignCenter);
+
+    connectionBadgeLabel_->setMinimumWidth(
+        110);
+
+    topLayout->addWidget(
+        connectionBadgeLabel_);
+
+    rightLayout->addWidget(
+        topbar);
+
+    contentStack_ =
+        new QStackedWidget(right);
+
+    rightLayout->addWidget(
+        contentStack_);
+
+    buildDashboardPage();
+    buildJobsPage();
+    buildDevicesPage();
+    buildForensicsPage();
+    buildSettingsPage();
+
+    contentStack_->addWidget(
+        dashboardPage_);
+
+    contentStack_->addWidget(
+        jobsPage_);
+
+    contentStack_->addWidget(
+        devicesPage_);
+
+    contentStack_->addWidget(
+        forensicsPage_);
+
+    contentStack_->addWidget(
+        settingsPage_);
+
+    mainLayout->addWidget(
+        right,
+        1);
+}
+
+void MainWindow::buildDashboardPage()
+{
+    dashboardPage_ =
+        new QWidget;
+
+    auto *scroll =
+        new QScrollArea(
+            dashboardPage_);
+
+    scroll->setWidgetResizable(
+        true);
+
+    scroll->setFrameShape(
+        QFrame::NoFrame);
+
+    auto *page =
+        new QWidget;
+
+    auto *root =
+        new QVBoxLayout(page);
+
+    root->setContentsMargins(
+        28, 26, 28, 28);
+
+    root->setSpacing(
+        16);
+
+    root->addWidget(
+        makeTitle(
+            QStringLiteral("Overview"),
+            page));
+
+    root->addWidget(
+        makeSubtitle(
+            QStringLiteral(
+                "Monitor assigned jobs, physical target readiness and evidence."),
+            page));
+
+    auto *metrics =
+        new QHBoxLayout;
+
+    metrics->setSpacing(
+        12);
+
+    auto createMetric =
+        [&](const QString &caption,
+            QLabel **value)
+    {
+        auto *card =
+            makeCard(page);
+
+        auto *layout =
+            new QVBoxLayout(card);
+
+        layout->setContentsMargins(
+            16, 14, 16, 14);
+
+        layout->addWidget(
+            makeCaption(
+                caption,
+                card));
+
+        *value =
+            new QLabel(
+                QStringLiteral("0"),
+                card);
+
+        (*value)->setStyleSheet(
+            "color:#101828;"
+            "font-size:25px;"
+            "font-weight:750;");
+
+        layout->addWidget(
+            *value);
+
+        metrics->addWidget(
+            card);
+    };
+
+    createMetric(
+        QStringLiteral("Total jobs"),
+        &totalJobsValue_);
+
+    createMetric(
+        QStringLiteral("Active"),
+        &activeJobsValue_);
+
+    createMetric(
+        QStringLiteral("Completed"),
+        &completedJobsValue_);
+
+    createMetric(
+        QStringLiteral("Failed"),
+        &failedJobsValue_);
+
+    root->addLayout(
+        metrics);
+
+    auto *infoCard =
+        makeCard(page);
+
+    auto *infoLayout =
+        new QVBoxLayout(
+            infoCard);
+
+    infoLayout->setContentsMargins(
+        18, 18, 18, 18);
+
+    infoLayout->addWidget(
+        makeCaption(
+            QStringLiteral(
+                "SecureWipe execution policy"),
+            infoCard));
+
+    auto *info =
+        new QLabel(
+            QStringLiteral(
+                "The operator follows the assigned work order. "
+                "The exact physical target is validated before sanitization, "
+                "and the backend sanitization pipeline produces the operation, verification, certificate and audit evidence."),
+            infoCard);
+
+    info->setWordWrap(
+        true);
+
+    info->setStyleSheet(
+        "color:#667085;"
+        "font-size:12px;");
+
+    infoLayout->addWidget(
+        info);
+
+    root->addWidget(
+        infoCard);
+
+    auto *jobsCard =
+        makeCard(page);
+
+    auto *jobsLayout =
+        new QVBoxLayout(
+            jobsCard);
+
+    jobsLayout->setContentsMargins(
+        16, 16, 16, 16);
+
+    jobsLayout->addWidget(
+        makeCaption(
+            QStringLiteral(
+                "Recent assigned jobs"),
+            jobsCard));
+
+    dashboardJobsTable_ =
+        new QTableWidget(jobsCard);
+
+    dashboardJobsTable_->setColumnCount(
+        4);
+
+    dashboardJobsTable_->setHorizontalHeaderLabels(
+        {
+            QStringLiteral("Request"),
+            QStringLiteral("Device"),
+            QStringLiteral("Method"),
+            QStringLiteral("Status")
+        });
+
+    dashboardJobsTable_->setSelectionBehavior(
+        QAbstractItemView::SelectRows);
+
+    dashboardJobsTable_->setEditTriggers(
+        QAbstractItemView::NoEditTriggers);
+
+    dashboardJobsTable_->setShowGrid(
+        false);
+
+    dashboardJobsTable_->verticalHeader()
+        ->setVisible(false);
+
+    dashboardJobsTable_->horizontalHeader()
+        ->setSectionResizeMode(
+            0,
+            QHeaderView::Stretch);
+
+    dashboardJobsTable_->horizontalHeader()
+        ->setSectionResizeMode(
+            1,
+            QHeaderView::Stretch);
+
+    dashboardJobsTable_->horizontalHeader()
+        ->setSectionResizeMode(
+            2,
+            QHeaderView::ResizeToContents);
+
+    dashboardJobsTable_->horizontalHeader()
+        ->setSectionResizeMode(
+            3,
+            QHeaderView::ResizeToContents);
+
+    jobsLayout->addWidget(
+        dashboardJobsTable_);
+
+    root->addWidget(
+        jobsCard,
+        1);
+
+    scroll->setWidget(
+        page);
+
+    auto *outer =
+        new QVBoxLayout(
+            dashboardPage_);
+
+    outer->setContentsMargins(
+        0, 0, 0, 0);
+
+    outer->addWidget(
+        scroll);
+}
+
+void MainWindow::buildJobsPage()
+{
+    jobsPage_ =
+        new QWidget;
+
+    auto *scroll =
+        new QScrollArea(
+            jobsPage_);
+
+    scroll->setWidgetResizable(
+        true);
+
+    scroll->setFrameShape(
+        QFrame::NoFrame);
+
+    auto *page =
+        new QWidget;
+
+    auto *root =
+        new QVBoxLayout(page);
+
+    root->setContentsMargins(
+        28, 26, 28, 28);
+
+    root->setSpacing(
+        16);
+
+    auto *header =
+        new QHBoxLayout;
+
+    auto *block =
+        new QVBoxLayout;
+
+    block->addWidget(
+        makeTitle(
+            QStringLiteral(
+                "Assigned Sanitization Jobs"),
+            page));
+
+    block->addWidget(
+        makeSubtitle(
+            QStringLiteral(
+                "Requests authorized for this workstation employee."),
+            page));
+
+    header->addLayout(
+        block);
+
+    header->addStretch();
+
+    refreshJobsButton_ =
+        makeSecondaryButton(
+            QStringLiteral("Refresh jobs"),
+            page);
+
+    header->addWidget(
+        refreshJobsButton_);
+
+    root->addLayout(
+        header);
+
+    auto *tableCard =
+        makeCard(page);
+
+    auto *tableLayout =
+        new QVBoxLayout(
+            tableCard);
+
+    tableLayout->setContentsMargins(
+        16, 16, 16, 16);
+
+    assignedJobsTable_ =
+        new QTableWidget(tableCard);
+
+    assignedJobsTable_->setColumnCount(
+        5);
+
+    assignedJobsTable_->setHorizontalHeaderLabels(
+        {
+            QStringLiteral("Request ID"),
+            QStringLiteral("Device Type"),
+            QStringLiteral("Method"),
+            QStringLiteral("Asset"),
+            QStringLiteral("Status")
+        });
+
+    assignedJobsTable_->setSelectionBehavior(
+        QAbstractItemView::SelectRows);
+
+    assignedJobsTable_->setSelectionMode(
+        QAbstractItemView::SingleSelection);
+
+    assignedJobsTable_->setEditTriggers(
+        QAbstractItemView::NoEditTriggers);
+
+    assignedJobsTable_->setShowGrid(
+        false);
+
+    assignedJobsTable_->verticalHeader()
+        ->setVisible(false);
+
+    assignedJobsTable_->horizontalHeader()
+        ->setSectionResizeMode(
+            0,
+            QHeaderView::Stretch);
+
+    assignedJobsTable_->horizontalHeader()
+        ->setSectionResizeMode(
+            1,
+            QHeaderView::ResizeToContents);
+
+    assignedJobsTable_->horizontalHeader()
+        ->setSectionResizeMode(
+            2,
+            QHeaderView::ResizeToContents);
+
+    assignedJobsTable_->horizontalHeader()
+        ->setSectionResizeMode(
+            3,
+            QHeaderView::Stretch);
+
+    assignedJobsTable_->horizontalHeader()
+        ->setSectionResizeMode(
+            4,
+            QHeaderView::ResizeToContents);
+
+    tableLayout->addWidget(
+        assignedJobsTable_);
+
+    root->addWidget(
+        tableCard);
+
+    auto *detailCard =
+        makeCard(page);
+
+    auto *detailLayout =
+        new QVBoxLayout(
+            detailCard);
+
+    detailLayout->setContentsMargins(
+        18, 18, 18, 18);
+
+    detailLayout->setSpacing(
+        10);
+
+    detailLayout->addWidget(
+        makeCaption(
+            QStringLiteral(
+                "Selected work order"),
+            detailCard));
+
+    jobComboBox_ =
+        new QComboBox(detailCard);
+
+    jobComboBox_->setMinimumHeight(
+        42);
+
+    detailLayout->addWidget(
+        jobComboBox_);
+
+    auto *grid =
+        new QGridLayout;
+
+    grid->setHorizontalSpacing(
+        24);
+
+    grid->setVerticalSpacing(
+        12);
+
+    jobRequestIdValue_ =
+        makeValue(
+            QStringLiteral("—"),
+            detailCard);
+
+    jobDeviceTypeValue_ =
+        makeValue(
+            QStringLiteral("—"),
+            detailCard);
+
+    jobRequestedMethodValue_ =
+        makeValue(
+            QStringLiteral("—"),
+            detailCard);
+
+    jobAssetValue_ =
+        makeValue(
+            QStringLiteral("—"),
+            detailCard);
+
+    jobWorkstationValue_ =
+        makeValue(
+            QStringLiteral("—"),
+            detailCard);
+
+    grid->addWidget(
+        makeCaption(
+            QStringLiteral("Request ID"),
+            detailCard),
+        0,
+        0);
+
+    grid->addWidget(
+        jobRequestIdValue_,
+        1,
+        0);
+
+    grid->addWidget(
+        makeCaption(
+            QStringLiteral("Device type"),
+            detailCard),
+        0,
+        1);
+
+    grid->addWidget(
+        jobDeviceTypeValue_,
+        1,
+        1);
+
+    grid->addWidget(
+        makeCaption(
+            QStringLiteral("Assigned method"),
+            detailCard),
+        0,
+        2);
+
+    grid->addWidget(
+        jobRequestedMethodValue_,
+        1,
+        2);
+
+    grid->addWidget(
+        makeCaption(
+            QStringLiteral("Asset"),
+            detailCard),
+        2,
+        0);
+
+    grid->addWidget(
+        jobAssetValue_,
+        3,
+        0);
+
+    grid->addWidget(
+        makeCaption(
+            QStringLiteral("Workstation"),
+            detailCard),
+        2,
+        1);
+
+    grid->addWidget(
+        jobWorkstationValue_,
+        3,
+        1);
+
+    detailLayout->addLayout(
+        grid);
+
+    root->addWidget(
+        detailCard);
+
+    auto *targetCard =
+        makeCard(page);
+
+    auto *targetLayout =
+        new QVBoxLayout(
+            targetCard);
+
+    targetLayout->setContentsMargins(
+        18, 18, 18, 18);
+
+    targetLayout->setSpacing(
+        10);
+
+    auto *targetHeader =
+        new QHBoxLayout;
+
+    targetHeader->addWidget(
+        makeCaption(
+            QStringLiteral("Physical target"),
+            targetCard));
+
+    targetHeader->addStretch();
+
+    refreshDevicesButton_ =
+        makeSecondaryButton(
+            QStringLiteral("Refresh devices"),
+            targetCard);
+
+    targetHeader->addWidget(
+        refreshDevicesButton_);
+
+    targetLayout->addLayout(
+        targetHeader);
+
+    deviceTable_ =
+        new QTableWidget(targetCard);
+
+    deviceTable_->setColumnCount(
+        6);
+
+    deviceTable_->setHorizontalHeaderLabels(
+        {
+            QStringLiteral("Model"),
+            QStringLiteral("Serial"),
+            QStringLiteral("Interface"),
+            QStringLiteral("Capacity"),
+            QStringLiteral("System"),
+            QStringLiteral("Device ID")
+        });
+
+    deviceTable_->setSelectionBehavior(
+        QAbstractItemView::SelectRows);
+
+    deviceTable_->setSelectionMode(
+        QAbstractItemView::SingleSelection);
+
+    deviceTable_->setEditTriggers(
+        QAbstractItemView::NoEditTriggers);
+
+    deviceTable_->setShowGrid(
+        false);
+
+    deviceTable_->verticalHeader()
+        ->setVisible(false);
+
+    deviceTable_->horizontalHeader()
+        ->setSectionResizeMode(
+            0,
+            QHeaderView::Stretch);
+
+    deviceTable_->horizontalHeader()
+        ->setSectionResizeMode(
+            1,
+            QHeaderView::Stretch);
+
+    deviceTable_->horizontalHeader()
+        ->setSectionResizeMode(
+            2,
+            QHeaderView::ResizeToContents);
+
+    deviceTable_->horizontalHeader()
+        ->setSectionResizeMode(
+            3,
+            QHeaderView::ResizeToContents);
+
+    deviceTable_->horizontalHeader()
+        ->setSectionResizeMode(
+            4,
+            QHeaderView::ResizeToContents);
+
+    deviceTable_->horizontalHeader()
+        ->setSectionResizeMode(
+            5,
+            QHeaderView::Stretch);
+
+    targetLayout->addWidget(
+        deviceTable_);
+
+    root->addWidget(
+        targetCard);
+
+    auto *workspace =
+        new QHBoxLayout;
+
+    workspace->setSpacing(
+        16);
+
+    auto *safetyCard =
+        makeCard(page);
+
+    auto *safetyLayout =
+        new QVBoxLayout(
+            safetyCard);
+
+    safetyLayout->setContentsMargins(
+        18, 18, 18, 18);
+
+    safetyLayout->setSpacing(
+        9);
+
+    safetyLayout->addWidget(
+        makeCaption(
+            QStringLiteral("Target safety"),
+            safetyCard));
+
+    targetSafetyBadge_ =
+        new QLabel(
+            QStringLiteral("NOT CHECKED"),
+            safetyCard);
+
+    targetSafetyBadge_->setAlignment(
+        Qt::AlignCenter);
+
+    targetSafetyBadge_->setStyleSheet(
+        badgeStyle("NOT_CHECKED"));
+
+    safetyLayout->addWidget(
+        targetSafetyBadge_);
+
+    targetSafetyText_ =
+        new QLabel(
+            QStringLiteral(
+                "Select a physical target and run a fresh safety check."),
+            safetyCard);
+
+    targetSafetyText_->setWordWrap(
+        true);
+
+    targetSafetyText_->setStyleSheet(
+        "color:#667085;"
+        "font-size:11px;");
+
+    safetyLayout->addWidget(
+        targetSafetyText_);
+
+    auto *targetGrid =
+        new QGridLayout;
+
+    targetGrid->setHorizontalSpacing(
+        18);
+
+    targetGrid->setVerticalSpacing(
+        8);
+
+    targetModelValue_ =
+        makeValue(
+            QStringLiteral("—"),
+            safetyCard);
+
+    targetSerialValue_ =
+        makeValue(
+            QStringLiteral("—"),
+            safetyCard);
+
+    targetCapacityValue_ =
+        makeValue(
+            QStringLiteral("—"),
+            safetyCard);
+
+    targetInterfaceValue_ =
+        makeValue(
+            QStringLiteral("—"),
+            safetyCard);
+
+    targetPathValue_ =
+        makeValue(
+            QStringLiteral("—"),
+            safetyCard);
+
+    targetGrid->addWidget(
+        makeCaption(
+            QStringLiteral("Model"),
+            safetyCard),
+        0,
+        0);
+
+    targetGrid->addWidget(
+        targetModelValue_,
+        1,
+        0);
+
+    targetGrid->addWidget(
+        makeCaption(
+            QStringLiteral("Serial"),
+            safetyCard),
+        0,
+        1);
+
+    targetGrid->addWidget(
+        targetSerialValue_,
+        1,
+        1);
+
+    targetGrid->addWidget(
+        makeCaption(
+            QStringLiteral("Capacity"),
+            safetyCard),
+        2,
+        0);
+
+    targetGrid->addWidget(
+        targetCapacityValue_,
+        3,
+        0);
+
+    targetGrid->addWidget(
+        makeCaption(
+            QStringLiteral("Interface"),
+            safetyCard),
+        2,
+        1);
+
+    targetGrid->addWidget(
+        targetInterfaceValue_,
+        3,
+        1);
+
+    targetGrid->addWidget(
+        makeCaption(
+            QStringLiteral("Physical device"),
+            safetyCard),
+        4,
+        0,
+        1,
+        2);
+
+    targetGrid->addWidget(
+        targetPathValue_,
+        5,
+        0,
+        1,
+        2);
+
+    safetyLayout->addLayout(
+        targetGrid);
+
+    capabilityValue_ =
+        makeValue(
+            QStringLiteral("—"),
+            safetyCard);
+
+    selectedMethodValue_ =
+        makeValue(
+            QStringLiteral("—"),
+            safetyCard);
+
+    safetyLayout->addWidget(
+        makeCaption(
+            QStringLiteral("Capability"),
+            safetyCard));
+
+    safetyLayout->addWidget(
+        capabilityValue_);
+
+    safetyLayout->addWidget(
+        makeCaption(
+            QStringLiteral("Detected method"),
+            safetyCard));
+
+    safetyLayout->addWidget(
+        selectedMethodValue_);
+
+    workspace->addWidget(
+        safetyCard,
+        2);
+
+    auto *executionCard =
+        makeCard(page);
+
+    auto *executionLayout =
+        new QVBoxLayout(
+            executionCard);
+
+    executionLayout->setContentsMargins(
+        18, 18, 18, 18);
+
+    executionLayout->setSpacing(
+        9);
+
+    executionLayout->addWidget(
+        makeCaption(
+            QStringLiteral(
+                "Sanitization pipeline"),
+            executionCard));
+
+    pipelineStatusValue_ =
+        new QLabel(
+            QStringLiteral("NOT STARTED"),
+            executionCard);
+
+    pipelineStatusValue_->setAlignment(
+        Qt::AlignCenter);
+
+    pipelineStatusValue_->setStyleSheet(
+        badgeStyle("NOT_STARTED"));
+
+    executionLayout->addWidget(
+        pipelineStatusValue_);
+
+    operationProgress_ =
+        new QProgressBar(
+            executionCard);
+
+    operationProgress_->setRange(
+        0,
+        100);
+
+    operationProgress_->setValue(
+        0);
+
+    operationProgress_->setTextVisible(
+        false);
+
+    operationProgress_->setFixedHeight(
+        8);
+
+    executionLayout->addWidget(
+        operationProgress_);
+
+    verificationValue_ =
+        makeValue(
+            QStringLiteral("—"),
+            executionCard);
+
+    operationValue_ =
+        makeValue(
+            QStringLiteral("—"),
+            executionCard);
+
+    bytesProcessedValue_ =
+        makeValue(
+            QStringLiteral("—"),
+            executionCard);
+
+    bytesVerifiedValue_ =
+        makeValue(
+            QStringLiteral("—"),
+            executionCard);
+
+    samplesValue_ =
+        makeValue(
+            QStringLiteral("—"),
+            executionCard);
+
+    certificateValue_ =
+        makeValue(
+            QStringLiteral("—"),
+            executionCard);
+
+    executionLayout->addWidget(
+        makeCaption(
+            QStringLiteral("Verification"),
+            executionCard));
+
+    executionLayout->addWidget(
+        verificationValue_);
+
+    executionLayout->addWidget(
+        makeCaption(
+            QStringLiteral("Operation ID"),
+            executionCard));
+
+    executionLayout->addWidget(
+        operationValue_);
+
+    executionLayout->addWidget(
+        makeCaption(
+            QStringLiteral("Bytes processed"),
+            executionCard));
+
+    executionLayout->addWidget(
+        bytesProcessedValue_);
+
+    executionLayout->addWidget(
+        makeCaption(
+            QStringLiteral("Bytes verified"),
+            executionCard));
+
+    executionLayout->addWidget(
+        bytesVerifiedValue_);
+
+    executionLayout->addWidget(
+        makeCaption(
+            QStringLiteral("Samples"),
+            executionCard));
+
+    executionLayout->addWidget(
+        samplesValue_);
+
+    executionLayout->addWidget(
+        makeCaption(
+            QStringLiteral("Certificate"),
+            executionCard));
+
+    executionLayout->addWidget(
+        certificateValue_);
+
+    workspace->addWidget(
+        executionCard,
+        1);
+
+    root->addLayout(
+        workspace);
+
+    auto *actionCard =
+        makeCard(page);
+
+    auto *actionLayout =
+        new QVBoxLayout(
+            actionCard);
+
+    actionLayout->setContentsMargins(
+        18, 16, 18, 16);
+
+    jobMessageLabel_ =
+        new QLabel(
+            QStringLiteral(
+                "Select an assigned request to begin."),
+            actionCard);
+
+    jobMessageLabel_->setWordWrap(
+        true);
+
+    jobMessageLabel_->setStyleSheet(
+        "color:#667085;"
+        "font-size:12px;"
+        "font-weight:600;");
+
+    actionLayout->addWidget(
+        jobMessageLabel_);
+
+    auto *buttons =
+        new QHBoxLayout;
+
+    buttons->addStretch();
+
+    validateTargetButton_ =
+        makeSecondaryButton(
+            QStringLiteral(
+                "Run safety check"),
+            actionCard);
+
+    validateTargetButton_->setEnabled(
+        false);
+
+    buttons->addWidget(
+        validateTargetButton_);
+
+    startSanitizationButton_ =
+        makePrimaryButton(
+            QStringLiteral(
+                "Start sanitization"),
+            actionCard);
+
+    startSanitizationButton_->setEnabled(
+        false);
+
+    buttons->addWidget(
+        startSanitizationButton_);
+
+    actionLayout->addLayout(
+        buttons);
+
+    root->addWidget(
+        actionCard);
+
+    scroll->setWidget(
+        page);
+
+    auto *layout =
+        new QVBoxLayout(
+            jobsPage_);
+
+    layout->setContentsMargins(
+        0, 0, 0, 0);
+
+    layout->addWidget(
+        scroll);
+}
+
+void MainWindow::buildDevicesPage()
+{
+    devicesPage_ =
+        new QWidget;
+
+    auto *scroll =
+        new QScrollArea(
+            devicesPage_);
+
+    scroll->setWidgetResizable(
+        true);
+
+    scroll->setFrameShape(
+        QFrame::NoFrame);
+
+    auto *page =
+        new QWidget;
+
+    auto *root =
+        new QVBoxLayout(page);
+
+    root->setContentsMargins(
+        28, 26, 28, 28);
+
+    root->setSpacing(
+        16);
+
+    auto *header =
+        new QHBoxLayout;
+
+    auto *titleBlock =
+        new QVBoxLayout;
+
+    titleBlock->addWidget(
+        makeTitle(
+            QStringLiteral(
+                "Physical Storage Devices"),
+            page));
+
+    titleBlock->addWidget(
+        makeSubtitle(
+            QStringLiteral(
+                "Storage targets currently discovered by SecureWipe."),
+            page));
+
+    header->addLayout(
+        titleBlock);
+
+    header->addStretch();
+
+    auto *refreshButton =
+        makeSecondaryButton(
+            QStringLiteral("Refresh"),
+            page);
+
+    connect(
+        refreshButton,
+        &QPushButton::clicked,
+        this,
+        &MainWindow::refreshPhysicalDevices);
+
+    header->addWidget(
+        refreshButton);
+
+    root->addLayout(
+        header);
+
+    auto *card =
+        makeCard(page);
+
+    auto *layout =
+        new QVBoxLayout(card);
+
+    layout->setContentsMargins(
+        16, 16, 16, 16);
+
+    auto *table =
+        new QTableWidget(card);
+
+    table->setColumnCount(
+        5);
+
+    table->setHorizontalHeaderLabels(
+        {
+            QStringLiteral("Model"),
+            QStringLiteral("Serial"),
+            QStringLiteral("Interface"),
+            QStringLiteral("Capacity"),
+            QStringLiteral("Device ID")
+        });
+
+    table->setSelectionBehavior(
+        QAbstractItemView::SelectRows);
+
+    table->setEditTriggers(
+        QAbstractItemView::NoEditTriggers);
+
+    table->setShowGrid(
+        false);
+
+    table->verticalHeader()
+        ->setVisible(false);
+
+    table->horizontalHeader()
+        ->setSectionResizeMode(
+            0,
+            QHeaderView::Stretch);
+
+    table->horizontalHeader()
+        ->setSectionResizeMode(
+            1,
+            QHeaderView::Stretch);
+
+    table->horizontalHeader()
+        ->setSectionResizeMode(
+            2,
+            QHeaderView::ResizeToContents);
+
+    table->horizontalHeader()
+        ->setSectionResizeMode(
+            3,
+            QHeaderView::ResizeToContents);
+
+    table->horizontalHeader()
+        ->setSectionResizeMode(
+            4,
+            QHeaderView::Stretch);
+
+    layout->addWidget(
+        table);
+
+    root->addWidget(
+        card);
+
+    scroll->setWidget(
+        page);
+
+    auto *outer =
+        new QVBoxLayout(
+            devicesPage_);
+
+    outer->setContentsMargins(
+        0, 0, 0, 0);
+
+    outer->addWidget(
+        scroll);
+}
+
+void MainWindow::buildForensicsPage()
+{
+    forensicsPage_ =
+        new QWidget;
+
+    forensicPage_ =
+        forensicsPage_;
+
+    auto *root =
+        new QVBoxLayout(
+            forensicsPage_);
+
+    root->setContentsMargins(
+        28, 26, 28, 28);
+
+    root->setSpacing(
+        16);
+
+    root->addWidget(
+        makeTitle(
+            QStringLiteral(
+                "Evidence & Forensics"),
+            forensicsPage_));
+
+    root->addWidget(
+        makeSubtitle(
+            QStringLiteral(
+                "Audit, operation and certificate evidence produced by the sanitization pipeline."),
+            forensicsPage_));
+
+    auto *card =
+        makeCard(forensicsPage_);
+
+    auto *layout =
+        new QVBoxLayout(card);
+
+    layout->setContentsMargins(
+        18, 18, 18, 18);
+
+    layout->addWidget(
+        makeCaption(
+            QStringLiteral(
+                "Latest evidence"),
+            card));
+
+    evidenceValue_ =
+        makeValue(
+            QStringLiteral(
+                "No pipeline evidence generated yet."),
+            card);
+
+    layout->addWidget(
+        evidenceValue_);
+
+    auto *info =
+        new QLabel(
+            QStringLiteral(
+                "Evidence is generated by the sanitization pipeline and should not be modified manually from the workstation UI."),
+            card);
+
+    info->setWordWrap(
+        true);
+
+    info->setStyleSheet(
+        "color:#667085;"
+        "font-size:11px;");
+
+    layout->addWidget(
+        info);
+
+    root->addWidget(
+        card);
+
+    root->addStretch();
+}
+
+void MainWindow::buildSettingsPage()
+{
+    settingsPage_ =
+        new QWidget;
+
+    auto *root =
+        new QVBoxLayout(
+            settingsPage_);
+
+    root->setContentsMargins(
+        28, 26, 28, 28);
+
+    root->setSpacing(
+        16);
+
+    root->addWidget(
+        makeTitle(
+            QStringLiteral("Settings"),
+            settingsPage_));
+
+    root->addWidget(
+        makeSubtitle(
+            QStringLiteral(
+                "Workstation configuration and execution policy."),
+            settingsPage_));
+
+    auto *apiCard =
+        makeCard(settingsPage_);
+
+    auto *apiLayout =
+        new QVBoxLayout(
+            apiCard);
+
+    apiLayout->setContentsMargins(
+        18, 18, 18, 18);
+
+    apiLayout->addWidget(
+        makeCaption(
+            QStringLiteral(
+                "Backend API"),
+            apiCard));
+
+    apiLayout->addWidget(
+        makeValue(
+            QStringLiteral(
+                "http://localhost:5000"),
+            apiCard));
+
+    root->addWidget(
+        apiCard);
+
+    auto *safetyCard =
+        makeCard(settingsPage_);
+
+    auto *safetyLayout =
+        new QVBoxLayout(
+            safetyCard);
+
+    safetyLayout->setContentsMargins(
+        18, 18, 18, 18);
+
+    safetyLayout->addWidget(
+        makeCaption(
+            QStringLiteral(
+                "Destructive-operation policy"),
+            safetyCard));
+
+    auto *safety =
+        new QLabel(
+            QStringLiteral(
+                "Never authorize an operating-system disk or an unintended storage device. "
+                "The exact target must pass identity validation and safety checks before physical sanitization."),
+            safetyCard);
+
+    safety->setWordWrap(
+        true);
+
+    safety->setStyleSheet(
+        "color:#667085;"
+        "font-size:12px;");
+
+    safetyLayout->addWidget(
+        safety);
+
+    root->addWidget(
+        safetyCard);
+
+    root->addStretch();
+}
+
+void MainWindow::applyTheme()
+{
+    qApp->setStyleSheet(
+        "QWidget {font-family:'Segoe UI';}"
+        "QMainWindow {background:#F6F8FB;}"
+        "QLineEdit {"
+        "background:#FFFFFF;"
+        "color:#172033;"
+        "border:1px solid #D0D5DD;"
+        "border-radius:9px;"
+        "padding:8px 12px;"
+        "font-size:12px;"
+        "}"
+        "QLineEdit:focus {border-color:#2563EB;}"
+        "QComboBox {"
+        "background:#FFFFFF;"
+        "color:#172033;"
+        "border:1px solid #D0D5DD;"
+        "border-radius:9px;"
+        "padding:8px 12px;"
+        "font-size:12px;"
+        "}"
+        "QComboBox:focus {border-color:#2563EB;}"
+        "QTableWidget {"
+        "background:#FFFFFF;"
+        "color:#172033;"
+        "border:1px solid #E4E7EC;"
+        "border-radius:10px;"
+        "gridline-color:transparent;"
+        "selection-background-color:#EFF6FF;"
+        "selection-color:#172033;"
+        "font-size:12px;"
+        "}"
+        "QTableWidget::item {padding:8px;}"
+        "QHeaderView::section {"
+        "background:#F8FAFC;"
+        "color:#667085;"
+        "border:none;"
+        "border-bottom:1px solid #E4E7EC;"
+        "padding:9px;"
+        "font-size:10px;"
+        "font-weight:700;"
+        "}"
+        "QProgressBar {"
+        "background:#F2F4F7;"
+        "border:none;"
+        "border-radius:4px;"
+        "}"
+        "QProgressBar::chunk {"
+        "background:#2563EB;"
+        "border-radius:4px;"
+        "}"
+        "QScrollArea {"
+        "background:#F6F8FB;"
+        "border:none;"
+        "}");
+}
+
+void MainWindow::setActiveNav(
+    QPushButton *button)
+{
+    const QList<QPushButton *> buttons = {
+        dashboardNavButton_,
+        jobsNavButton_,
+        devicesNavButton_,
+        forensicsNavButton_,
+        settingsNavButton_
+    };
+
+    for (QPushButton *item : buttons)
+    {
+        if (!item)
+            continue;
+
+        item->setMinimumHeight(
+            40);
+
+        if (item == button)
+        {
+            item->setStyleSheet(
+                "QPushButton {"
+                "background:#EFF6FF;"
+                "color:#1D4ED8;"
+                "border:none;"
+                "border-radius:9px;"
+                "text-align:left;"
+                "padding:9px 12px;"
+                "font-size:12px;"
+                "font-weight:700;"
+                "}"
+                "QPushButton:hover {"
+                "background:#DBEAFE;"
+                "}");
         }
         else
         {
-            wipeRequestSummaryLabel->setText(QStringLiteral("No assigned request selected."));
+            item->setStyleSheet(
+                "QPushButton {"
+                "background:transparent;"
+                "color:#475467;"
+                "border:none;"
+                "border-radius:9px;"
+                "text-align:left;"
+                "padding:9px 12px;"
+                "font-size:12px;"
+                "font-weight:600;"
+                "}"
+                "QPushButton:hover {"
+                "background:#F2F4F7;"
+                "}");
         }
-        wipeStatusLabel->setText(index >= 0 ? QStringLiteral("Select a matching physical target device.") : QStringLiteral("Choose a request to begin."));
-        wipeStatusLabel->setStyleSheet("color:#667085; font-size:12px; font-weight:600;");
-        wipeSafetyBadgeLabel->setText(QStringLiteral("NOT CHECKED"));
-        wipeSafetyBadgeLabel->setStyleSheet("QLabel { background:#FFF7E8; color:#B54708; border:1px solid #FAD7A0; border-radius:8px; padding:5px 10px; font-size:11px; font-weight:700; }");
-        wipeSafetyChecksLabel->setText(QStringLiteral("Safety checks have not been run."));
-        wipeMethodValueLabel->setText(QStringLiteral("Select a target"));
-        wipeTargetValueLabel->setText(QStringLiteral("None"));
-        wipeCapacityValueLabel->setText(QStringLiteral("—"));
-        wipeInterfaceValueLabel->setText(QStringLiteral("—"));
-        wipeVerificationLabel->setText(QStringLiteral("Verification: —"));
-        wipeProgressBar->setRange(0, 100);
-        wipeProgressBar->setValue(0);
-        wipeStartButton->setEnabled(false);
-        wipeSafetyButton->setEnabled(false);
-        deviceController->refreshDevices();
-    });
-
-    connect(wipeRefreshButton, &QPushButton::clicked, this, [this]()
-    {
-        selectedWipeDeviceId.clear();
-        wipeSafetyApproved = false;
-        wipeSafetyButton->setEnabled(false);
-        wipeStartButton->setEnabled(false);
-        wipeStatusLabel->setText(QStringLiteral("Refreshing physical storage devices..."));
-        deviceController->refreshDevices();
-    });
-
-    connect(wipeDeviceTable, &QTableWidget::itemSelectionChanged, this, [this]()
-    {
-        const int row = wipeDeviceTable->currentRow();
-        wipeSafetyApproved = false;
-        wipeStartButton->setEnabled(false);
-        wipeSafetyButton->setEnabled(row >= 0 && !sanitizationOperationRunning);
-        if (row < 0)
-        {
-            selectedWipeDeviceId.clear();
-            wipeTargetValueLabel->setText(QStringLiteral("None"));
-            wipeMethodValueLabel->setText(QStringLiteral("Select a target"));
-            wipeCapacityValueLabel->setText(QStringLiteral("—"));
-            wipeInterfaceValueLabel->setText(QStringLiteral("—"));
-            return;
-        }
-
-        bool ok = false;
-        const int deviceIndex = wipeDeviceTable->item(row, 0)->data(Qt::UserRole).toInt(&ok);
-        if (!ok || !deviceController->selectTarget(deviceIndex))
-        {
-            wipeStatusLabel->setText(QStringLiteral("Unable to select this physical device."));
-            wipeSafetyButton->setEnabled(false);
-            return;
-        }
-
-        const StorageDevice &device = deviceController->devices().at(deviceIndex);
-        selectedWipeDeviceId = QString::fromStdString(device.getDeviceId());
-        wipeTargetValueLabel->setText(QString::fromStdString(device.getModel()) + QStringLiteral("  •  ") + QString::fromStdString(device.getSerialNumber()));
-        wipeCapacityValueLabel->setText(QString::number(static_cast<double>(device.getCapacityBytes()) / (1024.0 * 1024.0 * 1024.0), 'f', 1) + QStringLiteral(" GB"));
-        wipeInterfaceValueLabel->setText(QString::fromStdString(device.getInterfaceType()));
-
-        const SanitizationMethod method = deviceController->detectSelectedTargetMethod();
-        wipeMethodValueLabel->setText(sanitizationMethodName(method));
-        wipeVerificationLabel->setText(QStringLiteral("Verification: not run yet"));
-        wipeSafetyChecksLabel->setText(QStringLiteral("Target selected. Run the safety check before authorization."));
-        wipeSafetyBadgeLabel->setText(QStringLiteral("NOT CHECKED"));
-        wipeSafetyBadgeLabel->setStyleSheet("QLabel { background:#FFF7E8; color:#B54708; border:1px solid #FAD7A0; border-radius:8px; padding:5px 10px; font-size:11px; font-weight:700; }");
-        wipeStatusLabel->setText(method == SanitizationMethod::Unsupported
-            ? QStringLiteral("Target selected, but no supported execution method was detected.")
-            : QStringLiteral("Target selected. Run the safety check to unlock sanitization."));
-        wipeStatusLabel->setStyleSheet(method == SanitizationMethod::Unsupported
-            ? "color:#B42318; font-size:12px; font-weight:600;"
-            : "color:#667085; font-size:12px; font-weight:600;");
-    });
-
-    connect(wipeSafetyButton, &QPushButton::clicked, this, &MainWindow::runWipeSafetyCheck);
-    connect(wipeStartButton, &QPushButton::clicked, this, &MainWindow::startSanitization);
-
-    wipeRefreshButton->setToolTip(QStringLiteral("Rediscover physical storage devices"));
-    wipeSafetyButton->setToolTip(QStringLiteral("Re-check target identity, system disk, boot dependency and mounted volumes"));
-    wipeStartButton->setToolTip(QStringLiteral("Starts the destructive sanitization operation only after safety approval"));
-
-    wipeSafetyButton->setEnabled(false);
-    wipeStartButton->setEnabled(false);
+    }
 }
 
-void MainWindow::populateWipeDevices()
+void MainWindow::setConnectionState(
+    bool connected,
+    const QString &text)
 {
-    if (!wipeDeviceTable)
+    connectionBadgeLabel_->setText(
+        text.isEmpty()
+            ? (connected
+                   ? QStringLiteral("Connected")
+                   : QStringLiteral("Disconnected"))
+            : text);
+
+    connectionBadgeLabel_->setStyleSheet(
+        badgeStyle(
+            connected
+                ? QStringLiteral("SAFE")
+                : QStringLiteral("FAILED")));
+}
+
+void MainWindow::showPage(
+    QWidget *page,
+    QPushButton *navButton)
+{
+    if (!page)
         return;
 
-    const QString preserveId = selectedWipeDeviceId;
-    wipeDeviceTable->blockSignals(true);
-    wipeDeviceTable->clearContents();
-    wipeDeviceTable->setRowCount(0);
+    contentStack_->setCurrentWidget(
+        page);
 
-    const auto &devices = deviceController->devices();
-    for (int i = 0; i < static_cast<int>(devices.size()); ++i)
+    setActiveNav(
+        navButton);
+}
+
+void MainWindow::refreshAssignedRequests()
+{
+    if (!authManager_)
+        return;
+
+    const QString token =
+        authManager_->token();
+
+    if (token.isEmpty())
+        return;
+
+    requestService_->fetchAssignedRequests(
+        token);
+}
+
+void MainWindow::handleAssignedRequests(
+    const QJsonArray &requests)
+{
+    assignedRequests_ =
+        requests;
+
+    int total = 0;
+    int active = 0;
+    int completed = 0;
+    int failed = 0;
+
+    dashboardJobsTable_->clearContents();
+    dashboardJobsTable_->setRowCount(0);
+
+    assignedJobsTable_->clearContents();
+    assignedJobsTable_->setRowCount(0);
+
+    jobComboBox_->blockSignals(
+        true);
+
+    jobComboBox_->clear();
+
+    for (const QJsonValue &value :
+         requests)
     {
-        const StorageDevice &device = devices[static_cast<std::size_t>(i)];
-        if (selectedRequestDeviceType.isEmpty() || !requestMatchesDevice(selectedRequestDeviceType, device))
+        if (!value.isObject())
             continue;
 
-        const int row = wipeDeviceTable->rowCount();
-        wipeDeviceTable->insertRow(row);
-        const QStringList values = {
-            QString::fromStdString(device.getModel()),
-            QString::fromStdString(device.getInterfaceType()),
-            QString::number(static_cast<double>(device.getCapacityBytes()) / (1024.0 * 1024.0 * 1024.0), 'f', 1) + QStringLiteral(" GB"),
-            QString::fromStdString(device.getDeviceId()),
-            device.isSystemDisk() ? QStringLiteral("YES") : QStringLiteral("NO"),
-            device.isRemovable() ? QStringLiteral("Removable") : QStringLiteral("Internal")
-        };
-        for (int column = 0; column < values.size(); ++column)
+        const QJsonObject request =
+            value.toObject();
+
+        const QString requestId =
+            request.value(
+                QStringLiteral("requestId"))
+                .toString();
+
+        const QString deviceType =
+            request.value(
+                QStringLiteral("deviceType"))
+                .toString();
+
+        const QString method =
+            request.value(
+                QStringLiteral("sanitizationMethod"))
+                .toString();
+
+        const QString status =
+            request.value(
+                QStringLiteral("status"))
+                .toString();
+
+        const QString asset =
+            request.value(
+                QStringLiteral("asset"))
+                .toString(
+                    request.value(
+                        QStringLiteral("customer"))
+                        .toString());
+
+        const QString workstation =
+            request.value(
+                QStringLiteral("workstationCenter"))
+                .toString(
+                    request.value(
+                        QStringLiteral("center"))
+                        .toString());
+
+        if (requestId.isEmpty())
+            continue;
+
+        ++total;
+
+        if (status == "ASSIGNED" ||
+            status == "IN_PROGRESS" ||
+            status == "VERIFYING")
         {
-            auto *item = new QTableWidgetItem(values.at(column));
-            if (column == 0)
-                item->setData(Qt::UserRole, i);
-            wipeDeviceTable->setItem(row, column, item);
+            ++active;
         }
 
-        if (preserveId == QString::fromStdString(device.getDeviceId()))
-            wipeDeviceTable->selectRow(row);
-    }
+        if (status == "COMPLETED")
+            ++completed;
 
-    wipeDeviceTable->blockSignals(false);
+        if (status == "FAILED")
+            ++failed;
 
-    if (wipeDeviceTable->rowCount() == 0)
-    {
-        wipeStatusLabel->setText(selectedRequestId.isEmpty()
-            ? QStringLiteral("Choose an assigned request first.")
-            : QStringLiteral("No physical device matches this request type."));
-        wipeStatusLabel->setStyleSheet("color:#667085; font-size:12px; font-weight:600;");
-        wipeSafetyButton->setEnabled(false);
-        wipeStartButton->setEnabled(false);
-        return;
-    }
-
-    if (!preserveId.isEmpty())
-    {
-        for (int row = 0; row < wipeDeviceTable->rowCount(); ++row)
+        if (dashboardJobsTable_->rowCount() <
+            8)
         {
-            const int deviceIndex = wipeDeviceTable->item(row, 0)->data(Qt::UserRole).toInt();
-            if (deviceIndex >= 0 && deviceIndex < static_cast<int>(devices.size()) && QString::fromStdString(devices[static_cast<std::size_t>(deviceIndex)].getDeviceId()) == preserveId)
-            {
-                wipeDeviceTable->selectRow(row);
-                break;
-            }
+            const int row =
+                dashboardJobsTable_->rowCount();
+
+            dashboardJobsTable_->insertRow(
+                row);
+
+            dashboardJobsTable_->setItem(
+                row,
+                0,
+                new QTableWidgetItem(
+                    requestId));
+
+            dashboardJobsTable_->setItem(
+                row,
+                1,
+                new QTableWidgetItem(
+                    deviceType));
+
+            dashboardJobsTable_->setItem(
+                row,
+                2,
+                new QTableWidgetItem(
+                    method.isEmpty()
+                        ? QStringLiteral("—")
+                        : method));
+
+            dashboardJobsTable_->setItem(
+                row,
+                3,
+                new QTableWidgetItem(
+                    status));
+        }
+
+        const int row =
+            assignedJobsTable_->rowCount();
+
+        assignedJobsTable_->insertRow(
+            row);
+
+        assignedJobsTable_->setItem(
+            row,
+            0,
+            new QTableWidgetItem(
+                requestId));
+
+        assignedJobsTable_->setItem(
+            row,
+            1,
+            new QTableWidgetItem(
+                deviceType));
+
+        assignedJobsTable_->setItem(
+            row,
+            2,
+            new QTableWidgetItem(
+                method.isEmpty()
+                    ? QStringLiteral("—")
+                    : method));
+
+        assignedJobsTable_->setItem(
+            row,
+            3,
+            new QTableWidgetItem(
+                asset.isEmpty()
+                    ? QStringLiteral("—")
+                    : asset));
+
+        assignedJobsTable_->setItem(
+            row,
+            4,
+            new QTableWidgetItem(
+                status));
+
+        const QString display =
+            QStringLiteral(
+                "%1  •  %2  •  %3")
+                .arg(
+                    requestId,
+                    deviceType,
+                    method.isEmpty()
+                        ? QStringLiteral(
+                            "Method not specified")
+                        : method);
+
+        jobComboBox_->addItem(
+            display);
+
+        const int index =
+            jobComboBox_->count() - 1;
+
+        jobComboBox_->setItemData(
+            index,
+            requestId,
+            Qt::UserRole);
+
+        jobComboBox_->setItemData(
+            index,
+            deviceType,
+            Qt::UserRole + 1);
+
+        jobComboBox_->setItemData(
+            index,
+            method,
+            Qt::UserRole + 2);
+
+        if (!selectedRequestId_.isEmpty() &&
+            requestId == selectedRequestId_)
+        {
+            jobComboBox_->setCurrentIndex(
+                index);
         }
     }
+
+    totalJobsValue_->setText(
+        QString::number(total));
+
+    activeJobsValue_->setText(
+        QString::number(active));
+
+    completedJobsValue_->setText(
+        QString::number(completed));
+
+    failedJobsValue_->setText(
+        QString::number(failed));
+
+    jobComboBox_->blockSignals(
+        false);
+
+    if (jobComboBox_->currentIndex() < 0 &&
+        jobComboBox_->count() > 0)
+    {
+        jobComboBox_->setCurrentIndex(
+            0);
+    }
+
+    populateJobDetails();
+    populateDeviceTable();
 }
 
-void MainWindow::updateWipeSelectionState()
+QJsonObject MainWindow::selectedRequestObject() const
 {
-    const auto &target = deviceController->selectedTarget();
-    if (!target.has_value())
+    for (const QJsonValue &value :
+         assignedRequests_)
     {
-        wipeStartButton->setEnabled(false);
-        return;
+        if (!value.isObject())
+            continue;
+
+        const QJsonObject request =
+            value.toObject();
+
+        if (request.value(
+                QStringLiteral("requestId"))
+            .toString()
+            == selectedRequestId_)
+        {
+            return request;
+        }
     }
 
-    const SanitizationMethod method = deviceController->detectSelectedTargetMethod();
-    wipeMethodValueLabel->setText(sanitizationMethodName(method));
-    wipeStartButton->setEnabled(wipeSafetyApproved && method != SanitizationMethod::Unsupported && !sanitizationOperationRunning);
+    return {};
 }
 
-void MainWindow::runWipeSafetyCheck()
+void MainWindow::selectRequestFromJobs(
+    int index)
 {
-    if (sanitizationOperationRunning)
-        return;
+    selectedRequestId_.clear();
+    selectedRequestDeviceType_.clear();
+    selectedRequestMethod_.clear();
 
-    if (!deviceController->selectedTarget().has_value())
+    if (index < 0)
     {
-        wipeStatusLabel->setText(QStringLiteral("Select a physical target device first."));
-        return;
-    }
-
-    wipeSafetyApproved = false;
-    wipeStartButton->setEnabled(false);
-    wipeSafetyButton->setEnabled(false);
-    wipeSafetyBadgeLabel->setText(QStringLiteral("CHECKING..."));
-    wipeSafetyBadgeLabel->setStyleSheet("QLabel { background:#EAF2FF; color:#175CD3; border:1px solid #B2CCFF; border-radius:8px; padding:5px 10px; font-size:11px; font-weight:700; }");
-    wipeStatusLabel->setText(QStringLiteral("Running fresh target validation and safety checks..."));
-    wipeStatusLabel->setStyleSheet("color:#175CD3; font-size:12px; font-weight:600;");
-    qApp->processEvents();
-
-    if (!deviceController->validateSelectedTarget())
-    {
-        wipeSafetyBadgeLabel->setText(QStringLiteral("BLOCKED"));
-        wipeSafetyBadgeLabel->setStyleSheet("QLabel { background:#FEF3F2; color:#B42318; border:1px solid #FECDCA; border-radius:8px; padding:5px 10px; font-size:11px; font-weight:700; }");
-        wipeSafetyChecksLabel->setText(QStringLiteral("Target validation failed. Re-select the physical device and try again."));
-        wipeStatusLabel->setText(QStringLiteral("Safety check blocked sanitization."));
-        wipeStatusLabel->setStyleSheet("color:#B42318; font-size:12px; font-weight:600;");
-        wipeSafetyButton->setEnabled(wipeDeviceTable->currentRow() >= 0);
+        populateJobDetails();
+        resetTargetPanel();
         return;
     }
 
-    if (!deviceController->evaluateSelectedTarget())
+    selectedRequestId_ =
+        jobComboBox_->itemData(
+            index,
+            Qt::UserRole).toString();
+
+    selectedRequestDeviceType_ =
+        jobComboBox_->itemData(
+            index,
+            Qt::UserRole + 1).toString();
+
+    selectedRequestMethod_ =
+        jobComboBox_->itemData(
+            index,
+            Qt::UserRole + 2).toString();
+
+    populateJobDetails();
+    resetTargetPanel();
+    populateDeviceTable();
+}
+
+void MainWindow::populateJobDetails()
+{
+    const QJsonObject request =
+        selectedRequestObject();
+
+    jobRequestIdValue_->setText(
+        request.value(
+            QStringLiteral("requestId"))
+            .toString(
+                QStringLiteral("—")));
+
+    jobDeviceTypeValue_->setText(
+        request.value(
+            QStringLiteral("deviceType"))
+            .toString(
+                QStringLiteral("—")));
+
+    jobRequestedMethodValue_->setText(
+        request.value(
+            QStringLiteral("sanitizationMethod"))
+            .toString(
+                QStringLiteral("—")));
+
+    jobAssetValue_->setText(
+        request.value(
+            QStringLiteral("asset"))
+            .toString(
+                request.value(
+                    QStringLiteral("customer"))
+                    .toString(
+                        QStringLiteral("—"))));
+
+    jobWorkstationValue_->setText(
+        request.value(
+            QStringLiteral("workstationCenter"))
+            .toString(
+                request.value(
+                    QStringLiteral("center"))
+                    .toString(
+                        QStringLiteral("—"))));
+
+    const QString status =
+        request.value(
+            QStringLiteral("status"))
+            .toString();
+
+    if (status == "ASSIGNED")
     {
-        const SafetyResult &result = deviceController->lastSafetyResult();
-        QString html = QStringLiteral("<b>%1</b><br>").arg(QString::fromStdString(result.summary).toHtmlEscaped());
-        for (const SafetyCheckResult &check : result.checks)
-        {
-            html += QStringLiteral("%1 %2<br>").arg(check.passed ? QStringLiteral("✓") : QStringLiteral("✗"), QString::fromStdString(check.checkName).toHtmlEscaped());
-        }
-        wipeSafetyChecksLabel->setText(html);
-        wipeSafetyBadgeLabel->setText(QStringLiteral("BLOCKED"));
-        wipeSafetyBadgeLabel->setStyleSheet("QLabel { background:#FEF3F2; color:#B42318; border:1px solid #FECDCA; border-radius:8px; padding:5px 10px; font-size:11px; font-weight:700; }");
-        wipeStatusLabel->setText(QString::fromStdString(result.summary));
-        wipeStatusLabel->setStyleSheet("color:#B42318; font-size:12px; font-weight:600;");
-        wipeSafetyButton->setEnabled(wipeDeviceTable->currentRow() >= 0);
-        return;
+        jobMessageLabel_->setText(
+            QStringLiteral(
+                "This request is ready for physical workstation execution."));
     }
-
-    const SafetyResult &result = deviceController->lastSafetyResult();
-    QString html = QStringLiteral("<b>All required checks passed.</b><br>");
-    for (const SafetyCheckResult &check : result.checks)
+    else if (status == "IN_PROGRESS")
     {
-        html += QStringLiteral("✓ %1<br>").arg(QString::fromStdString(check.checkName).toHtmlEscaped());
+        jobMessageLabel_->setText(
+            QStringLiteral(
+                "This request is currently in physical sanitization."));
     }
-    wipeSafetyChecksLabel->setText(html);
-    wipeSafetyBadgeLabel->setText(QStringLiteral("SAFE"));
-    wipeSafetyBadgeLabel->setStyleSheet("QLabel { background:#ECFDF3; color:#027A48; border:1px solid #ABEFC6; border-radius:8px; padding:5px 10px; font-size:11px; font-weight:700; }");
-
-    const SanitizationMethod method = deviceController->detectSelectedTargetMethod();
-    wipeMethodValueLabel->setText(sanitizationMethodName(method));
-    wipeSafetyApproved = true;
-
-    if (method == SanitizationMethod::Unsupported)
+    else if (status == "VERIFYING")
     {
-        wipeStatusLabel->setText(QStringLiteral("Safety passed, but SecureWipe has no supported execution method for this device."));
-        wipeStatusLabel->setStyleSheet("color:#B42318; font-size:12px; font-weight:600;");
-        wipeStartButton->setEnabled(false);
+        jobMessageLabel_->setText(
+            QStringLiteral(
+                "The sanitization result is in verification/evidence state."));
+    }
+    else if (status == "COMPLETED")
+    {
+        jobMessageLabel_->setText(
+            QStringLiteral(
+                "This sanitization request is completed."));
+    }
+    else if (status == "FAILED")
+    {
+        jobMessageLabel_->setText(
+            QStringLiteral(
+                "This sanitization request is marked failed."));
     }
     else
     {
-        wipeStatusLabel->setText(QStringLiteral("Safety passed. The target is ready for final destructive confirmation."));
-        wipeStatusLabel->setStyleSheet("color:#027A48; font-size:12px; font-weight:600;");
-        updateWipeSelectionState();
+        jobMessageLabel_->setText(
+            QStringLiteral(
+                "Select an assigned request to begin."));
+    }
+}
+
+void MainWindow::refreshPhysicalDevices()
+{
+    if (operationRunning_)
+        return;
+
+    jobMessageLabel_->setText(
+        QStringLiteral(
+            "Refreshing physical storage devices..."));
+
+    deviceController_->refreshDevices();
+}
+
+void MainWindow::populateDeviceTable()
+{
+    if (!deviceTable_)
+        return;
+
+    deviceTable_->blockSignals(
+        true);
+
+    deviceTable_->clearContents();
+    deviceTable_->setRowCount(
+        0);
+
+    const auto &devices =
+        deviceController_->devices();
+
+    for (int i = 0;
+         i < static_cast<int>(
+             devices.size());
+         ++i)
+    {
+        const StorageDevice &device =
+            devices[
+                static_cast<std::size_t>(
+                    i)];
+
+        if (!selectedRequestDeviceType_
+                 .isEmpty() &&
+            !requestMatchesDevice(
+                selectedRequestDeviceType_,
+                device))
+        {
+            continue;
+        }
+
+        const int row =
+            deviceTable_->rowCount();
+
+        deviceTable_->insertRow(
+            row);
+
+        auto *model =
+            new QTableWidgetItem(
+                QString::fromStdString(
+                    device.getModel()));
+
+        model->setData(
+            Qt::UserRole,
+            i);
+
+        deviceTable_->setItem(
+            row,
+            0,
+            model);
+
+        deviceTable_->setItem(
+            row,
+            1,
+            new QTableWidgetItem(
+                QString::fromStdString(
+                    device.getSerialNumber())));
+
+        deviceTable_->setItem(
+            row,
+            2,
+            new QTableWidgetItem(
+                QString::fromStdString(
+                    device.getInterfaceType())));
+
+        deviceTable_->setItem(
+            row,
+            3,
+            new QTableWidgetItem(
+                formatCapacity(
+                    device.getCapacityBytes())));
+
+        auto *systemItem =
+            new QTableWidgetItem(
+                device.isSystemDisk()
+                    ? QStringLiteral("BLOCKED")
+                    : QStringLiteral("No"));
+
+        if (device.isSystemDisk())
+        {
+            systemItem->setForeground(
+                QColor("#B42318"));
+        }
+
+        deviceTable_->setItem(
+            row,
+            4,
+            systemItem);
+
+        deviceTable_->setItem(
+            row,
+            5,
+            new QTableWidgetItem(
+                QString::fromStdString(
+                    device.getDeviceId())));
     }
 
-    wipeSafetyButton->setEnabled(true);
+    deviceTable_->blockSignals(
+        false);
+}
+
+bool MainWindow::requestMatchesDevice(
+    const QString &requestedType,
+    const StorageDevice &device) const
+{
+    return requestMatchesDeviceImpl(
+        requestedType,
+        device);
+}
+
+void MainWindow::selectTargetDevice(
+    int row)
+{
+    if (operationRunning_)
+        return;
+
+    if (row < 0)
+    {
+        resetTargetPanel();
+        return;
+    }
+
+    auto *item =
+        deviceTable_->item(
+            row,
+            0);
+
+    if (!item)
+        return;
+
+    bool ok = false;
+
+    const int deviceIndex =
+        item->data(
+            Qt::UserRole)
+            .toInt(
+                &ok);
+
+    if (!ok)
+        return;
+
+    if (!deviceController_->selectTarget(
+            deviceIndex))
+    {
+        targetSafetyText_->setText(
+            QStringLiteral(
+                "Unable to select the physical device."));
+        return;
+    }
+
+    const StorageDevice &device =
+        deviceController_->devices().at(
+            static_cast<std::size_t>(
+                deviceIndex));
+
+    updateTargetPanelFromDevice(
+        device);
+
+    const SanitizationMethod method =
+        deviceController_->detectSelectedTargetMethod();
+
+    capabilityValue_->setText(
+        method == SanitizationMethod::Unsupported
+            ? QStringLiteral("Unsupported")
+            : QStringLiteral("Available"));
+
+    selectedMethodValue_->setText(
+        sanitizationMethodName(
+            method));
+
+    targetSafetyBadge_->setText(
+        QStringLiteral("NOT CHECKED"));
+
+    targetSafetyBadge_->setStyleSheet(
+        badgeStyle("NOT_CHECKED"));
+
+    targetSafetyText_->setText(
+        QStringLiteral(
+            "Exact target selected. Run fresh target validation and safety checks before sanitization."));
+
+    validateTargetButton_->setEnabled(
+        !selectedRequestId_.isEmpty());
+
+    startSanitizationButton_->setEnabled(
+        false);
+}
+
+void MainWindow::resetTargetPanel()
+{
+    if (deviceTable_)
+    {
+        deviceTable_->clearSelection();
+    }
+
+    targetModelValue_->setText(
+        QStringLiteral("—"));
+
+    targetSerialValue_->setText(
+        QStringLiteral("—"));
+
+    targetCapacityValue_->setText(
+        QStringLiteral("—"));
+
+    targetInterfaceValue_->setText(
+        QStringLiteral("—"));
+
+    targetPathValue_->setText(
+        QStringLiteral("—"));
+
+    capabilityValue_->setText(
+        QStringLiteral("—"));
+
+    selectedMethodValue_->setText(
+        QStringLiteral("—"));
+
+    targetSafetyBadge_->setText(
+        QStringLiteral("NOT CHECKED"));
+
+    targetSafetyBadge_->setStyleSheet(
+        badgeStyle("NOT_CHECKED"));
+
+    targetSafetyText_->setText(
+        QStringLiteral(
+            "Select an exact physical target."));
+
+    pipelineStatusValue_->setText(
+        QStringLiteral("NOT STARTED"));
+
+    pipelineStatusValue_->setStyleSheet(
+        badgeStyle("NOT_STARTED"));
+
+    verificationValue_->setText(
+        QStringLiteral("—"));
+
+    operationValue_->setText(
+        QStringLiteral("—"));
+
+    bytesProcessedValue_->setText(
+        QStringLiteral("—"));
+
+    bytesVerifiedValue_->setText(
+        QStringLiteral("—"));
+
+    samplesValue_->setText(
+        QStringLiteral("—"));
+
+    certificateValue_->setText(
+        QStringLiteral("—"));
+
+    operationProgress_->setRange(
+        0,
+        100);
+
+    operationProgress_->setValue(
+        0);
+
+    validateTargetButton_->setEnabled(
+        false);
+
+    startSanitizationButton_->setEnabled(
+        false);
+}
+
+void MainWindow::runTargetSafetyCheck()
+{
+    if (operationRunning_)
+        return;
+
+    if (!deviceController_->selectedTarget()
+             .has_value())
+    {
+        targetSafetyBadge_->setText(
+            QStringLiteral("BLOCKED"));
+
+        targetSafetyBadge_->setStyleSheet(
+            badgeStyle("BLOCKED"));
+
+        targetSafetyText_->setText(
+            QStringLiteral(
+                "Select a physical target device first."));
+
+        return;
+    }
+
+    validateTargetButton_->setEnabled(
+        false);
+
+    startSanitizationButton_->setEnabled(
+        false);
+
+    targetSafetyBadge_->setText(
+        QStringLiteral("CHECKING"));
+
+    targetSafetyBadge_->setStyleSheet(
+        badgeStyle("CHECKING"));
+
+    targetSafetyText_->setText(
+        QStringLiteral(
+            "Running fresh target identity validation and safety checks..."));
+
+    QApplication::processEvents();
+
+    if (!deviceController_->validateSelectedTarget())
+    {
+        targetSafetyBadge_->setText(
+            QStringLiteral("BLOCKED"));
+
+        targetSafetyBadge_->setStyleSheet(
+            badgeStyle("BLOCKED"));
+
+        targetSafetyText_->setText(
+            QStringLiteral(
+                "Target validation failed. Re-select the physical target."));
+        
+        validateTargetButton_->setEnabled(
+            true);
+
+        return;
+    }
+
+    if (!deviceController_->evaluateSelectedTarget())
+    {
+        const SafetyResult &result =
+            deviceController_->lastSafetyResult();
+
+        targetSafetyBadge_->setText(
+            QStringLiteral("BLOCKED"));
+
+        targetSafetyBadge_->setStyleSheet(
+            badgeStyle("BLOCKED"));
+
+        QString details =
+            result.summary.empty()
+                ? QStringLiteral(
+                      "Safety checks did not authorize this target.")
+                : QString::fromStdString(
+                      result.summary);
+
+        for (const SafetyCheckResult &check :
+             result.checks)
+        {
+            if (!details.isEmpty())
+                details += '\n';
+
+            details +=
+                QStringLiteral(
+                    "%1 %2")
+                    .arg(
+                        check.passed
+                            ? QStringLiteral("✓")
+                            : QStringLiteral("✗"),
+                        QString::fromStdString(
+                            check.checkName));
+        }
+
+        targetSafetyText_->setText(
+            details);
+
+        validateTargetButton_->setEnabled(
+            true);
+
+        return;
+    }
+
+    const auto target =
+        deviceController_->selectedTarget();
+
+    if (!target.has_value())
+    {
+        validateTargetButton_->setEnabled(
+            true);
+        return;
+    }
+
+    updateTargetPanelFromDevice(
+        *target);
+
+    const SanitizationMethod method =
+        deviceController_->detectSelectedTargetMethod();
+
+    if (method ==
+        SanitizationMethod::Unsupported)
+    {
+        targetSafetyBadge_->setText(
+            QStringLiteral(
+                "UNSUPPORTED"));
+
+        targetSafetyBadge_->setStyleSheet(
+            badgeStyle("BLOCKED"));
+
+        targetSafetyText_->setText(
+            QStringLiteral(
+                "Safety checks passed, but no supported sanitization method is available for this target."));
+
+        validateTargetButton_->setEnabled(
+            true);
+
+        return;
+    }
+
+    QString detectedMethod;
+
+    switch (method)
+    {
+    case SanitizationMethod::NvmeSanitize:
+        detectedMethod =
+            QStringLiteral("NVME_SANITIZE");
+        break;
+
+    case SanitizationMethod::AtaSanitize:
+        detectedMethod =
+            QStringLiteral("ATA_SANITIZE");
+        break;
+
+    case SanitizationMethod::HostOverwrite:
+        detectedMethod =
+            QStringLiteral("HOST_OVERWRITE");
+        break;
+
+    default:
+        detectedMethod =
+            QStringLiteral("UNSUPPORTED");
+        break;
+    }
+
+    QString assignedMethod =
+        selectedRequestMethod_
+            .trimmed()
+            .toUpper();
+
+    assignedMethod.replace(
+        QStringLiteral(" "),
+        QStringLiteral("_"));
+
+    assignedMethod.replace(
+        QStringLiteral("-"),
+        QStringLiteral("_"));
+
+    if (assignedMethod == "NVME")
+        assignedMethod =
+            QStringLiteral("NVME_SANITIZE");
+
+    if (assignedMethod == "ATA")
+        assignedMethod =
+            QStringLiteral("ATA_SANITIZE");
+
+    if (!assignedMethod.isEmpty() &&
+        assignedMethod != "UNSUPPORTED" &&
+        assignedMethod != detectedMethod)
+    {
+        targetSafetyBadge_->setText(
+            QStringLiteral(
+                "METHOD MISMATCH"));
+
+        targetSafetyBadge_->setStyleSheet(
+            badgeStyle("BLOCKED"));
+
+        targetSafetyText_->setText(
+            QStringLiteral(
+                "The method assigned to this request does not match the method detected for the physical target."));
+
+        validateTargetButton_->setEnabled(
+            true);
+
+        return;
+    }
+
+    const SafetyResult &result =
+        deviceController_->lastSafetyResult();
+
+    targetSafetyBadge_->setText(
+        QStringLiteral("SAFE"));
+
+    targetSafetyBadge_->setStyleSheet(
+        badgeStyle("SAFE"));
+
+    QString details =
+        result.summary.empty()
+            ? QStringLiteral(
+                  "All required safety checks passed.")
+            : QString::fromStdString(
+                  result.summary);
+
+    for (const SafetyCheckResult &check :
+         result.checks)
+    {
+        if (!details.isEmpty())
+            details += '\n';
+
+        details +=
+            QStringLiteral(
+                "%1 %2")
+                .arg(
+                    check.passed
+                        ? QStringLiteral("✓")
+                        : QStringLiteral("✗"),
+                    QString::fromStdString(
+                        check.checkName));
+    }
+
+    targetSafetyText_->setText(
+        details);
+
+    const QJsonObject request =
+        selectedRequestObject();
+
+    const QString status =
+        request.value(
+            QStringLiteral("status"))
+            .toString();
+
+    startSanitizationButton_->setEnabled(
+        status == QStringLiteral("ASSIGNED"));
+
+    validateTargetButton_->setEnabled(
+        true);
+
+    if (status == QStringLiteral("ASSIGNED"))
+    {
+        jobMessageLabel_->setText(
+            QStringLiteral(
+                "Safety checks passed. Final destructive confirmation is available."));
+    }
 }
 
 void MainWindow::startSanitization()
 {
-    if (sanitizationOperationRunning)
+    if (operationRunning_)
         return;
 
-    const auto selectedTarget = deviceController->selectedTarget();
-    if (!selectedTarget.has_value())
+    if (selectedRequestId_.isEmpty())
     {
-        wipeStatusLabel->setText(QStringLiteral("Select a target device first."));
+        QMessageBox::warning(
+            this,
+            QStringLiteral("No request"),
+            QStringLiteral(
+                "Select an assigned sanitization request first."));
         return;
     }
 
-    waitingForSanitizationStart = true;
-    if (!deviceController->validateSelectedTarget() || !deviceController->evaluateSelectedTarget())
+    const QJsonObject request =
+        selectedRequestObject();
+
+    if (request.value(
+            QStringLiteral("status"))
+            .toString()
+        != QStringLiteral("ASSIGNED"))
     {
-        waitingForSanitizationStart = false;
-        runWipeSafetyCheck();
+        QMessageBox::warning(
+            this,
+            QStringLiteral(
+                "Request unavailable"),
+            QStringLiteral(
+                "Only an ASSIGNED request can start physical execution."));
         return;
     }
 
-    const auto validatedTarget = deviceController->selectedTarget();
-    if (!validatedTarget.has_value())
+    const auto target =
+        deviceController_->selectedTarget();
+
+    if (!target.has_value())
     {
-        waitingForSanitizationStart = false;
-        wipeStatusLabel->setText(QStringLiteral("Validated target is no longer available."));
+        QMessageBox::warning(
+            this,
+            QStringLiteral("No target"),
+            QStringLiteral(
+                "Select a physical target device."));
         return;
     }
 
-    if (!requestMatchesDevice(selectedRequestDeviceType, *validatedTarget))
+    if (!deviceController_->validateSelectedTarget() ||
+        !deviceController_->evaluateSelectedTarget())
     {
-        waitingForSanitizationStart = false;
-        wipeStatusLabel->setText(QStringLiteral("The selected device does not match the assigned request."));
-        wipeStatusLabel->setStyleSheet("color:#B42318; font-size:12px; font-weight:600;");
+        runTargetSafetyCheck();
         return;
     }
 
-    const SanitizationMethod method = deviceController->detectSelectedTargetMethod();
-    if (method == SanitizationMethod::Unsupported)
+    if (!requestMatchesDevice(
+            selectedRequestDeviceType_,
+            *target))
     {
-        waitingForSanitizationStart = false;
-        wipeStatusLabel->setText(QStringLiteral("No supported sanitization method is available for this target."));
-        wipeStatusLabel->setStyleSheet("color:#B42318; font-size:12px; font-weight:600;");
+        QMessageBox::critical(
+            this,
+            QStringLiteral(
+                "Target mismatch"),
+            QStringLiteral(
+                "The selected physical target does not match the assigned request device type."));
         return;
     }
 
-    const QString model = QString::fromStdString(validatedTarget->getModel());
-    const QString serial = QString::fromStdString(validatedTarget->getSerialNumber());
-    const QString deviceId = QString::fromStdString(validatedTarget->getDeviceId());
-    const QString methodName = sanitizationMethodName(method);
+    const SanitizationMethod method =
+        deviceController_->detectSelectedTargetMethod();
 
-    const auto confirmation = QMessageBox::warning(
+    if (method ==
+        SanitizationMethod::Unsupported)
+    {
+        QMessageBox::critical(
+            this,
+            QStringLiteral(
+                "Unsupported target"),
+            QStringLiteral(
+                "No supported sanitization method is available for this target."));
+        return;
+    }
+
+    const QString model =
+        QString::fromStdString(
+            target->getModel());
+
+    const QString serial =
+        QString::fromStdString(
+            target->getSerialNumber());
+
+    const QString deviceId =
+        QString::fromStdString(
+            target->getDeviceId());
+
+    const QMessageBox::StandardButton answer =
+        QMessageBox::warning(
+            this,
+            QStringLiteral(
+                "Final destructive confirmation"),
+            QStringLiteral(
+                "You are about to permanently sanitize this physical device.\n\n"
+                "Request: %1\n"
+                "Device type: %2\n"
+                "Model: %3\n"
+                "Serial: %4\n"
+                "Physical device: %5\n"
+                "Method: %6\n\n"
+                "This operation is destructive and cannot be undone.\n"
+                "Continue only when this exact physical target is intentionally authorized.")
+                .arg(
+                    selectedRequestId_,
+                    selectedRequestDeviceType_,
+                    model,
+                    serial,
+                    deviceId,
+                    sanitizationMethodName(
+                        method)),
+            QMessageBox::Yes |
+                QMessageBox::No,
+            QMessageBox::No);
+
+    if (answer !=
+        QMessageBox::Yes)
+    {
+        jobMessageLabel_->setText(
+            QStringLiteral(
+                "Sanitization cancelled. No destructive operation was started."));
+        return;
+    }
+
+    const QString token =
+        authManager_->token();
+
+    if (token.isEmpty())
+    {
+        QMessageBox::critical(
+            this,
+            QStringLiteral(
+                "Authentication"),
+            QStringLiteral(
+                "Authentication token is missing."));
+        return;
+    }
+
+    const StorageDevice targetCopy =
+        *target;
+
+    operationRunning_ =
+        true;
+
+    validateTargetButton_->setEnabled(
+        false);
+
+    startSanitizationButton_->setEnabled(
+        false);
+
+    refreshDevicesButton_->setEnabled(
+        false);
+
+    refreshJobsButton_->setEnabled(
+        false);
+
+    jobComboBox_->setEnabled(
+        false);
+
+    deviceTable_->setEnabled(
+        false);
+
+    operationProgress_->setRange(
+        0,
+        0);
+
+    pipelineStatusValue_->setText(
+        QStringLiteral("STARTING"));
+
+    pipelineStatusValue_->setStyleSheet(
+        badgeStyle("IN_PROGRESS"));
+
+    operationValue_->setText(
+        QStringLiteral(
+            "Waiting for request synchronization"));
+
+    verificationValue_->setText(
+        QStringLiteral("Pending"));
+
+    jobMessageLabel_->setText(
+        QStringLiteral(
+            "Moving assigned request to IN_PROGRESS..."));
+
+    requestService_->updateRequestStatus(
+        token,
+        selectedRequestId_,
+        QStringLiteral("IN_PROGRESS"));
+
+    connect(
+        requestService_,
+        &SanitizationRequestService::requestStatusUpdated,
         this,
-        QStringLiteral("Final destructive confirmation"),
-        QStringLiteral("You are about to permanently sanitize this physical device.\n\nRequest: %1\nModel: %2\nSerial: %3\nDevice: %4\nMethod: %5\n\nThis can destroy all data on the target. Continue only when the identity is correct and the device is intentionally authorized.")
-            .arg(selectedRequestId, model, serial, deviceId, methodName),
-        QMessageBox::Yes | QMessageBox::No,
-        QMessageBox::No);
-
-    waitingForSanitizationStart = false;
-    if (confirmation != QMessageBox::Yes)
-    {
-        wipeStatusLabel->setText(QStringLiteral("Sanitization cancelled. No destructive operation was started."));
-        wipeStatusLabel->setStyleSheet("color:#667085; font-size:12px; font-weight:600;");
-        return;
-    }
-
-    const StorageDevice targetCopy = *validatedTarget;
-    const SafetyResult safetyCopy = deviceController->lastSafetyResult();
-
-    sanitizationOperationRunning = true;
-    wipeSafetyButton->setEnabled(false);
-    wipeStartButton->setEnabled(false);
-    wipeRefreshButton->setEnabled(false);
-    wipeRequestComboBox->setEnabled(false);
-    wipeDeviceTable->setEnabled(false);
-    wipeProgressBar->setRange(0, 0);
-    wipeVerificationLabel->setText(QStringLiteral("Verification: waiting for sanitization result..."));
-    wipeStatusLabel->setText(QStringLiteral("Sanitizing %1. Do not disconnect the device.").arg(model));
-    wipeStatusLabel->setStyleSheet("color:#175CD3; font-size:12px; font-weight:700;");
-
-    auto *watcher = new QFutureWatcher<SecureWipe::SanitizationResult>(this);
-    connect(watcher, &QFutureWatcher<SecureWipe::SanitizationResult>::finished, this, [this, watcher]()
-    {
-        const SecureWipe::SanitizationResult result = watcher->result();
-        watcher->deleteLater();
-        if (QApplication::overrideCursor())
-            QApplication::restoreOverrideCursor();
-
-        sanitizationOperationRunning = false;
-        wipeRefreshButton->setEnabled(true);
-        wipeRequestComboBox->setEnabled(true);
-        wipeDeviceTable->setEnabled(true);
-        showSanitizationResult(result);
-
-        if (!selectedRequestId.isEmpty() && authManager && !authManager->token().isEmpty())
+        [this, targetCopy](
+            const QString &requestId,
+            const QString &status)
         {
-            sanitizationRequestService->updateRequestStatus(
-                authManager->token(),
-                selectedRequestId,
-                result.status == SecureWipe::SanitizationStatus::COMPLETED ? QStringLiteral("COMPLETED") : QStringLiteral("FAILED"));
-        }
-    });
+            if (requestId !=
+                    selectedRequestId_ ||
+                status !=
+                    QStringLiteral("IN_PROGRESS"))
+            {
+                return;
+            }
 
-    QApplication::setOverrideCursor(Qt::WaitCursor);
+            auto *watcher =
+                new QFutureWatcher<
+                    SecureWipe::SanitizationPipelineResult>(
+                    this);
 
-    watcher->setFuture(QtConcurrent::run([targetCopy, safetyCopy]() -> SecureWipe::SanitizationResult
-    {
-        SanitizationEngine engine;
-        return engine.sanitize(targetCopy, safetyCopy);
-    }));
+            connect(
+                watcher,
+                &QFutureWatcher<
+                    SecureWipe::SanitizationPipelineResult>
+                    ::finished,
+                this,
+                [this, watcher]()
+                {
+                    const auto result =
+                        watcher->result();
+
+                    watcher->deleteLater();
+
+                    finishSanitization(
+                        result);
+                });
+
+            jobMessageLabel_->setText(
+                QStringLiteral(
+                    "Physical sanitization is running. Do not disconnect the target device."));
+
+            pipelineStatusValue_->setText(
+                QStringLiteral("SANITIZING"));
+
+            pipelineStatusValue_->setStyleSheet(
+                badgeStyle("IN_PROGRESS"));
+
+            watcher->setFuture(
+                QtConcurrent::run(
+                    [targetCopy, requestId]()
+                    -> SecureWipe::SanitizationPipelineResult
+                    {
+                        try
+                        {
+                            SanitizationPipeline pipeline;
+
+                            return pipeline.execute(
+                                targetCopy,
+                                requestId.toStdString(),
+                                std::string());
+                        }
+                        catch (const std::exception &exception)
+                        {
+                            SecureWipe::SanitizationPipelineResult result;
+
+                            result.sanitization.deviceId =
+                                targetCopy.getDeviceId();
+
+                            result.sanitization.model =
+                                targetCopy.getModel();
+
+                            result.sanitization.serialNumber =
+                                targetCopy.getSerialNumber();
+
+                            result.sanitization.interfaceType =
+                                targetCopy.getInterfaceType();
+
+                            result.sanitization.capacityBytes =
+                                targetCopy.getCapacityBytes();
+
+                            result.sanitization.status =
+                                SecureWipe::SanitizationStatus::FAILED;
+
+                            result.sanitization.error =
+                                SecureWipe::SanitizationErrorCode::
+                                    SANITIZATION_EXECUTION_FAILED;
+
+                            result.sanitization.message =
+                                exception.what();
+
+                            result.sanitization.errorMessage =
+                                exception.what();
+
+                            result.pipelineMessage =
+                                exception.what();
+
+                            return result;
+                        }
+                        catch (...)
+                        {
+                            SecureWipe::SanitizationPipelineResult result;
+
+                            result.sanitization.deviceId =
+                                targetCopy.getDeviceId();
+
+                            result.sanitization.model =
+                                targetCopy.getModel();
+
+                            result.sanitization.serialNumber =
+                                targetCopy.getSerialNumber();
+
+                            result.sanitization.interfaceType =
+                                targetCopy.getInterfaceType();
+
+                            result.sanitization.capacityBytes =
+                                targetCopy.getCapacityBytes();
+
+                            result.sanitization.status =
+                                SecureWipe::SanitizationStatus::FAILED;
+
+                            result.sanitization.error =
+                                SecureWipe::SanitizationErrorCode::
+                                    SANITIZATION_EXECUTION_FAILED;
+
+                            result.sanitization.message =
+                                QStringLiteral(
+                                    "Unknown sanitization pipeline exception.")
+                                    .toStdString();
+
+                            result.sanitization.errorMessage =
+                                result.sanitization.message;
+
+                            result.pipelineMessage =
+                                result.sanitization.message;
+
+                            return result;
+                        }
+                    }));
+        },
+        Qt::SingleShotConnection);
 }
 
-void MainWindow::showSanitizationResult(const SecureWipe::SanitizationResult &result)
+void MainWindow::finishSanitization(
+    const SecureWipe::SanitizationPipelineResult
+        &pipelineResult)
 {
-    const QString method = sanitizationMethodName(result.method);
-    QString status;
-    switch (result.status)
+    operationRunning_ =
+        false;
+
+    refreshDevicesButton_->setEnabled(
+        true);
+
+    refreshJobsButton_->setEnabled(
+        true);
+
+    jobComboBox_->setEnabled(
+        true);
+
+    deviceTable_->setEnabled(
+        true);
+
+    validateTargetButton_->setEnabled(
+        true);
+
+    operationProgress_->setRange(
+        0,
+        100);
+
+    operationProgress_->setValue(
+        pipelineResult.sanitization.isSuccess()
+            ? 100
+            : 0);
+
+    updatePipelineUiForResult(
+        pipelineResult);
+
+    submitPipelineResult(
+        pipelineResult);
+}
+
+void MainWindow::submitPipelineResult(
+    const SecureWipe::SanitizationPipelineResult
+        &pipelineResult)
+{
+    const QString token =
+        authManager_->token();
+
+    if (token.isEmpty())
     {
-    case SecureWipe::SanitizationStatus::COMPLETED: status = QStringLiteral("COMPLETED"); break;
-    case SecureWipe::SanitizationStatus::FAILED: status = QStringLiteral("FAILED"); break;
-    case SecureWipe::SanitizationStatus::IN_PROGRESS: status = QStringLiteral("IN PROGRESS"); break;
-    case SecureWipe::SanitizationStatus::ABORTED: status = QStringLiteral("ABORTED"); break;
-    default: status = QStringLiteral("NOT STARTED"); break;
+        jobMessageLabel_->setText(
+            QStringLiteral(
+                "Local pipeline finished, but API authentication is unavailable."));
+        jobMessageLabel_->setStyleSheet(
+            "color:#B42318;"
+            "font-size:12px;"
+            "font-weight:600;");
+        return;
     }
 
-    QString verification;
-    switch (result.verificationStatus)
-    {
-    case SecureWipe::VerificationStatus::PASSED: verification = QStringLiteral("PASSED"); break;
-    case SecureWipe::VerificationStatus::FAILED: verification = QStringLiteral("FAILED"); break;
-    case SecureWipe::VerificationStatus::IN_PROGRESS: verification = QStringLiteral("IN PROGRESS"); break;
-    default: verification = QStringLiteral("NOT PERFORMED"); break;
-    }
+    resultService_->submitResult(
+        token,
+        selectedRequestId_,
+        pipelineResult);
 
-    if (result.status == SecureWipe::SanitizationStatus::COMPLETED)
+    if (pipelineResult.sanitization.isSuccess())
     {
-        wipeProgressBar->setRange(0, 100);
-        wipeProgressBar->setValue(100);
-        wipeSafetyBadgeLabel->setText(QStringLiteral("COMPLETED"));
-        wipeSafetyBadgeLabel->setStyleSheet("QLabel { background:#ECFDF3; color:#027A48; border:1px solid #ABEFC6; border-radius:8px; padding:5px 10px; font-size:11px; font-weight:700; }");
-        wipeStatusLabel->setText(QStringLiteral("Sanitization completed. Verification: %1.").arg(verification));
-        wipeStatusLabel->setStyleSheet("color:#027A48; font-size:12px; font-weight:700;");
+        jobMessageLabel_->setText(
+            QStringLiteral(
+                "Physical sanitization and verification succeeded. Uploading evidence..."));
     }
     else
     {
-        wipeProgressBar->setRange(0, 100);
-        wipeProgressBar->setValue(0);
-        wipeSafetyBadgeLabel->setText(status);
-        wipeSafetyBadgeLabel->setStyleSheet("QLabel { background:#FEF3F2; color:#B42318; border:1px solid #FECDCA; border-radius:8px; padding:5px 10px; font-size:11px; font-weight:700; }");
-        wipeStatusLabel->setText(QStringLiteral("Sanitization %1.").arg(status.toLower()));
-        wipeStatusLabel->setStyleSheet("color:#B42318; font-size:12px; font-weight:700;");
+        jobMessageLabel_->setText(
+            QStringLiteral(
+                "Physical sanitization failed. Uploading failure result..."));
     }
-
-    wipeTargetValueLabel->setText(QString::fromStdString(result.model) + QStringLiteral("  •  ") + QString::fromStdString(result.serialNumber));
-    wipeMethodValueLabel->setText(method);
-    wipeCapacityValueLabel->setText(QString::number(static_cast<double>(result.capacityBytes) / (1024.0 * 1024.0 * 1024.0), 'f', 1) + QStringLiteral(" GB"));
-    wipeInterfaceValueLabel->setText(QString::fromStdString(result.interfaceType));
-    wipeVerificationLabel->setText(QStringLiteral("Verification: %1  •  Bytes verified: %2  •  Samples: %3")
-        .arg(verification, QString::number(result.bytesVerified), QString::number(result.verificationSamples)));
-
-    QString html = QStringLiteral("<b>%1</b><br>").arg(QStringLiteral("Operation result: %1").arg(status).toHtmlEscaped());
-    if (!result.message.empty())
-        html += QStringLiteral("%1<br>").arg(QString::fromStdString(result.message).toHtmlEscaped());
-    if (!result.errorMessage.empty())
-        html += QStringLiteral("<span style='color:#B42318;'>%1</span><br>").arg(QString::fromStdString(result.errorMessage).toHtmlEscaped());
-    html += QStringLiteral("Operation ID: %1<br>Bytes processed: %2<br>Duration: %3 ms")
-        .arg(QString::fromStdString(result.operationId).toHtmlEscaped(), QString::number(result.bytesProcessed), QString::number(result.operationDurationMs));
-    if (!result.verificationMessage.empty())
-        html += QStringLiteral("<br>Verification detail: %1").arg(QString::fromStdString(result.verificationMessage).toHtmlEscaped());
-    wipeSafetyChecksLabel->setText(html);
-
-    wipeSafetyApproved = false;
-    wipeSafetyButton->setEnabled(wipeDeviceTable->currentRow() >= 0);
-    wipeStartButton->setEnabled(false);
 }
 
-QString MainWindow::sanitizationMethodName(SanitizationMethod method) const
+void MainWindow::updateTargetPanelFromDevice(
+    const StorageDevice &device)
 {
-    switch (method)
+    targetModelValue_->setText(
+        QString::fromStdString(
+            device.getModel()));
+
+    targetSerialValue_->setText(
+        QString::fromStdString(
+            device.getSerialNumber()));
+
+    targetCapacityValue_->setText(
+        formatCapacity(
+            device.getCapacityBytes()));
+
+    targetInterfaceValue_->setText(
+        QString::fromStdString(
+            device.getInterfaceType()));
+
+    targetPathValue_->setText(
+        QString::fromStdString(
+            device.getDeviceId()));
+
+    selectedMethodValue_->setText(
+        sanitizationMethodName(
+            deviceController_
+                ->detectSelectedTargetMethod()));
+}
+
+void MainWindow::updatePipelineUiForResult(
+    const SecureWipe::SanitizationPipelineResult
+        &pipelineResult)
+{
+    const SecureWipe::SanitizationResult &result =
+        pipelineResult.sanitization;
+
+    pipelineStatusValue_->setText(
+        statusText(
+            result.status));
+
+    pipelineStatusValue_->setStyleSheet(
+        badgeStyle(
+            result.status ==
+                    SecureWipe::SanitizationStatus::COMPLETED
+                ? QStringLiteral("COMPLETED")
+                : QStringLiteral("FAILED")));
+
+    verificationValue_->setText(
+        verificationText(
+            result.verificationStatus));
+
+    operationValue_->setText(
+        result.operationId.empty()
+            ? QStringLiteral("—")
+            : QString::fromStdString(
+                result.operationId));
+
+    bytesProcessedValue_->setText(
+        formatBytes(
+            result.bytesProcessed));
+
+    bytesVerifiedValue_->setText(
+        formatBytes(
+            result.bytesVerified));
+
+    samplesValue_->setText(
+        QString::number(
+            result.verificationSamples));
+
+    if (!pipelineResult
+             .certificate
+             .certificateId.empty())
     {
-    case SanitizationMethod::NvmeSanitize: return QStringLiteral("NVMe Sanitize");
-    case SanitizationMethod::AtaSanitize: return QStringLiteral("ATA Sanitize");
-    case SanitizationMethod::HostOverwrite: return QStringLiteral("Host Overwrite");
-    case SanitizationMethod::Unsupported: default: return QStringLiteral("Unsupported");
+        certificateValue_->setText(
+            QString::fromStdString(
+                pipelineResult
+                    .certificate
+                    .certificateId));
     }
-}
-
-/*
- * =============================================================
- * Destructor
- * =============================================================
- */
-
-MainWindow::~MainWindow()
-{
-    delete ui;
-}
-
-
-/*
- * =============================================================
- * Devices Page
- * =============================================================
- */
-
-void MainWindow::setupDevicesPage()
-{
-    /*
-     * The existing UI contains a placeholder label.
-     *
-     * We keep the .ui file untouched and build the actual
-     * device integration UI here.
-     */
-
-    ui->devicesPlaceholderLabel->hide();
-
-
-    /*
-     * Main devices layout
-     */
-
-    QVBoxLayout *layout =
-        qobject_cast<QVBoxLayout *>(
-            ui->devicesPage->layout()
-        );
-
-
-    if (!layout)
+    else
     {
-        layout =
-            new QVBoxLayout(
-                ui->devicesPage
-            );
-
-        ui->devicesPage->setLayout(
-            layout
-        );
+        certificateValue_->setText(
+            QStringLiteral(
+                "Not generated"));
     }
 
+    QString evidence;
 
-    /*
-     * ---------------------------------------------------------
-     * Header
-     * ---------------------------------------------------------
-     */
+    if (!pipelineResult.auditLogPath.empty())
+    {
+        evidence +=
+            QStringLiteral("Audit: ");
 
-    QLabel *titleLabel =
-        new QLabel(
+        evidence +=
+            QString::fromStdString(
+                pipelineResult.auditLogPath);
+    }
+
+    if (!pipelineResult.operationLogPath.empty())
+    {
+        if (!evidence.isEmpty())
+            evidence += '\n';
+
+        evidence +=
             QStringLiteral(
-                "Storage Devices"
-            ),
-            ui->devicesPage
-        );
+                "Operation log: ");
 
+        evidence +=
+            QString::fromStdString(
+                pipelineResult.operationLogPath);
+    }
 
-    titleLabel->setStyleSheet(
-        "QLabel {"
-        "color: #172033;"
-        "font-size: 24px;"
-        "font-weight: 600;"
-        "}"
-    );
+    if (!pipelineResult.certificatePath.empty())
+    {
+        if (!evidence.isEmpty())
+            evidence += '\n';
 
-
-    QLabel *subtitleLabel =
-        new QLabel(
+        evidence +=
             QStringLiteral(
-                "Physical storage devices detected by SecureWipe."
-            ),
-            ui->devicesPage
-        );
+                "Certificate: ");
 
+        evidence +=
+            QString::fromStdString(
+                pipelineResult.certificatePath);
+    }
 
-    subtitleLabel->setStyleSheet(
-        "QLabel {"
-        "color: #667085;"
-        "font-size: 13px;"
-        "}"
-    );
+    evidenceValue_->setText(
+        evidence.isEmpty()
+            ? QStringLiteral(
+                "No evidence path reported.")
+            : evidence);
 
-
-    /*
-     * ---------------------------------------------------------
-     * Refresh button
-     * ---------------------------------------------------------
-     */
-
-    refreshDevicesButton =
-        new QPushButton(
+    if (result.isSuccess())
+    {
+        jobMessageLabel_->setText(
             QStringLiteral(
-                "Refresh Devices"
-            ),
-            ui->devicesPage
-        );
+                "Sanitization and verification completed successfully."));
+        
+        jobMessageLabel_->setStyleSheet(
+            "color:#027A48;"
+            "font-size:12px;"
+            "font-weight:700;");
+    }
+    else
+    {
+        QString message =
+            result.message.empty()
+                ? QStringLiteral(
+                      "Sanitization failed.")
+                : QString::fromStdString(
+                      result.message);
 
-
-    refreshDevicesButton->setMinimumHeight(
-        38
-    );
-
-
-    refreshDevicesButton->setMinimumWidth(
-        150
-    );
-
-
-    refreshDevicesButton->setCursor(
-        Qt::PointingHandCursor
-    );
-
-
-    refreshDevicesButton->setStyleSheet(
-        "QPushButton {"
-        "background-color: #2563EB;"
-        "color: white;"
-        "border: none;"
-        "border-radius: 6px;"
-        "padding: 8px 16px;"
-        "font-size: 13px;"
-        "font-weight: 500;"
-        "}"
-        ""
-        "QPushButton:hover {"
-        "background-color: #1D4ED8;"
-        "}"
-        ""
-        "QPushButton:pressed {"
-        "background-color: #1E40AF;"
-        "}"
-        ""
-        "QPushButton:disabled {"
-        "background-color: #CBD5E1;"
-        "color: #64748B;"
-        "}"
-    );
-
-
-    connect(
-        refreshDevicesButton,
-        &QPushButton::clicked,
-        this,
-        &MainWindow::refreshDevices
-    );
-
-
-    QHBoxLayout *headerLayout =
-        new QHBoxLayout();
-
-
-    headerLayout->addWidget(
-        titleLabel
-    );
-
-
-    headerLayout->addStretch();
-
-
-    headerLayout->addWidget(
-        refreshDevicesButton
-    );
-
-
-    /*
-     * ---------------------------------------------------------
-     * Device table
-     * ---------------------------------------------------------
-     */
-
-    QTableView *deviceTable =
-        new QTableView(
-            ui->devicesPage
-        );
-
-
-    deviceTable->setModel(
-        deviceTableModel
-    );
-
-
-    deviceTable->setSelectionBehavior(
-        QAbstractItemView::SelectRows
-    );
-
-
-    deviceTable->setSelectionMode(
-        QAbstractItemView::SingleSelection
-    );
-
-
-    deviceTable->setEditTriggers(
-        QAbstractItemView::NoEditTriggers
-    );
-
-
-    deviceTable->setAlternatingRowColors(
-        true
-    );
-
-
-    deviceTable->setShowGrid(
-        false
-    );
-
-
-    deviceTable->verticalHeader()
-        ->setVisible(false);
-
-
-    deviceTable->horizontalHeader()
-        ->setStretchLastSection(true);
-
-
-    deviceTable->horizontalHeader()
-        ->setSectionResizeMode(
-            QHeaderView::ResizeToContents
-        );
-
-
-    deviceTable->setMinimumHeight(
-        300
-    );
-
-
-    deviceTable->setStyleSheet(
-        "QTableView {"
-        "background-color: #FFFFFF;"
-        "alternate-background-color: #F8FAFC;"
-        "border: 1px solid #E2E8F0;"
-        "border-radius: 8px;"
-        "color: #172033;"
-        "font-size: 13px;"
-        "selection-background-color: #DBEAFE;"
-        "selection-color: #172033;"
-        "}"
-        ""
-        "QHeaderView::section {"
-        "background-color: #F8FAFC;"
-        "color: #475467;"
-        "border: none;"
-        "border-bottom: 1px solid #E2E8F0;"
-        "padding: 10px;"
-        "font-size: 12px;"
-        "font-weight: 600;"
-        "}"
-    );
-
-
-    /*
-     * Double-click → device details
-     */
-
-    connect(
-        deviceTable,
-        &QTableView::doubleClicked,
-        this,
-        [this](const QModelIndex &)
+        if (!result.errorMessage.empty())
         {
-            showSelectedDeviceDetails();
+            message += '\n';
+
+            message +=
+                QString::fromStdString(
+                    result.errorMessage);
         }
-    );
 
+        jobMessageLabel_->setText(
+            message);
 
-    /*
-     * ---------------------------------------------------------
-     * Page layout
-     * ---------------------------------------------------------
-     */
-
-    layout->setContentsMargins(
-        28,
-        24,
-        28,
-        24
-    );
-
-
-    layout->setSpacing(
-        6
-    );
-
-
-    layout->addLayout(
-        headerLayout
-    );
-
-
-    layout->addWidget(
-        subtitleLabel
-    );
-
-
-    layout->addSpacing(
-        14
-    );
-
-
-    layout->addWidget(
-        deviceTable
-    );
-}
-
-
-/*
- * =============================================================
- * Refresh Devices
- * =============================================================
- */
-
-void MainWindow::refreshDevices()
-{
-    if (!refreshDevicesButton)
-    {
-        return;
+        jobMessageLabel_->setStyleSheet(
+            "color:#B42318;"
+            "font-size:12px;"
+            "font-weight:600;");
     }
-
-    selectedWipeDeviceId.clear();
-    wipeSafetyApproved = false;
-    if (wipeSafetyButton)
-        wipeSafetyButton->setEnabled(false);
-    if (wipeStartButton)
-        wipeStartButton->setEnabled(false);
-
-    refreshDevicesButton->setEnabled(
-        false
-    );
-
-
-    refreshDevicesButton->setText(
-        QStringLiteral(
-            "Scanning..."
-        )
-    );
-
-
-    /*
-     * Current backend discovery is synchronous.
-     *
-     * We will move this to a worker thread later when the
-     * sanitization workflow is integrated.
-     */
-
-    deviceController->refreshDevices();
-
-
-    refreshDevicesButton->setText(
-        QStringLiteral(
-            "Refresh Devices"
-        )
-    );
-
-
-    refreshDevicesButton->setEnabled(
-        true
-    );
 }
-
-
-/*
- * =============================================================
- * Device Details
- * =============================================================
- */
 
 void MainWindow::showSelectedDeviceDetails()
 {
-    const QList<QTableView *> tables =
-        ui->devicesPage
-            ->findChildren<QTableView *>();
-
-
-    if (tables.isEmpty())
-    {
-        return;
-    }
-
-
-    QTableView *table =
-        tables.first();
-
-
-    const QModelIndex currentIndex =
-        table->currentIndex();
-
-
-    if (!currentIndex.isValid())
-    {
-        return;
-    }
-
-
-    const StorageDevice *device =
-        deviceTableModel->deviceAt(
-            currentIndex.row()
-        );
-
-
-    if (!device)
-    {
-        return;
-    }
-
-
-    showDeviceDetails(
-        *device
-    );
 }
-
 
 void MainWindow::showDeviceDetails(
     const StorageDevice &device)
 {
-    /*
-     * Remove the old details page if one already exists.
-     */
-
-    if (deviceDetailsPage)
-    {
-        ui->contentStack->removeWidget(
-            deviceDetailsPage
-        );
-
-
-        deviceDetailsPage->deleteLater();
-
-
-        deviceDetailsPage = nullptr;
-    }
-
-
-    /*
-     * Create a new details page for the selected device.
-     */
-
-    deviceDetailsPage =
-        new DeviceDetailsPage(
-            device,
-            ui->contentStack
-        );
-
-
-    /*
-     * Add the page to the application's stacked
-     * content area.
-     */
-
-    ui->contentStack->addWidget(
-        deviceDetailsPage
-    );
-
-
-    /*
-     * Show Device Details.
-     */
-
-    ui->contentStack->setCurrentWidget(
-        deviceDetailsPage
-    );
-
-
-    /*
-     * Keep Devices navigation active.
-     */
-
-    setActiveNavButton(
-        ui->devicesNavButton
-    );
-
-
-    /*
-     * Back → Devices
-     */
-
-    connect(
-        deviceDetailsPage,
-        &DeviceDetailsPage::backRequested,
-        this,
-        &MainWindow::showDevicesPage
-    );
-
-
-    /*
-     * Refresh → rediscover devices.
-     */
-
-    connect(
-        deviceDetailsPage,
-        &DeviceDetailsPage::refreshRequested,
-        this,
-        [this]()
-        {
-            showDevicesPage();
-            refreshDevices();
-        }
-    );
+    Q_UNUSED(device);
 }
-
-
-void MainWindow::showDevicesPage()
-{
-    ui->contentStack->setCurrentWidget(
-        ui->devicesPage
-    );
-
-
-    setActiveNavButton(
-        ui->devicesNavButton
-    );
-}
-
-
-void MainWindow::hideDeviceDetailsPage()
-{
-    showDevicesPage();
-}
-
-
-/*
- * =============================================================
- * Navigation Styling
- * =============================================================
- */
-
-void MainWindow::setActiveNavButton(
-    QPushButton *activeButton)
-{
-    const QString inactiveStyle =
-        "QPushButton {"
-        "background-color: transparent;"
-        "border: none;"
-        "border-radius: 7px;"
-        "color: #475467;"
-        "font-size: 13px;"
-        "font-weight: 500;"
-        "text-align: left;"
-        "padding: 10px 12px;"
-        "}"
-        ""
-        "QPushButton:hover {"
-        "background-color: #F2F4F7;"
-        "color: #172033;"
-        "}";
-
-
-    const QString activeStyle =
-        "QPushButton {"
-        "background-color: #EFF6FF;"
-        "border: none;"
-        "border-radius: 7px;"
-        "color: #1D4ED8;"
-        "font-size: 13px;"
-        "font-weight: 600;"
-        "text-align: left;"
-        "padding: 10px 12px;"
-        "}"
-        ""
-        "QPushButton:hover {"
-        "background-color: #DBEAFE;"
-        "color: #1D4ED8;"
-        "}";
-
-
-    const QList<QPushButton *> navButtons = {
-        ui->dashboardNavButton,
-        ui->devicesNavButton,
-        ui->wipeNavButton,
-        ui->reportsNavButton,
-        ui->settingsNavButton
-    };
-
-
-    for (QPushButton *button : navButtons)
-    {
-        if (!button)
-        {
-            continue;
-        }
-
-
-        button->setStyleSheet(
-            button == activeButton
-                ? activeStyle
-                : inactiveStyle
-        );
-    }
-}
-
-
-/*
- * =============================================================
- * Logout
- * =============================================================
- */
 
 void MainWindow::logout()
 {
-    ui->passwordLineEdit->clear();
+    if (operationRunning_)
+    {
+        QMessageBox::warning(
+            this,
+            QStringLiteral(
+                "Operation in progress"),
+            QStringLiteral(
+                "You cannot sign out while physical sanitization is running."));
+        return;
+    }
 
-    ui->loginErrorLabel->clear();
+    emailEdit_->clear();
+    passwordEdit_->clear();
+    loginErrorLabel_->clear();
 
-    ui->stackedWidget->setCurrentWidget(
-        ui->loginPage
-    );
+    selectedRequestId_.clear();
+    selectedRequestDeviceType_.clear();
+    selectedRequestMethod_.clear();
+
+    assignedRequests_ =
+        QJsonArray();
+
+    resetTargetPanel();
+
+    setConnectionState(
+        false,
+        QStringLiteral("Signed out"));
+
+    rootStack_->setCurrentWidget(
+        loginPage_);
+}
+
+QString MainWindow::sanitizationMethodName(
+    SanitizationMethod method) const
+{
+    switch (method)
+    {
+    case SanitizationMethod::NvmeSanitize:
+        return QStringLiteral(
+            "NVMe Sanitize");
+
+    case SanitizationMethod::AtaSanitize:
+        return QStringLiteral(
+            "ATA Sanitize");
+
+    case SanitizationMethod::HostOverwrite:
+        return QStringLiteral(
+            "Host Overwrite");
+
+    case SanitizationMethod::Unsupported:
+    default:
+        return QStringLiteral(
+            "Unsupported");
+    }
+}
+
+QString MainWindow::formatCapacity(
+    std::uint64_t bytes) const
+{
+    if (bytes == 0)
+        return QStringLiteral(
+            "Unknown");
+
+    const double value =
+        static_cast<double>(
+            bytes);
+
+    const double tb =
+        1024.0 *
+        1024.0 *
+        1024.0 *
+        1024.0;
+
+    const double gb =
+        1024.0 *
+        1024.0 *
+        1024.0;
+
+    if (value >= tb)
+    {
+        return QStringLiteral(
+            "%1 TB")
+            .arg(
+                value / tb,
+                0,
+                'f',
+                2);
+    }
+
+    return QStringLiteral(
+        "%1 GB")
+        .arg(
+            value / gb,
+            0,
+            'f',
+            1);
+}
+
+QString MainWindow::formatBytes(
+    std::uint64_t bytes) const
+{
+    if (bytes < 1024)
+    {
+        return QStringLiteral(
+            "%1 B")
+            .arg(bytes);
+    }
+
+    const double value =
+        static_cast<double>(
+            bytes);
+
+    const double kb =
+        1024.0;
+
+    const double mb =
+        1024.0 *
+        1024.0;
+
+    const double gb =
+        1024.0 *
+        1024.0 *
+        1024.0;
+
+    if (value >= gb)
+    {
+        return QStringLiteral(
+            "%1 GB")
+            .arg(
+                value / gb,
+                0,
+                'f',
+                2);
+    }
+
+    if (value >= mb)
+    {
+        return QStringLiteral(
+            "%1 MB")
+            .arg(
+                value / mb,
+                0,
+                'f',
+                2);
+    }
+
+    return QStringLiteral(
+        "%1 KB")
+        .arg(
+            value / kb,
+            0,
+            'f',
+            2);
+}
+
+QString MainWindow::formatDuration(
+    std::uint64_t milliseconds) const
+{
+    if (milliseconds < 1000)
+    {
+        return QStringLiteral(
+            "%1 ms")
+            .arg(milliseconds);
+    }
+
+    const std::uint64_t seconds =
+        milliseconds / 1000;
+
+    const std::uint64_t minutes =
+        seconds / 60;
+
+    const std::uint64_t hours =
+        minutes / 60;
+
+    if (hours > 0)
+    {
+        return QStringLiteral(
+            "%1h %2m %3s")
+            .arg(hours)
+            .arg(minutes % 60)
+            .arg(seconds % 60);
+    }
+
+    if (minutes > 0)
+    {
+        return QStringLiteral(
+            "%1m %2s")
+            .arg(minutes)
+            .arg(seconds % 60);
+    }
+
+    return QStringLiteral(
+        "%1.%2 s")
+        .arg(seconds)
+        .arg(
+            (milliseconds % 1000) / 100);
+}
+
+QString MainWindow::statusText(
+    SecureWipe::SanitizationStatus status) const
+{
+    switch (status)
+    {
+    case SecureWipe::SanitizationStatus::IN_PROGRESS:
+        return QStringLiteral(
+            "IN PROGRESS");
+
+    case SecureWipe::SanitizationStatus::COMPLETED:
+        return QStringLiteral(
+            "COMPLETED");
+
+    case SecureWipe::SanitizationStatus::FAILED:
+        return QStringLiteral(
+            "FAILED");
+
+    case SecureWipe::SanitizationStatus::ABORTED:
+        return QStringLiteral(
+            "ABORTED");
+
+    case SecureWipe::SanitizationStatus::NOT_STARTED:
+    default:
+        return QStringLiteral(
+            "NOT STARTED");
+    }
+}
+
+QString MainWindow::verificationText(
+    SecureWipe::VerificationStatus status) const
+{
+    switch (status)
+    {
+    case SecureWipe::VerificationStatus::IN_PROGRESS:
+        return QStringLiteral(
+            "IN PROGRESS");
+
+    case SecureWipe::VerificationStatus::PASSED:
+        return QStringLiteral(
+            "PASSED");
+
+    case SecureWipe::VerificationStatus::FAILED:
+        return QStringLiteral(
+            "FAILED");
+
+    case SecureWipe::VerificationStatus::NOT_PERFORMED:
+    default:
+        return QStringLiteral(
+            "NOT PERFORMED");
+    }
 }
