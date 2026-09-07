@@ -1,13 +1,26 @@
 const SanitizationResult = require("../models/SanitizationResult");
 const SanitizationRequest = require("../models/SanitizationRequest");
+const SanitizationCertificate = require("../models/SanitizationCertificate");
 const AppError = require("../utils/AppError");
 
-const submitSanitizationResult = async (requestId, payload, user) => {
+const submitSanitizationResult = async (
+    requestId,
+    payload,
+    user
+) => {
     if (!user) {
-        throw new AppError("Authentication required", 401);
+        throw new AppError(
+            "Authentication required",
+            401
+        );
     }
 
-    if (!["WORKSTATION_EMPLOYEE", "ADMIN"].includes(user.role)) {
+    if (
+        ![
+            "WORKSTATION_EMPLOYEE",
+            "ADMIN"
+        ].includes(user.role)
+    ) {
         throw new AppError(
             "Only the assigned workstation employee or admin can submit sanitization results",
             403
@@ -15,19 +28,32 @@ const submitSanitizationResult = async (requestId, payload, user) => {
     }
 
     if (!requestId) {
-        throw new AppError("Request ID is required", 400);
+        throw new AppError(
+            "Request ID is required",
+            400
+        );
     }
 
-    const request = await SanitizationRequest.findOne({ requestId });
+    const request =
+        await SanitizationRequest.findOne({
+            requestId
+        });
 
     if (!request) {
-        throw new AppError("Sanitization request not found", 404);
+        throw new AppError(
+            "Sanitization request not found",
+            404
+        );
     }
 
-    if (user.role === "WORKSTATION_EMPLOYEE") {
+    if (
+        user.role ===
+        "WORKSTATION_EMPLOYEE"
+    ) {
         if (
             !request.assignedEmployee ||
-            request.assignedEmployee.toString() !== user._id.toString()
+            request.assignedEmployee.toString() !==
+                user._id.toString()
         ) {
             throw new AppError(
                 "This sanitization request is not assigned to you",
@@ -36,15 +62,26 @@ const submitSanitizationResult = async (requestId, payload, user) => {
         }
     }
 
-    if (!["IN_PROGRESS", "VERIFYING"].includes(request.status)) {
+    if (
+        ![
+            "IN_PROGRESS",
+            "VERIFYING"
+        ].includes(request.status)
+    ) {
         throw new AppError(
             `Sanitization result cannot be submitted while request status is ${request.status}`,
             400
         );
     }
 
-    if (!payload || typeof payload !== "object") {
-        throw new AppError("Sanitization result payload is required", 400);
+    if (
+        !payload ||
+        typeof payload !== "object"
+    ) {
+        throw new AppError(
+            "Sanitization result payload is required",
+            400
+        );
     }
 
     const requiredFields = [
@@ -59,7 +96,9 @@ const submitSanitizationResult = async (requestId, payload, user) => {
         "verificationStatus"
     ];
 
-    for (const field of requiredFields) {
+    for (
+        const field of requiredFields
+    ) {
         if (
             payload[field] === undefined ||
             payload[field] === null ||
@@ -72,34 +111,66 @@ const submitSanitizationResult = async (requestId, payload, user) => {
         }
     }
 
-    if (payload.method !== "HOST_OVERWRITE") {
+    if (
+        payload.method !==
+        "HOST_OVERWRITE"
+    ) {
         throw new AppError(
             "The current end-to-end pipeline accepts HOST_OVERWRITE results only",
             400
         );
     }
 
-    const verificationPassed =
-        Boolean(payload.verificationPerformed) &&
-        payload.verificationStatus === "PASSED";
+    if (
+        ![
+            "COMPLETED",
+            "FAILED"
+        ].includes(
+            String(payload.status)
+        )
+    ) {
+        throw new AppError(
+            "Sanitization result status must be COMPLETED or FAILED",
+            400
+        );
+    }
 
-    if (payload.status === "COMPLETED" && !verificationPassed) {
+    const verificationPassed =
+        Boolean(
+            payload.verificationPerformed
+        ) &&
+        payload.verificationStatus ===
+            "PASSED";
+
+    if (
+        payload.status ===
+            "COMPLETED" &&
+        !verificationPassed
+    ) {
         throw new AppError(
             "A completed sanitization result requires performed and passed verification",
             400
         );
     }
 
-    if (payload.status === "FAILED" && payload.verificationStatus === "PASSED") {
+    if (
+        payload.status === "FAILED" &&
+        payload.verificationStatus ===
+            "PASSED"
+    ) {
         throw new AppError(
             "A failed sanitization result cannot report PASSED verification",
             400
         );
     }
 
-    const existingResult = await SanitizationResult.findOne({
-        operationId: String(payload.operationId)
-    });
+    const existingResult =
+        await SanitizationResult.findOne({
+            operationId:
+                String(
+                    payload.operationId
+                )
+        });
 
     if (existingResult) {
         throw new AppError(
@@ -108,53 +179,154 @@ const submitSanitizationResult = async (requestId, payload, user) => {
         );
     }
 
-    const result = await SanitizationResult.create({
-        requestId: request.requestId,
-        operationId: String(payload.operationId),
-        submittedBy: user._id,
+    const result =
+        await SanitizationResult.create({
+            requestId:
+                request.requestId,
 
-        deviceId: String(payload.deviceId),
-        model: String(payload.model),
-        serialNumber: String(payload.serialNumber),
-        capacityBytes: Number(payload.capacityBytes),
-        interfaceType: String(payload.interfaceType),
+            operationId:
+                String(
+                    payload.operationId
+                ),
 
-        method: String(payload.method),
-        status: String(payload.status),
+            submittedBy:
+                user._id,
 
-        bytesProcessed: Number(payload.bytesProcessed) || 0,
-        operationDurationMs: Number(payload.operationDurationMs) || 0,
+            deviceId:
+                String(
+                    payload.deviceId
+                ),
 
-        verificationStatus: String(payload.verificationStatus),
-        verificationPerformed: Boolean(payload.verificationPerformed),
-        verificationPassed,
+            model:
+                String(
+                    payload.model
+                ),
 
-        bytesVerified: Number(payload.bytesVerified) || 0,
-        verificationSamples: Number(payload.verificationSamples) || 0,
+            serialNumber:
+                String(
+                    payload.serialNumber
+                ),
 
-        verificationMessage: String(
-            payload.verificationMessage || ""
-        ),
+            capacityBytes:
+                Number(
+                    payload.capacityBytes
+                ),
 
-        nativeErrorCode: Number(payload.nativeErrorCode) || 0,
+            interfaceType:
+                String(
+                    payload.interfaceType
+                ),
 
-        deviceReportedSuccess: Boolean(
-            payload.deviceReportedSuccess
-        ),
+            method:
+                String(
+                    payload.method
+                ),
 
-        globalDataErased: Boolean(
-            payload.globalDataErased
-        )
-    });
+            status:
+                String(
+                    payload.status
+                ),
 
-    if (request.status === "IN_PROGRESS") {
-        request.status = "VERIFYING";
+            bytesProcessed:
+                Number(
+                    payload.bytesProcessed
+                ) || 0,
+
+            operationDurationMs:
+                Number(
+                    payload.operationDurationMs
+                ) || 0,
+
+            verificationStatus:
+                String(
+                    payload.verificationStatus
+                ),
+
+            verificationPerformed:
+                Boolean(
+                    payload.verificationPerformed
+                ),
+
+            verificationPassed,
+
+            bytesVerified:
+                Number(
+                    payload.bytesVerified
+                ) || 0,
+
+            verificationSamples:
+                Number(
+                    payload.verificationSamples
+                ) || 0,
+
+            verificationMessage:
+                String(
+                    payload.verificationMessage ||
+                        ""
+                ),
+
+            nativeErrorCode:
+                Number(
+                    payload.nativeErrorCode
+                ) || 0,
+
+            deviceReportedSuccess:
+                Boolean(
+                    payload.deviceReportedSuccess
+                ),
+
+            globalDataErased:
+                Boolean(
+                    payload.globalDataErased
+                )
+        });
+
+    /*
+     * A successful physical sanitization result
+     * enters the verification/certificate phase.
+     */
+    if (
+        result.status ===
+        "COMPLETED"
+    ) {
+        request.status =
+            "VERIFYING";
 
         request.history.push({
             status: "VERIFYING",
             changedBy: user._id,
             changedAt: new Date(),
-            note: "Sanitization result submitted for verification review"
+            note:
+                "Sanitization result submitted for verification and certificate review"
+        });
+
+        await request.save();
+    }
+
+    /*
+     * A failed physical sanitization operation
+     * terminates the request as FAILED.
+     *
+     * It must not enter VERIFYING because there
+     * is no successful sanitization to certify.
+     */
+    if (
+        result.status ===
+        "FAILED"
+    ) {
+        request.status =
+            "FAILED";
+
+        request.completedAt =
+            new Date();
+
+        request.history.push({
+            status: "FAILED",
+            changedBy: user._id,
+            changedAt: new Date(),
+            note:
+                result.verificationMessage ||
+                "Sanitization operation failed on the workstation"
         });
 
         await request.save();
@@ -163,59 +335,105 @@ const submitSanitizationResult = async (requestId, payload, user) => {
     return result;
 };
 
-const getSanitizationResultByRequest = async (
-    requestId,
-    user
-) => {
-    if (!user) {
-        throw new AppError("Authentication required", 401);
-    }
+const getSanitizationResultByRequest =
+    async (
+        requestId,
+        user
+    ) => {
+        if (!user) {
+            throw new AppError(
+                "Authentication required",
+                401
+            );
+        }
 
-    const request = await SanitizationRequest.findOne({
-        requestId
-    });
+        const request =
+            await SanitizationRequest.findOne({
+                requestId
+            });
 
-    if (!request) {
-        throw new AppError("Sanitization request not found", 404);
-    }
+        if (!request) {
+            throw new AppError(
+                "Sanitization request not found",
+                404
+            );
+        }
 
-    if (
-        user.role === "CUSTOMER" &&
-        request.customer.toString() !== user._id.toString()
-    ) {
-        throw new AppError("Access denied", 403);
-    }
+        if (
+            user.role ===
+                "CUSTOMER" &&
+            request.customer.toString() !==
+                user._id.toString()
+        ) {
+            throw new AppError(
+                "Access denied",
+                403
+            );
+        }
 
-    if (
-        user.role === "WORKSTATION_EMPLOYEE" &&
-        request.assignedEmployee?.toString() !== user._id.toString()
-    ) {
-        throw new AppError("Access denied", 403);
-    }
+        if (
+            user.role ===
+                "WORKSTATION_EMPLOYEE" &&
+            request.assignedEmployee?.toString() !==
+                user._id.toString()
+        ) {
+            throw new AppError(
+                "Access denied",
+                403
+            );
+        }
 
-    if (
-        user.role === "WORKSTATION_HEAD" &&
-        request.workstationCenter.toString() !==
-        user.workstationCenter?.toString()
-    ) {
-        throw new AppError("Access denied", 403);
-    }
+        if (
+            user.role ===
+                "WORKSTATION_HEAD" &&
+            request.workstationCenter.toString() !==
+                user.workstationCenter?.toString()
+        ) {
+            throw new AppError(
+                "Access denied",
+                403
+            );
+        }
 
-    const result = await SanitizationResult.findOne({
-        requestId
-    })
-        .populate("submittedBy", "name email role")
-        .sort({ createdAt: -1 });
+        const result =
+            await SanitizationResult.findOne({
+                requestId
+            })
+                .populate(
+                    "submittedBy",
+                    "name email role"
+                )
+                .sort({
+                    createdAt: -1
+                });
 
-    if (!result) {
-        throw new AppError(
-            "Sanitization result not found",
-            404
-        );
-    }
+        if (!result) {
+            throw new AppError(
+                "Sanitization result not found",
+                404
+            );
+        }
 
-    return result;
-};
+        const certificate =
+            await SanitizationCertificate.findOne({
+                operationId:
+                    result.operationId
+            })
+                .populate(
+                    "generatedBy",
+                    "name email role"
+                );
+
+        const resultData =
+            result.toObject();
+
+        resultData.certificate =
+            certificate
+                ? certificate.toObject()
+                : null;
+
+        return resultData;
+    };
 
 module.exports = {
     submitSanitizationResult,

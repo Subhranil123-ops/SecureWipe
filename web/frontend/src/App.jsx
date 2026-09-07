@@ -11,6 +11,7 @@ import DashboardLayout from "./components/layout/DashboardLayout";
 import AdminDashboard from "./pages/Admin/Dashboard/AdminDashboard";
 import AdminUsers from "./pages/Admin/Users/AdminUsers";
 import AdminWorkstationCenters from "./pages/Admin/WorkstationCenters/AdminWorkstationCenters";
+import AdminWorkstations from "./pages/Admin/Workstations/AdminWorkstations";
 
 import WorkstationHeadDashboard from "./pages/WorkstationHead/Dashboard/WorkstationHeadDashboard";
 import WorkstationCenter from "./pages/WorkstationHead/Center/WorkstationCenter";
@@ -18,6 +19,9 @@ import WorkstationHeadSanitizationRequests from "./pages/WorkstationHead/Sanitiz
 import WorkstationHeadWorkstations from "./pages/WorkstationHead/Workstations/WorkstationHeadWorkstations";
 
 import WorkstationEmployeeDashboard from "./pages/WorkstationEmployee/Dashboard/WorkstationEmployeeDashboard";
+import SanitizationExecution from "./pages/WorkstationEmployee/Sanitization/SanitizationExecution";
+import SanitizationHistory from "./pages/WorkstationEmployee/Sanitization/SanitizationHistory";
+import SanitizationCertificate from "./pages/WorkstationEmployee/Sanitization/SanitizationCertificate";
 
 import CustomerDashboard from "./pages/Customer/Dashboard/CustomerDashboard";
 import CustomerSanitizationRequest from "./pages/Customer/SanitizationRequest/CustomerSanitizationRequest";
@@ -38,11 +42,13 @@ function App() {
                 <Route path="/access-denied" element={<AccessDenied />} />
 
                 <Route element={<ProtectedRoute />}>
+
                     <Route element={<RoleRoute allowedRoles={["ADMIN"]} />}>
                         <Route path="/admin" element={<DashboardLayout />}>
                             <Route path="dashboard" element={<AdminDashboard />} />
                             <Route path="users" element={<AdminUsers />} />
                             <Route path="workstation-centers" element={<AdminWorkstationCenters />} />
+                            <Route path="workstations" element={<AdminWorkstations />} />
                         </Route>
                     </Route>
 
@@ -58,6 +64,9 @@ function App() {
                     <Route element={<RoleRoute allowedRoles={["WORKSTATION_EMPLOYEE"]} />}>
                         <Route path="/workstation-employee" element={<DashboardLayout />}>
                             <Route path="dashboard" element={<WorkstationEmployeeDashboard />} />
+                            <Route path="sanitization/history" element={<SanitizationHistory />} />
+                            <Route path="sanitization/:requestId" element={<SanitizationExecution />} />
+                            <Route path="sanitization/certificate/:certificateId" element={<SanitizationCertificate />} />
                         </Route>
                     </Route>
 
@@ -69,7 +78,18 @@ function App() {
                         </Route>
                     </Route>
 
-                    <Route element={<RoleRoute allowedRoles={["ADMIN", "CUSTOMER", "WORKSTATION_HEAD", "WORKSTATION_EMPLOYEE"]} />}>
+                    <Route
+                        element={
+                            <RoleRoute
+                                allowedRoles={[
+                                    "ADMIN",
+                                    "CUSTOMER",
+                                    "WORKSTATION_HEAD",
+                                    "WORKSTATION_EMPLOYEE"
+                                ]}
+                            />
+                        }
+                    >
                         <Route path="/forensics" element={<DashboardLayout />}>
                             <Route index element={<ForensicDashboard />} />
                             <Route path="cases" element={<ForensicCases />} />
@@ -78,6 +98,7 @@ function App() {
                             <Route path="reports" element={<ForensicReports />} />
                         </Route>
                     </Route>
+
                 </Route>
 
                 <Route path="/" element={<Navigate to="/login" replace />} />

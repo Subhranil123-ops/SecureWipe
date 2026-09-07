@@ -1,8 +1,8 @@
 require("dotenv").config();
 
 const express = require("express");
-
 const cors = require("cors");
+
 const app = express();
 
 app.use(cors({
@@ -11,7 +11,6 @@ app.use(cors({
 }));
 
 app.use(express.json());
-
 
 // Routes
 const authRoute = require("./Routes/auth.routes");
@@ -23,24 +22,23 @@ const sanitizationResultRoute = require("./Routes/sanitizationResult.routes");
 const sanitizationCertificateRoute = require("./Routes/sanitizationCertificate.routes");
 const forensicCaseRoute = require("./Routes/forensicCase.routes");
 
-
-// error middlewares
+// Error middlewares
 const notFound = require("./middlewares/notFound");
 const errorHandler = require("./middlewares/errorHandler");
 
-// routing
+// Routing
 app.use("/api/auth", authRoute);
 app.use("/api/workstation-centers", workstationRoute);
 app.use("/api/users", userRoute);
 app.use("/api/workstations", workstationManagementRoute);
+
 app.use("/api/sanitization-requests", sanitizationRequestRoute);
-app.use(
-    "/api/sanitization-certificates",
-    sanitizationCertificateRoute
-);
+app.use("/api/sanitization-results", sanitizationResultRoute);
+app.use("/api/sanitization-certificates", sanitizationCertificateRoute);
+
 app.use("/api/forensics", forensicCaseRoute);
 
-//adding errors
+// Errors
 app.use(notFound);
 app.use(errorHandler);
 

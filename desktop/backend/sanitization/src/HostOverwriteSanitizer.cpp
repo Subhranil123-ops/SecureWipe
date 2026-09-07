@@ -18,7 +18,7 @@ std::string getWindowsErrorMessage(DWORD errorCode)
 
     LPSTR buffer = nullptr;
 
-    DWORD length = FormatMessageA(
+    const DWORD length = FormatMessageA(
         FORMAT_MESSAGE_ALLOCATE_BUFFER |
             FORMAT_MESSAGE_FROM_SYSTEM |
             FORMAT_MESSAGE_IGNORE_INSERTS,
@@ -176,7 +176,7 @@ bool HostOverwriteSanitizer::checkWritable(
         return true;
     }
 
-    DWORD errorCode = GetLastError();
+    const DWORD errorCode = GetLastError();
 
     if (errorCode == ERROR_INVALID_FUNCTION ||
         errorCode == ERROR_NOT_SUPPORTED)
@@ -188,12 +188,8 @@ bool HostOverwriteSanitizer::checkWritable(
         return true;
     }
 
-    result.nativeErrorCode =
-        errorCode;
-
-    result.phase =
-        "Writable preflight";
-
+    result.nativeErrorCode = errorCode;
+    result.phase = "Writable preflight";
     result.message =
         "Target device is not writable. Windows error=" +
         std::to_string(errorCode) +
@@ -215,14 +211,10 @@ bool HostOverwriteSanitizer::lockTargetVolumes(
             deviceHandle,
             targetDiskNumber))
     {
-        DWORD errorCode = GetLastError();
+        const DWORD errorCode = GetLastError();
 
-        result.nativeErrorCode =
-            errorCode;
-
-        result.phase =
-            "Physical disk identification";
-
+        result.nativeErrorCode = errorCode;
+        result.phase = "Physical disk identification";
         result.message =
             "Unable to determine target physical disk number. Windows error=" +
             std::to_string(errorCode) +
@@ -238,19 +230,14 @@ bool HostOverwriteSanitizer::lockTargetVolumes(
         << targetDiskNumber
         << '\n';
 
-    DWORD logicalDrives =
-        GetLogicalDrives();
+    const DWORD logicalDrives = GetLogicalDrives();
 
     if (logicalDrives == 0)
     {
-        DWORD errorCode = GetLastError();
+        const DWORD errorCode = GetLastError();
 
-        result.nativeErrorCode =
-            errorCode;
-
-        result.phase =
-            "Logical drive enumeration";
-
+        result.nativeErrorCode = errorCode;
+        result.phase = "Logical drive enumeration";
         result.message =
             "Unable to enumerate logical drives. Windows error=" +
             std::to_string(errorCode) +
@@ -268,20 +255,15 @@ bool HostOverwriteSanitizer::lockTargetVolumes(
          driveLetter <= 'Z';
          ++driveLetter)
     {
-        DWORD mask =
+        const DWORD mask =
             1u << (driveLetter - 'A');
 
         if ((logicalDrives & mask) == 0)
             continue;
 
-        std::string volumePath =
-            "\\\\.\\";
-
-        volumePath +=
-            driveLetter;
-
-        volumePath +=
-            ":";
+        std::string volumePath = "\\\\.\\";
+        volumePath += driveLetter;
+        volumePath += ":";
 
         HANDLE volumeHandle =
             CreateFileA(
@@ -293,10 +275,42 @@ bool HostOverwriteSanitizer::lockTargetVolumes(
                 0,
                 nullptr);
 
-        if (volumeHandle ==
-            INVALID_HANDLE_VALUE)
+        if (volumeHandle == INVALID_HANDLE_VALUE)
         {
-            continue;
+            const DWORD errorCode = GetLastError();
+
+            std::cout
+                << "\nUnable to open logical volume "
+                << driveLetter
+                << ": for lock preparation.\n"
+                << "Windows error: "
+                << errorCode
+                << " ("
+                << getWindowsErrorMessage(errorCode)
+                << ")\n";
+
+            /*
+             * We cannot determine whether this volume belongs to the
+             * target disk because the volume handle could not be opened.
+             *
+             * For a destructive operation we fail closed rather than
+             * silently continuing.
+             */
+            result.nativeErrorCode = errorCode;
+            result.phase =
+                "Target volume handle open";
+
+            result.message =
+                "Unable to open logical volume " +
+                std::string(1, driveLetter) +
+                ": before destructive overwrite. Windows error=" +
+                std::to_string(errorCode) +
+                " (" +
+                getWindowsErrorMessage(errorCode) +
+                "). Close applications using mounted volumes and retry.";
+
+            unlockTargetVolumes(lockedVolumes);
+            return false;
         }
 
         DWORD volumeDiskNumber = 0;
@@ -305,12 +319,33 @@ bool HostOverwriteSanitizer::lockTargetVolumes(
                 volumeHandle,
                 volumeDiskNumber))
         {
+            const DWORD errorCode = GetLastError();
+
+            std::cout
+                << "\nUnable to determine the physical disk for volume "
+                << driveLetter
+                << ":.\n"
+                << "Windows error: "
+                << errorCode
+                << " ("
+                << getWindowsErrorMessage(errorCode)
+                << ")\n";
+
+            result.nativeErrorCode = errorCode;
+            result.phase =
+                "Volume physical-disk identification";
+
+            result.message =
+                "Unable to determine which physical disk owns volume " +
+                std::string(1, driveLetter) +
+                ":. Destructive operation aborted.";
+
             CloseHandle(volumeHandle);
-            continue;
+            unlockTargetVolumes(lockedVolumes);
+            return false;
         }
 
-        if (volumeDiskNumber !=
-            targetDiskNumber)
+        if (volumeDiskNumber != targetDiskNumber)
         {
             CloseHandle(volumeHandle);
             continue;
@@ -338,28 +373,22 @@ bool HostOverwriteSanitizer::lockTargetVolumes(
                 &returnedBytes,
                 nullptr))
         {
-            DWORD errorCode =
-                GetLastError();
+            const DWORD errorCode = GetLastError();
 
-            result.nativeErrorCode =
-                errorCode;
-
-            result.phase =
-                "FSCTL_LOCK_VOLUME";
+            result.nativeErrorCode = errorCode;
+            result.phase = "FSCTL_LOCK_VOLUME";
 
             result.message =
                 "Unable to lock target volume " +
                 std::string(1, driveLetter) +
-                ": Windows error=" +
+                ":. Windows error=" +
                 std::to_string(errorCode) +
                 " (" +
                 getWindowsErrorMessage(errorCode) +
                 "). Close Explorer or applications using the target drive.";
 
             CloseHandle(volumeHandle);
-
-            unlockTargetVolumes(
-                lockedVolumes);
+            unlockTargetVolumes(lockedVolumes);
 
             return false;
         }
@@ -386,19 +415,15 @@ bool HostOverwriteSanitizer::lockTargetVolumes(
                 &returnedBytes,
                 nullptr))
         {
-            DWORD errorCode =
-                GetLastError();
+            const DWORD errorCode = GetLastError();
 
-            result.nativeErrorCode =
-                errorCode;
-
-            result.phase =
-                "FSCTL_DISMOUNT_VOLUME";
+            result.nativeErrorCode = errorCode;
+            result.phase = "FSCTL_DISMOUNT_VOLUME";
 
             result.message =
                 "Unable to dismount target volume " +
                 std::string(1, driveLetter) +
-                ": Windows error=" +
+                ":. Windows error=" +
                 std::to_string(errorCode) +
                 " (" +
                 getWindowsErrorMessage(errorCode) +
@@ -417,9 +442,7 @@ bool HostOverwriteSanitizer::lockTargetVolumes(
                 nullptr);
 
             CloseHandle(volumeHandle);
-
-            unlockTargetVolumes(
-                lockedVolumes);
+            unlockTargetVolumes(lockedVolumes);
 
             return false;
         }
@@ -429,8 +452,7 @@ bool HostOverwriteSanitizer::lockTargetVolumes(
             << driveLetter
             << ": dismounted successfully.\n";
 
-        lockedVolumes.push_back(
-            volumeHandle);
+        lockedVolumes.push_back(volumeHandle);
     }
 
     std::cout
@@ -442,14 +464,10 @@ bool HostOverwriteSanitizer::lockTargetVolumes(
 void HostOverwriteSanitizer::unlockTargetVolumes(
     std::vector<HANDLE>& lockedVolumes)
 {
-    for (HANDLE volumeHandle :
-         lockedVolumes)
+    for (HANDLE volumeHandle : lockedVolumes)
     {
-        if (volumeHandle ==
-            INVALID_HANDLE_VALUE)
-        {
+        if (volumeHandle == INVALID_HANDLE_VALUE)
             continue;
-        }
 
         DWORD returnedBytes = 0;
 
@@ -475,8 +493,7 @@ bool HostOverwriteSanitizer::overwrite(
     std::uint32_t sectorSize,
     VerificationResult& result)
 {
-    std::size_t chunkSize =
-        BUFFER_SIZE;
+    std::size_t chunkSize = BUFFER_SIZE;
 
     chunkSize =
         (chunkSize / sectorSize) *
@@ -493,7 +510,7 @@ bool HostOverwriteSanitizer::overwrite(
 
     while (offset < totalBytes)
     {
-        std::uint64_t remaining =
+        const std::uint64_t remaining =
             totalBytes - offset;
 
         DWORD bytesToWrite =
@@ -502,8 +519,7 @@ bool HostOverwriteSanitizer::overwrite(
                     chunkSize,
                     remaining));
 
-        if ((bytesToWrite %
-             sectorSize) != 0)
+        if ((bytesToWrite % sectorSize) != 0)
         {
             if (remaining < sectorSize)
             {
@@ -523,15 +539,13 @@ bool HostOverwriteSanitizer::overwrite(
             }
 
             bytesToWrite =
-                (bytesToWrite /
-                 sectorSize) *
+                (bytesToWrite / sectorSize) *
                 sectorSize;
         }
 
         LARGE_INTEGER position{};
         position.QuadPart =
-            static_cast<LONGLONG>(
-                offset);
+            static_cast<LONGLONG>(offset);
 
         if (!SetFilePointerEx(
                 deviceHandle,
@@ -539,23 +553,13 @@ bool HostOverwriteSanitizer::overwrite(
                 nullptr,
                 FILE_BEGIN))
         {
-            DWORD errorCode =
-                GetLastError();
+            const DWORD errorCode = GetLastError();
 
-            result.nativeErrorCode =
-                errorCode;
-
-            result.failedOffset =
-                offset;
-
-            result.requestedBytes =
-                bytesToWrite;
-
-            result.actualBytes =
-                0;
-
-            result.phase =
-                "Write seek";
+            result.nativeErrorCode = errorCode;
+            result.failedOffset = offset;
+            result.requestedBytes = bytesToWrite;
+            result.actualBytes = 0;
+            result.phase = "Write seek";
 
             result.message =
                 buildIoError(
@@ -577,23 +581,13 @@ bool HostOverwriteSanitizer::overwrite(
                 &bytesWritten,
                 nullptr))
         {
-            DWORD errorCode =
-                GetLastError();
+            const DWORD errorCode = GetLastError();
 
-            result.nativeErrorCode =
-                errorCode;
-
-            result.failedOffset =
-                offset;
-
-            result.requestedBytes =
-                bytesToWrite;
-
-            result.actualBytes =
-                bytesWritten;
-
-            result.phase =
-                "WriteFile";
+            result.nativeErrorCode = errorCode;
+            result.failedOffset = offset;
+            result.requestedBytes = bytesToWrite;
+            result.actualBytes = bytesWritten;
+            result.phase = "WriteFile";
 
             result.message =
                 buildIoError(
@@ -606,23 +600,15 @@ bool HostOverwriteSanitizer::overwrite(
             return false;
         }
 
-        if (bytesWritten !=
-            bytesToWrite)
+        if (bytesWritten != bytesToWrite)
         {
             result.nativeErrorCode =
                 ERROR_WRITE_FAULT;
 
-            result.failedOffset =
-                offset;
-
-            result.requestedBytes =
-                bytesToWrite;
-
-            result.actualBytes =
-                bytesWritten;
-
-            result.phase =
-                "Partial write";
+            result.failedOffset = offset;
+            result.requestedBytes = bytesToWrite;
+            result.actualBytes = bytesWritten;
+            result.phase = "Partial write";
 
             result.message =
                 buildIoError(
@@ -635,10 +621,9 @@ bool HostOverwriteSanitizer::overwrite(
             return false;
         }
 
-        offset +=
-            bytesWritten;
+        offset += bytesWritten;
 
-        int progress =
+        const int progress =
             static_cast<int>(
                 (offset * 100ULL) /
                 totalBytes);
@@ -653,8 +638,7 @@ bool HostOverwriteSanitizer::overwrite(
     std::cout
         << "\nHost overwrite completed.\n";
 
-    result.deviceReportedSuccess =
-        true;
+    result.deviceReportedSuccess = true;
 
     return true;
 }
@@ -666,18 +650,13 @@ VerificationResult HostOverwriteSanitizer::verify(
 {
     VerificationResult result;
 
-    result.performed =
-        true;
-
+    result.performed = true;
     result.method =
         VerificationMethod::HOST_READ_BACK;
 
-    if (totalBytes <
-        VERIFY_SIZE)
+    if (totalBytes < VERIFY_SIZE)
     {
-        result.performed =
-            false;
-
+        result.performed = false;
         result.phase =
             "Verification preparation";
 
@@ -699,15 +678,13 @@ VerificationResult HostOverwriteSanitizer::verify(
         totalBytes - VERIFY_SIZE
     };
 
-    for (std::uint64_t offset :
-         offsets)
+    for (std::uint64_t offset : offsets)
     {
         offset =
             (offset / sectorSize) *
             sectorSize;
 
-        if (offset + VERIFY_SIZE >
-            totalBytes)
+        if (offset + VERIFY_SIZE > totalBytes)
         {
             offset =
                 ((totalBytes - VERIFY_SIZE) /
@@ -717,8 +694,7 @@ VerificationResult HostOverwriteSanitizer::verify(
 
         LARGE_INTEGER position{};
         position.QuadPart =
-            static_cast<LONGLONG>(
-                offset);
+            static_cast<LONGLONG>(offset);
 
         if (!SetFilePointerEx(
                 deviceHandle,
@@ -726,19 +702,13 @@ VerificationResult HostOverwriteSanitizer::verify(
                 nullptr,
                 FILE_BEGIN))
         {
-            DWORD errorCode =
-                GetLastError();
+            const DWORD errorCode = GetLastError();
 
-            result.nativeErrorCode =
-                errorCode;
-
-            result.failedOffset =
-                offset;
-
+            result.nativeErrorCode = errorCode;
+            result.failedOffset = offset;
             result.requestedBytes =
-                static_cast<std::uint32_t>(
-                    VERIFY_SIZE);
-
+                static_cast<std::uint32_t>(VERIFY_SIZE);
+            result.actualBytes = 0;
             result.phase =
                 "Verification seek";
 
@@ -747,8 +717,7 @@ VerificationResult HostOverwriteSanitizer::verify(
                     "Verification seek",
                     errorCode,
                     offset,
-                    static_cast<DWORD>(
-                        VERIFY_SIZE),
+                    static_cast<DWORD>(VERIFY_SIZE),
                     0);
 
             return result;
@@ -759,27 +728,17 @@ VerificationResult HostOverwriteSanitizer::verify(
         if (!ReadFile(
                 deviceHandle,
                 buffer.data(),
-                static_cast<DWORD>(
-                    VERIFY_SIZE),
+                static_cast<DWORD>(VERIFY_SIZE),
                 &bytesRead,
                 nullptr))
         {
-            DWORD errorCode =
-                GetLastError();
+            const DWORD errorCode = GetLastError();
 
-            result.nativeErrorCode =
-                errorCode;
-
-            result.failedOffset =
-                offset;
-
+            result.nativeErrorCode = errorCode;
+            result.failedOffset = offset;
             result.requestedBytes =
-                static_cast<std::uint32_t>(
-                    VERIFY_SIZE);
-
-            result.actualBytes =
-                bytesRead;
-
+                static_cast<std::uint32_t>(VERIFY_SIZE);
+            result.actualBytes = bytesRead;
             result.phase =
                 "Verification read";
 
@@ -788,29 +747,21 @@ VerificationResult HostOverwriteSanitizer::verify(
                     "Verification read",
                     errorCode,
                     offset,
-                    static_cast<DWORD>(
-                        VERIFY_SIZE),
+                    static_cast<DWORD>(VERIFY_SIZE),
                     bytesRead);
 
             return result;
         }
 
-        if (bytesRead !=
-            VERIFY_SIZE)
+        if (bytesRead != VERIFY_SIZE)
         {
             result.nativeErrorCode =
                 ERROR_READ_FAULT;
 
-            result.failedOffset =
-                offset;
-
+            result.failedOffset = offset;
             result.requestedBytes =
-                static_cast<std::uint32_t>(
-                    VERIFY_SIZE);
-
-            result.actualBytes =
-                bytesRead;
-
+                static_cast<std::uint32_t>(VERIFY_SIZE);
+            result.actualBytes = bytesRead;
             result.phase =
                 "Verification read";
 
@@ -819,8 +770,7 @@ VerificationResult HostOverwriteSanitizer::verify(
                     "Incomplete verification read",
                     ERROR_READ_FAULT,
                     offset,
-                    static_cast<DWORD>(
-                        VERIFY_SIZE),
+                    static_cast<DWORD>(VERIFY_SIZE),
                     bytesRead);
 
             return result;
@@ -835,16 +785,12 @@ VerificationResult HostOverwriteSanitizer::verify(
                     return value == 0x00;
                 });
 
-        result.bytesVerified +=
-            bytesRead;
-
+        result.bytesVerified += bytesRead;
         result.samples++;
 
         if (!allZero)
         {
-            result.failedOffset =
-                offset;
-
+            result.failedOffset = offset;
             result.phase =
                 "Verification data check";
 
@@ -864,11 +810,8 @@ VerificationResult HostOverwriteSanitizer::verify(
             << ".\n";
     }
 
-    result.passed =
-        true;
-
-    result.sanitizationCompleted =
-        true;
+    result.passed = true;
+    result.sanitizationCompleted = true;
 
     result.message =
         "Host overwrite completed and read-back verification passed.";
@@ -890,8 +833,7 @@ VerificationResult HostOverwriteSanitizer::sanitize(
     result.method =
         VerificationMethod::HOST_READ_BACK;
 
-    if (deviceHandle ==
-        INVALID_HANDLE_VALUE)
+    if (deviceHandle == INVALID_HANDLE_VALUE)
     {
         result.phase =
             "Handle validation";
@@ -919,12 +861,9 @@ VerificationResult HostOverwriteSanitizer::sanitize(
             deviceHandle,
             sectorSize))
     {
-        DWORD errorCode =
-            GetLastError();
+        const DWORD errorCode = GetLastError();
 
-        result.nativeErrorCode =
-            errorCode;
-
+        result.nativeErrorCode = errorCode;
         result.phase =
             "Sector size detection";
 
@@ -943,8 +882,7 @@ VerificationResult HostOverwriteSanitizer::sanitize(
         << sectorSize
         << " bytes\n";
 
-    if ((totalBytes %
-         sectorSize) != 0)
+    if ((totalBytes % sectorSize) != 0)
     {
         result.nativeErrorCode =
             ERROR_INVALID_DATA;
@@ -998,15 +936,11 @@ VerificationResult HostOverwriteSanitizer::sanitize(
     std::cout
         << "Flushing device buffers...\n";
 
-    if (!FlushFileBuffers(
-            deviceHandle))
+    if (!FlushFileBuffers(deviceHandle))
     {
-        DWORD errorCode =
-            GetLastError();
+        const DWORD errorCode = GetLastError();
 
-        result.nativeErrorCode =
-            errorCode;
-
+        result.nativeErrorCode = errorCode;
         result.phase =
             "FlushFileBuffers";
 
@@ -1029,7 +963,7 @@ VerificationResult HostOverwriteSanitizer::sanitize(
     std::cout
         << "\nStarting sampled read-back verification...\n";
 
-    VerificationResult verification =
+    VerificationResult verificationResult =
         verify(
             deviceHandle,
             totalBytes,
@@ -1038,5 +972,5 @@ VerificationResult HostOverwriteSanitizer::sanitize(
     unlockTargetVolumes(
         lockedVolumes);
 
-    return verification;
+    return verificationResult;
 }

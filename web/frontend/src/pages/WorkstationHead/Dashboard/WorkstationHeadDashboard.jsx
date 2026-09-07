@@ -182,6 +182,39 @@ function WorkstationHeadDashboard() {
         };
 
 
+    const findEmployeeWorkstation = (employeeId) => {
+        if (!employeeId) {
+            return null;
+        }
+
+        return (center?.workstations || []).find(
+            (workstation) =>
+                String(
+                    workstation.assignedEmployee?._id ||
+                    workstation.assignedEmployee ||
+                    ""
+                ) === String(employeeId)
+        ) || null;
+    };
+
+    const handleEmployeeSelection = (
+        requestId,
+        employeeId
+    ) => {
+        const employeeWorkstation =
+            findEmployeeWorkstation(employeeId);
+
+        setAssignment((previous) => ({
+            ...previous,
+            [requestId]: {
+                ...previous[requestId],
+                assignedEmployeeId: employeeId,
+                assignedWorkstationId:
+                    employeeWorkstation?.workstationId || "",
+            },
+        }));
+    };
+
     const handleAssignmentChange =
         (
             requestId,
@@ -194,12 +227,8 @@ function WorkstationHeadDashboard() {
                     ...previous,
 
                     [requestId]: {
-                        ...previous[
-                        requestId
-                        ],
-
-                        [field]:
-                            value,
+                        ...previous[requestId],
+                        [field]: value,
                     },
                 })
             );
@@ -224,11 +253,30 @@ function WorkstationHeadDashboard() {
                 return;
             }
 
+            const employeeWorkstation =
+                findEmployeeWorkstation(
+                    selected.assignedEmployeeId
+                );
+
             if (
+                employeeWorkstation &&
+                selected.assignedWorkstationId &&
+                selected.assignedWorkstationId !==
+                    employeeWorkstation.workstationId
+            ) {
+                toast.error(
+                    `This employee is already assigned to ${employeeWorkstation.workstationId}.`
+                );
+
+                return;
+            }
+
+            if (
+                !employeeWorkstation &&
                 !selected.assignedWorkstationId
             ) {
                 toast.error(
-                    "Please select a workstation"
+                    "Select an unassigned workstation to bind this employee before assigning the request."
                 );
 
                 return;
@@ -634,12 +682,9 @@ function WorkstationHeadDashboard() {
                                                         selected.assignedEmployeeId ||
                                                         ""
                                                     }
-                                                    onChange={(
-                                                        event
-                                                    ) =>
-                                                        handleAssignmentChange(
+                                                    onChange={(event) =>
+                                                        handleEmployeeSelection(
                                                             request.requestId,
-                                                            "assignedEmployeeId",
                                                             event.target.value
                                                         )
                                                     }
@@ -686,75 +731,87 @@ function WorkstationHeadDashboard() {
                                             <div>
 
                                                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                                                    Assign Workstation
+                                                    Assigned Workstation
                                                 </label>
 
-                                                <select
-                                                    value={
-                                                        selected.assignedWorkstationId ||
-                                                        ""
-                                                    }
-                                                    onChange={(
-                                                        event
-                                                    ) =>
-                                                        handleAssignmentChange(
-                                                            request.requestId,
-                                                            "assignedWorkstationId",
-                                                            event.target.value
-                                                        )
-                                                    }
-                                                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                                                >
+                                                {selected.assignedEmployeeId && findEmployeeWorkstation(selected.assignedEmployeeId) ? (
 
-                                                    <option value="">
-                                                        Select workstation
-                                                    </option>
+                                                    <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-3">
 
-                                                    {availableWorkstations.map(
-                                                        (
-                                                            workstation
-                                                        ) => (
+                                                        <p className="font-medium text-emerald-900">
+                                                            {findEmployeeWorkstation(selected.assignedEmployeeId).workstationId}
+                                                            {" — "}
+                                                            {findEmployeeWorkstation(selected.assignedEmployeeId).name}
+                                                        </p>
 
-                                                            <option
-                                                                key={
-                                                                    workstation._id
-                                                                }
-                                                                value={
-                                                                    workstation.workstationId
-                                                                }
-                                                                disabled={
-                                                                    Boolean(
-                                                                        workstation.assignedEmployee
-                                                                    )
-                                                                }
-                                                            >
-                                                                {
-                                                                    workstation.name
-                                                                }
+                                                        <p className="mt-1 text-xs text-emerald-700">
+                                                            {findEmployeeWorkstation(selected.assignedEmployeeId).connectionStatus || "OFFLINE"}
+                                                            {" • This employee is already bound to this workstation"}
+                                                        </p>
 
-                                                                {" - "}
+                                                    </div>
 
-                                                                {
-                                                                    workstation.connectionStatus
-                                                                }
+                                                ) : (
 
-                                                                {
-                                                                    workstation.assignedEmployee
-                                                                        ? " (Already assigned)"
-                                                                        : ""
-                                                                }
-
+                                                    <>
+                                                        <select
+                                                            value={
+                                                                selected.assignedWorkstationId ||
+                                                                ""
+                                                            }
+                                                            onChange={(event) =>
+                                                                handleAssignmentChange(
+                                                                    request.requestId,
+                                                                    "assignedWorkstationId",
+                                                                    event.target.value
+                                                                )
+                                                            }
+                                                            disabled={!selected.assignedEmployeeId}
+                                                            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-slate-50"
+                                                        >
+                                                            <option value="">
+                                                                {selected.assignedEmployeeId
+                                                                    ? "Select workstation to bind employee"
+                                                                    : "Select employee first"}
                                                             </option>
 
-                                                        )
-                                                    )}
+                                                            {availableWorkstations
+                                                                .filter(
+                                                                    (workstation) =>
+                                                                        !workstation.assignedEmployee
+                                                                )
+                                                                .map(
+                                                                    (workstation) => (
+                                                                        <option
+                                                                            key={
+                                                                                workstation._id
+                                                                            }
+                                                                            value={
+                                                                                workstation.workstationId
+                                                                            }
+                                                                        >
+                                                                            {workstation.workstationId}
+                                                                            {" — "}
+                                                                            {workstation.name}
+                                                                            {" • "}
+                                                                            {workstation.connectionStatus || "OFFLINE"}
+                                                                        </option>
+                                                                    )
+                                                                )}
+                                                        </select>
 
-                                                </select>
+                                                        {selected.assignedEmployeeId && (
+                                                            <p className="mt-2 text-xs text-amber-700">
+                                                                This employee has no workstation yet. The selected workstation will become the employee's workstation for future jobs.
+                                                            </p>
+                                                        )}
+                                                    </>
+
+                                                )}
 
                                             </div>
 
                                         </div>
-
 
                                         <button
                                             type="button"
