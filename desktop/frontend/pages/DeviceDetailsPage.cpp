@@ -10,48 +10,123 @@
 #include <QScrollArea>
 #include <QVBoxLayout>
 
-
 namespace
 {
 
 QString cardStyle()
 {
-    return
+    return QStringLiteral(
         "QFrame#deviceCard {"
-        "background-color: #FFFFFF;"
-        "border: 1px solid #E2E8F0;"
-        "border-radius: 10px;"
-        "}";
+        "background:#FFFFFF;"
+        "border:1px solid #E7ECF3;"
+        "border-radius:16px;"
+        "}");
 }
 
-
-QString secondaryTextStyle()
+QString fieldLabelStyle()
 {
-    return
-        "color: #667085;"
-        "font-size: 12px;";
+    return QStringLiteral(
+        "QLabel {"
+        "background:transparent;"
+        "border:none;"
+        "color:#667085;"
+        "font-size:11px;"
+        "font-weight:600;"
+        "}");
 }
 
-
-QString valueTextStyle()
+QString valueLabelStyle()
 {
-    return
-        "color: #172033;"
-        "font-size: 13px;"
-        "font-weight: 500;";
+    return QStringLiteral(
+        "QLabel {"
+        "background:transparent;"
+        "border:none;"
+        "color:#172033;"
+        "font-size:13px;"
+        "font-weight:600;"
+        "}");
 }
-
 
 QString sectionTitleStyle()
 {
-    return
-        "color: #172033;"
-        "font-size: 14px;"
-        "font-weight: 600;";
+    return QStringLiteral(
+        "QLabel {"
+        "background:transparent;"
+        "border:none;"
+        "color:#101828;"
+        "font-size:15px;"
+        "font-weight:700;"
+        "}");
+}
+
+QString secondaryTextStyle()
+{
+    return QStringLiteral(
+        "QLabel {"
+        "background:transparent;"
+        "border:none;"
+        "color:#667085;"
+        "font-size:12px;"
+        "}");
+}
+
+QString pendingBadgeStyle()
+{
+    return QStringLiteral(
+        "QLabel {"
+        "background:#FFF7ED;"
+        "color:#B45309;"
+        "border:1px solid #FED7AA;"
+        "border-radius:10px;"
+        "padding:6px 10px;"
+        "font-size:10px;"
+        "font-weight:700;"
+        "}");
+}
+
+QString successBadgeStyle()
+{
+    return QStringLiteral(
+        "QLabel {"
+        "background:#ECFDF3;"
+        "color:#027A48;"
+        "border:1px solid #ABEFC6;"
+        "border-radius:10px;"
+        "padding:6px 10px;"
+        "font-size:10px;"
+        "font-weight:700;"
+        "}");
+}
+
+QString failedBadgeStyle()
+{
+    return QStringLiteral(
+        "QLabel {"
+        "background:#FEF3F2;"
+        "color:#B42318;"
+        "border:1px solid #FECDCA;"
+        "border-radius:10px;"
+        "padding:6px 10px;"
+        "font-size:10px;"
+        "font-weight:700;"
+        "}");
+}
+
+QString neutralBadgeStyle()
+{
+    return QStringLiteral(
+        "QLabel {"
+        "background:#F8FAFC;"
+        "color:#475467;"
+        "border:1px solid #E4E7EC;"
+        "border-radius:10px;"
+        "padding:6px 10px;"
+        "font-size:10px;"
+        "font-weight:700;"
+        "}");
 }
 
 }
-
 
 DeviceDetailsPage::DeviceDetailsPage(
     const StorageDevice &device,
@@ -76,274 +151,228 @@ DeviceDetailsPage::DeviceDetailsPage(
     setupUi();
 }
 
-
-/*
- *  
- * Main UI
- *  
- */
-
 void DeviceDetailsPage::setupUi()
 {
-    setStyleSheet(
-    "DeviceDetailsPage {"
-    "background-color: #F8FAFC;"
-    "font-family: 'Segoe UI';"
-    "}"
-    ""
-    "DeviceDetailsPage QLabel {"
-    "background-color: transparent;"
-    "border: none;"
-    "}"
-    ""
-    "DeviceDetailsPage QFrame#deviceCard {"
-    "background-color: #FFFFFF;"
-    "border: 1px solid #E2E8F0;"
-    "border-radius: 10px;"
-    "}"
-    ""
-    "DeviceDetailsPage QPushButton {"
-    "font-family: 'Segoe UI';"
-    "}"
-);
+    setObjectName(QStringLiteral("deviceDetailsPage"));
 
+    setStyleSheet(
+        QStringLiteral(
+            "DeviceDetailsPage {"
+            "background:#F5F7FB;"
+            "}"
+            "DeviceDetailsPage QLabel {"
+            "background:transparent;"
+            "border:none;"
+            "}"
+            "DeviceDetailsPage QFrame#deviceCard {"
+            "background:#FFFFFF;"
+            "border:1px solid #E7ECF3;"
+            "border-radius:16px;"
+            "}"));
+
+    auto *scroll =
+        new QScrollArea(this);
+
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(
+        Qt::ScrollBarAlwaysOff);
+
+    auto *page =
+        new QWidget;
 
     auto *rootLayout =
-        new QVBoxLayout(this);
+        new QVBoxLayout(page);
 
     rootLayout->setContentsMargins(
-        28,
-        22,
-        28,
-        26
-    );
+        30,
+        26,
+        30,
+        30);
 
-    rootLayout->setSpacing(12);
-
+    rootLayout->setSpacing(16);
 
     /*
-     * ---------------------------------------------------------
      * Top navigation
-     * ---------------------------------------------------------
      */
-
     auto *topLayout =
-        new QHBoxLayout();
+        new QHBoxLayout;
 
     auto *backButton =
         new QPushButton(
-            "←  Back to Devices",
-            this
-        );
+            QStringLiteral("←  Back to Devices"),
+            page);
 
     backButton->setCursor(
-        Qt::PointingHandCursor
-    );
+        Qt::PointingHandCursor);
+
+    backButton->setMinimumHeight(34);
 
     backButton->setStyleSheet(
-        "QPushButton {"
-        "background: transparent;"
-        "border: none;"
-        "color: #2563EB;"
-        "font-size: 12px;"
-        "font-weight: 500;"
-        "padding: 4px;"
-        "}"
-        ""
-        "QPushButton:hover {"
-        "color: #1D4ED8;"
-        "}"
-    );
-
+        QStringLiteral(
+            "QPushButton {"
+            "background:transparent;"
+            "border:none;"
+            "color:#2563EB;"
+            "padding:4px 2px;"
+            "font-size:12px;"
+            "font-weight:600;"
+            "}"
+            "QPushButton:hover {"
+            "color:#1D4ED8;"
+            "}"));
 
     auto *refreshButton =
         new QPushButton(
-            "↻  Refresh Details",
-            this
-        );
+            QStringLiteral("↻  Refresh"),
+            page);
 
-    refreshButton->setMinimumHeight(34);
     refreshButton->setCursor(
-        Qt::PointingHandCursor
-    );
+        Qt::PointingHandCursor);
+
+    refreshButton->setMinimumHeight(36);
 
     refreshButton->setStyleSheet(
-        "QPushButton {"
-        "background-color: #FFFFFF;"
-        "border: 1px solid #D0D5DD;"
-        "border-radius: 6px;"
-        "color: #344054;"
-        "padding: 7px 13px;"
-        "font-size: 12px;"
-        "font-weight: 500;"
-        "}"
-        ""
-        "QPushButton:hover {"
-        "background-color: #F8FAFC;"
-        "border-color: #98A2B3;"
-        "}"
-    );
-
+        QStringLiteral(
+            "QPushButton {"
+            "background:#FFFFFF;"
+            "border:1px solid #D0D5DD;"
+            "border-radius:9px;"
+            "color:#344054;"
+            "padding:7px 13px;"
+            "font-size:11px;"
+            "font-weight:600;"
+            "}"
+            "QPushButton:hover {"
+            "background:#F8FAFC;"
+            "border-color:#98A2B3;"
+            "}"));
 
     connect(
         backButton,
         &QPushButton::clicked,
         this,
-        &DeviceDetailsPage::backRequested
-    );
-
+        &DeviceDetailsPage::backRequested);
 
     connect(
         refreshButton,
         &QPushButton::clicked,
         this,
-        &DeviceDetailsPage::refreshRequested
-    );
-
+        &DeviceDetailsPage::refreshRequested);
 
     topLayout->addWidget(
-        backButton
-    );
+        backButton);
 
     topLayout->addStretch();
 
     topLayout->addWidget(
-        refreshButton
-    );
-
+        refreshButton);
 
     rootLayout->addLayout(
-        topLayout
-    );
-
+        topLayout);
 
     /*
-     * ---------------------------------------------------------
-     * Page title
-     * ---------------------------------------------------------
+     * Page heading
      */
+    auto *heading =
+        new QVBoxLayout;
+
+    heading->setSpacing(4);
 
     auto *title =
         new QLabel(
-            "Device Details",
-            this
-        );
+            QStringLiteral("Device Details"),
+            page);
 
     title->setStyleSheet(
-    "QLabel {"
-    "background-color: transparent;"
-    "border: none;"
-    "color: #101828;"
-    "font-size: 25px;"
-    "font-weight: 700;"
-    "padding: 0px;"
-    "}"
-);
-
+        QStringLiteral(
+            "QLabel {"
+            "color:#101828;"
+            "font-size:26px;"
+            "font-weight:750;"
+            "}"));
 
     auto *subtitle =
         new QLabel(
-            "Detailed information and classification of the selected device.",
-            this
-        );
+            QStringLiteral(
+                "Identity, classification and safety information for the selected physical storage device."),
+            page);
 
+    subtitle->setWordWrap(true);
     subtitle->setStyleSheet(
-    "QLabel {"
-    "background-color: transparent;"
-    "border: none;"
-    "color: #667085;"
-    "font-size: 12px;"
-    "padding: 0px;"
-    "}"
-    );
+        QStringLiteral(
+            "QLabel {"
+            "color:#667085;"
+            "font-size:12px;"
+            "}"));
 
-
-    rootLayout->addWidget(title);
-    rootLayout->addWidget(subtitle);
-
-
-    /*
-     * ---------------------------------------------------------
-     * Device header card
-     * ---------------------------------------------------------
-     */
-
-    rootLayout->addWidget(
-        createDeviceHeader()
-    );
-
-
-    /*
-     * ---------------------------------------------------------
-     * Classification + System Status
-     * ---------------------------------------------------------
-     */
-
-    DeviceClassifier classifier;
-
-    ClassificationResult classification =
-        classifier.classify(device_);
-
-
-    auto *cardsLayout =
-        new QHBoxLayout();
-
-    cardsLayout->setSpacing(14);
-
-
-    QWidget *classificationCard =
-        createClassificationCard(
-            classification
-        );
-
-    QWidget *systemStatusCard =
-        createSystemStatusCard(
-            classification
-        );
-
-
-    cardsLayout->addWidget(
-        classificationCard,
-        1
-    );
-
-    cardsLayout->addWidget(
-        systemStatusCard,
-        1
-    );
-
+    heading->addWidget(title);
+    heading->addWidget(subtitle);
 
     rootLayout->addLayout(
-        cardsLayout
-    );
-
+        heading);
 
     /*
-     * ---------------------------------------------------------
-     * Safety
-     * ---------------------------------------------------------
+     * Device identity
      */
-
     rootLayout->addWidget(
-        createSafetyCard()
-    );
+        createDeviceHeader());
 
+    /*
+     * Classification / system status
+     */
+    DeviceClassifier classifier;
+
+    const ClassificationResult classification =
+        classifier.classify(device_);
+
+    auto *summaryLayout =
+        new QHBoxLayout;
+
+    summaryLayout->setSpacing(16);
+
+    summaryLayout->addWidget(
+        createClassificationCard(
+            classification),
+        1);
+
+    summaryLayout->addWidget(
+        createSystemStatusCard(
+            classification),
+        1);
+
+    rootLayout->addLayout(
+        summaryLayout);
+
+    /*
+     * Safety
+     */
+    rootLayout->addWidget(
+        createSafetyCard());
 
     rootLayout->addStretch();
+
+    scroll->setWidget(page);
+
+    auto *pageLayout =
+        new QVBoxLayout(this);
+
+    pageLayout->setContentsMargins(
+        0,
+        0,
+        0,
+        0);
+
+    pageLayout->addWidget(scroll);
 }
 
-
 /*
- *  
- * Device Header
- *  
+ * Device header
  */
-
 QWidget *DeviceDetailsPage::createDeviceHeader()
 {
     QFrame *card =
         createCard();
-
 
     auto *layout =
         new QHBoxLayout(card);
@@ -352,824 +381,787 @@ QWidget *DeviceDetailsPage::createDeviceHeader()
         22,
         20,
         22,
-        20
-    );
+        20);
 
-    layout->setSpacing(22);
+    layout->setSpacing(18);
 
+    auto *iconFrame =
+        new QFrame(card);
 
-    /*
-     * Device icon placeholder
-     *
-     * We intentionally keep this simple for now.
-     * Later we can use proper SSD/HDD icons.
-     */
+    iconFrame->setFixedSize(
+        68,
+        68);
 
-    QLabel *deviceIcon =
+    iconFrame->setStyleSheet(
+        QStringLiteral(
+            "QFrame {"
+            "background:#EFF6FF;"
+            "border:1px solid #DBEAFE;"
+            "border-radius:16px;"
+            "}"));
+
+    auto *iconLayout =
+        new QVBoxLayout(iconFrame);
+
+    iconLayout->setContentsMargins(
+        0,
+        0,
+        0,
+        0);
+
+    auto *icon =
         new QLabel(
-            "SSD",
-            card
-        );
+            QStringLiteral("SSD"),
+            iconFrame);
 
-    deviceIcon->setFixedSize(
-        80,
-        80
-    );
+    icon->setAlignment(
+        Qt::AlignCenter);
 
-    deviceIcon->setAlignment(
-        Qt::AlignCenter
-    );
+    icon->setStyleSheet(
+        QStringLiteral(
+            "QLabel {"
+            "background:transparent;"
+            "border:none;"
+            "color:#2563EB;"
+            "font-size:13px;"
+            "font-weight:800;"
+            "}"));
 
-    deviceIcon->setStyleSheet(
-    "QLabel {"
-    "background-color: #F8FAFC;"
-    "border: 1px solid #D0D5DD;"
-    "border-radius: 10px;"
-    "color: #344054;"
-    "font-size: 13px;"
-    "font-weight: 700;"
-    "}"
-);
+    iconLayout->addWidget(
+        icon);
 
-
-    /*
-     * Main identity information
-     */
+    layout->addWidget(
+        iconFrame);
 
     auto *identityLayout =
-        new QVBoxLayout();
+        new QVBoxLayout;
 
-    identityLayout->setSpacing(
-        5
-    );
-
+    identityLayout->setSpacing(5);
 
     auto *identityTop =
-        new QHBoxLayout();
-
+        new QHBoxLayout;
 
     modelLabel_ =
         new QLabel(
             QString::fromStdString(
-                device_.getModel()
-            ),
-            card
-        );
+                device_.getModel()),
+            card);
 
     modelLabel_->setStyleSheet(
-    "color: #101828;"
-    "font-size: 19px;"
-    "font-weight: 700;"
-);
+        QStringLiteral(
+            "QLabel {"
+            "color:#101828;"
+            "font-size:19px;"
+            "font-weight:750;"
+            "}"));
 
+    modelLabel_->setTextInteractionFlags(
+        Qt::TextSelectableByMouse);
 
     typeBadgeLabel_ =
         new QLabel(
-            "Storage Device",
-            card
-        );
+            QStringLiteral("Storage Device"),
+            card);
 
     typeBadgeLabel_->setAlignment(
-        Qt::AlignCenter
-    );
+        Qt::AlignCenter);
 
     typeBadgeLabel_->setStyleSheet(
-        "QLabel {"
-        "background-color: #EFF6FF;"
-        "color: #2563EB;"
-        "border-radius: 10px;"
-        "padding: 4px 9px;"
-        "font-size: 11px;"
-        "font-weight: 600;"
-        "}"
-    );
-
+        QStringLiteral(
+            "QLabel {"
+            "background:#F2F4F7;"
+            "color:#475467;"
+            "border:1px solid #E4E7EC;"
+            "border-radius:9px;"
+            "padding:5px 9px;"
+            "font-size:10px;"
+            "font-weight:700;"
+            "}"));
 
     identityTop->addWidget(
-        modelLabel_
-    );
+        modelLabel_);
 
     identityTop->addSpacing(
-        8
-    );
+        8);
 
     identityTop->addWidget(
-        typeBadgeLabel_
-    );
+        typeBadgeLabel_);
 
     identityTop->addStretch();
 
-
     identityLayout->addLayout(
-        identityTop
-    );
-
-
-    /*
-     * Field grid
-     */
+        identityTop);
 
     auto *detailsGrid =
-        new QGridLayout();
+        new QGridLayout;
+
+    detailsGrid->setContentsMargins(
+        0,
+        5,
+        0,
+        0);
 
     detailsGrid->setHorizontalSpacing(
-        28
-    );
+        22);
 
     detailsGrid->setVerticalSpacing(
-        6
-    );
-
+        8);
 
     serialLabel_ =
         createValueLabel(
             QString::fromStdString(
-                device_.getSerialNumber()
-            )
-        );
+                device_.getSerialNumber()));
 
     capacityLabel_ =
         createValueLabel(
             formatCapacity(
-                device_.getCapacityBytes()
-            )
-        );
+                device_.getCapacityBytes()));
 
     interfaceLabel_ =
         createValueLabel(
             QString::fromStdString(
-                device_.getInterfaceType()
-            )
-        );
+                device_.getInterfaceType()));
 
     devicePathLabel_ =
         createValueLabel(
             QString::fromStdString(
-                device_.getDeviceId()
-            )
-        );
-
+                device_.getDeviceId()));
 
     detailsGrid->addWidget(
-        createFieldLabel("Serial Number"),
+        createFieldLabel(
+            QStringLiteral("Serial Number")),
         0,
-        0
-    );
+        0);
 
     detailsGrid->addWidget(
         serialLabel_,
         0,
-        1
-    );
+        1);
 
     detailsGrid->addWidget(
-        createFieldLabel("Capacity"),
+        createFieldLabel(
+            QStringLiteral("Capacity")),
         1,
-        0
-    );
+        0);
 
     detailsGrid->addWidget(
         capacityLabel_,
         1,
-        1
-    );
+        1);
 
     detailsGrid->addWidget(
-        createFieldLabel("Interface"),
+        createFieldLabel(
+            QStringLiteral("Interface")),
         0,
-        2
-    );
+        2);
 
     detailsGrid->addWidget(
         interfaceLabel_,
         0,
-        3
-    );
+        3);
 
     detailsGrid->addWidget(
-        createFieldLabel("Device Path"),
+        createFieldLabel(
+            QStringLiteral("Device ID")),
         1,
-        2
-    );
+        2);
 
     detailsGrid->addWidget(
         devicePathLabel_,
         1,
-        3
-    );
-
-
-    identityLayout->addSpacing(
-        6
-    );
+        3);
 
     identityLayout->addLayout(
-        detailsGrid
-    );
-
-
-    layout->addWidget(
-        deviceIcon
-    );
+        detailsGrid);
 
     layout->addLayout(
         identityLayout,
-        1
-    );
-
+        1);
 
     /*
-     * Right-side status
+     * Safety status panel
      */
-
-    QFrame *statusFrame =
+    auto *statusFrame =
         new QFrame(card);
 
     statusFrame->setFixedWidth(
-        150
-    );
+        165);
 
     statusFrame->setStyleSheet(
-    "QFrame {"
-    "background-color: #FFFBEB;"
-    "border: 1px solid #FDE68A;"
-    "border-radius: 8px;"
-    "}"
-    );
-
+        QStringLiteral(
+            "QFrame {"
+            "background:#FFF9EB;"
+            "border:1px solid #FDE7B0;"
+            "border-radius:12px;"
+            "}"));
 
     auto *statusLayout =
         new QVBoxLayout(statusFrame);
 
     statusLayout->setContentsMargins(
         12,
-        10,
         12,
-        10
-    );
+        12,
+        12);
 
+    statusLayout->setSpacing(
+        5);
 
-    QLabel *shield =
-    new QLabel(
-        "!",
-        statusFrame
-    );
+    auto *shield =
+        new QLabel(
+            QStringLiteral("◆"),
+            statusFrame);
 
     shield->setAlignment(
-        Qt::AlignCenter
-    );
+        Qt::AlignCenter);
 
     shield->setStyleSheet(
-    "color: #D97706;"
-    "font-size: 20px;"
-    "font-weight: 700;"
-    );
-
+        QStringLiteral(
+            "QLabel {"
+            "background:transparent;"
+            "border:none;"
+            "color:#D97706;"
+            "font-size:15px;"
+            "font-weight:800;"
+            "}"));
 
     safetyStatusLabel_ =
-    new QLabel(
-        "Assessment Pending",
-        statusFrame
-    );
+        new QLabel(
+            QStringLiteral(
+                "Assessment Pending"),
+            statusFrame);
 
     safetyStatusLabel_->setAlignment(
-        Qt::AlignCenter
-    );
+        Qt::AlignCenter);
 
     safetyStatusLabel_->setStyleSheet(
-        "color: #15803D;"
-        "font-size: 12px;"
-        "font-weight: 600;"
-    );
+        QStringLiteral(
+            "QLabel {"
+            "background:transparent;"
+            "border:none;"
+            "color:#B45309;"
+            "font-size:11px;"
+            "font-weight:700;"
+            "}"));
 
-
-    QLabel *statusDescription =
+    auto *statusDescription =
         new QLabel(
-            "Device information available",
-            statusFrame
-        );
+            QStringLiteral(
+                "Safety assessment required before sanitization."),
+            statusFrame);
 
     statusDescription->setWordWrap(
-        true
-    );
+        true);
 
     statusDescription->setAlignment(
-        Qt::AlignCenter
-    );
+        Qt::AlignCenter);
 
     statusDescription->setStyleSheet(
-    "color: #92400E;"
-    "font-size: 10px;"
-    );
-
-
-    statusLayout->addWidget(
-        shield
-    );
-
-    statusLayout->addWidget(
-        safetyStatusLabel_
-    );
+        QStringLiteral(
+            "QLabel {"
+            "background:transparent;"
+            "border:none;"
+            "color:#92400E;"
+            "font-size:9px;"
+            "}"));
 
     statusLayout->addWidget(
-        statusDescription
-    );
+        shield);
 
+    statusLayout->addWidget(
+        safetyStatusLabel_);
+
+    statusLayout->addWidget(
+        statusDescription);
 
     layout->addWidget(
-        statusFrame
-    );
-
+        statusFrame);
 
     return card;
 }
 
-
 /*
- *  
- * Classification Card
- *  
+ * Classification
  */
-
 QWidget *DeviceDetailsPage::createClassificationCard(
     const ClassificationResult &classification)
 {
     QFrame *card =
         createCard();
 
-
     auto *layout =
         new QVBoxLayout(card);
 
     layout->setContentsMargins(
         18,
-        17,
         18,
-        17
-    );
+        18,
+        18);
 
+    layout->setSpacing(
+        12);
 
-    layout->addWidget(
+    auto *header =
+        new QHBoxLayout;
+
+    header->addWidget(
         createSectionTitle(
-            "Classification"
-        )
-    );
+            QStringLiteral("Classification")));
 
+    header->addStretch();
+
+    auto *badge =
+        new QLabel(
+            QStringLiteral("DETECTED"),
+            card);
+
+    badge->setAlignment(
+        Qt::AlignCenter);
+
+    badge->setStyleSheet(
+        successBadgeStyle());
+
+    header->addWidget(
+        badge);
+
+    layout->addLayout(
+        header);
 
     auto *grid =
-        new QGridLayout();
+        new QGridLayout;
 
     grid->setVerticalSpacing(
-        12
-    );
+        13);
 
     grid->setHorizontalSpacing(
-        24
-    );
-
+        22);
 
     mediaTypeValueLabel_ =
         createValueLabel(
             mediaTypeText(
-                classification.mediaType
-            )
-        );
+                classification.mediaType));
 
     busTypeValueLabel_ =
         createValueLabel(
             busTypeText(
-                classification.busType
-            )
-        );
+                classification.busType));
 
     deviceTypeValueLabel_ =
         createValueLabel(
             deviceTypeText(
-                classification.deviceType
-            )
-        );
+                classification.deviceType));
 
+    classificationStatusLabel_ =
+        createValueLabel(
+            QStringLiteral("Detected"));
+
+    classificationStatusLabel_->setStyleSheet(
+        QStringLiteral(
+            "QLabel {"
+            "color:#027A48;"
+            "font-size:12px;"
+            "font-weight:700;"
+            "}"));
 
     grid->addWidget(
-        createFieldLabel("Media Type"),
+        createFieldLabel(
+            QStringLiteral("Media Type")),
         0,
-        0
-    );
+        0);
 
     grid->addWidget(
         mediaTypeValueLabel_,
         0,
-        1
-    );
-
+        1);
 
     grid->addWidget(
-        createFieldLabel("Bus Type"),
+        createFieldLabel(
+            QStringLiteral("Bus Type")),
         1,
-        0
-    );
+        0);
 
     grid->addWidget(
         busTypeValueLabel_,
         1,
-        1
-    );
-
+        1);
 
     grid->addWidget(
-        createFieldLabel("Device Type"),
+        createFieldLabel(
+            QStringLiteral("Device Type")),
         2,
-        0
-    );
+        0);
 
     grid->addWidget(
         deviceTypeValueLabel_,
         2,
-        1
-    );
-
-
-    classificationStatusLabel_ =
-        createValueLabel(
-            "Detected"
-        );
-
-    classificationStatusLabel_->setStyleSheet(
-        "color: #15803D;"
-        "font-size: 12px;"
-        "font-weight: 600;"
-    );
-
+        1);
 
     grid->addWidget(
-        createFieldLabel("Status"),
+        createFieldLabel(
+            QStringLiteral("Classification")),
         3,
-        0
-    );
+        0);
 
     grid->addWidget(
         classificationStatusLabel_,
         3,
-        1
-    );
-
+        1);
 
     layout->addLayout(
-        grid
-    );
-
+        grid);
 
     return card;
 }
 
-
 /*
- *  
- * System Status Card
- *  
+ * System status
  */
-
 QWidget *DeviceDetailsPage::createSystemStatusCard(
     const ClassificationResult &classification)
 {
     QFrame *card =
         createCard();
 
-
     auto *layout =
         new QVBoxLayout(card);
 
     layout->setContentsMargins(
         18,
-        17,
         18,
-        17
-    );
+        18,
+        18);
 
+    layout->setSpacing(
+        12);
 
-    layout->addWidget(
+    auto *header =
+        new QHBoxLayout;
+
+    header->addWidget(
         createSectionTitle(
-            "System Status"
-        )
-    );
+            QStringLiteral("System Status")));
 
+    header->addStretch();
+
+    auto *badge =
+        new QLabel(
+            device_.isSystemDisk()
+                ? QStringLiteral("PROTECTED")
+                : QStringLiteral("NON-SYSTEM"),
+            card);
+
+    badge->setAlignment(
+        Qt::AlignCenter);
+
+    badge->setStyleSheet(
+        device_.isSystemDisk()
+            ? failedBadgeStyle()
+            : successBadgeStyle());
+
+    header->addWidget(
+        badge);
+
+    layout->addLayout(
+        header);
 
     auto *grid =
-        new QGridLayout();
+        new QGridLayout;
 
     grid->setVerticalSpacing(
-        12
-    );
+        13);
 
+    grid->setHorizontalSpacing(
+        22);
 
     systemDiskValueLabel_ =
         createValueLabel(
             device_.isSystemDisk()
-                ? "Yes"
-                : "No"
-        );
-
+                ? QStringLiteral("Yes")
+                : QStringLiteral("No"));
 
     removableValueLabel_ =
         createValueLabel(
             device_.isRemovable()
-                ? "Yes"
-                : "No"
-        );
+                ? QStringLiteral("Yes")
+                : QStringLiteral("No"));
 
-
-    QLabel *systemStatus =
+    auto *classificationValue =
         createValueLabel(
             classification.isSystemDisk
-                ? "System Device"
-                : "Non-System Device"
-        );
+                ? QStringLiteral(
+                    "System Device")
+                : QStringLiteral(
+                    "Non-System Device"));
 
-
-    QLabel *seekPenalty =
+    auto *seekPenaltyValue =
         createValueLabel(
             device_.hasSeekPenalty()
-                ? "Detected"
-                : "Not Detected"
-        );
-
+                ? QStringLiteral("Detected")
+                : QStringLiteral("Not detected"));
 
     grid->addWidget(
-        createFieldLabel("System Disk"),
+        createFieldLabel(
+            QStringLiteral("System Disk")),
         0,
-        0
-    );
+        0);
 
     grid->addWidget(
         systemDiskValueLabel_,
         0,
-        1
-    );
-
+        1);
 
     grid->addWidget(
-        createFieldLabel("Removable"),
+        createFieldLabel(
+            QStringLiteral("Removable")),
         1,
-        0
-    );
+        0);
 
     grid->addWidget(
         removableValueLabel_,
         1,
-        1
-    );
-
+        1);
 
     grid->addWidget(
-        createFieldLabel("System Classification"),
+        createFieldLabel(
+            QStringLiteral("System Classification")),
         2,
-        0
-    );
+        0);
 
     grid->addWidget(
-        systemStatus,
+        classificationValue,
         2,
-        1
-    );
-
+        1);
 
     grid->addWidget(
-        createFieldLabel("Seek Penalty"),
+        createFieldLabel(
+            QStringLiteral("Seek Penalty")),
         3,
-        0
-    );
+        0);
 
     grid->addWidget(
-        seekPenalty,
+        seekPenaltyValue,
         3,
-        1
-    );
-
+        1);
 
     layout->addLayout(
-        grid
-    );
-
+        grid);
 
     return card;
 }
 
-
 /*
- *  
- * Safety Card
- *  
+ * Safety
  */
-
 QWidget *DeviceDetailsPage::createSafetyCard()
 {
     QFrame *card =
         createCard();
 
-
     auto *layout =
         new QVBoxLayout(card);
 
     layout->setContentsMargins(
-        16,
-        15,
-        16,
-        15
-    );
+        18,
+        18,
+        18,
+        18);
 
+    layout->setSpacing(
+        12);
 
     auto *header =
-        new QHBoxLayout();
-
+        new QHBoxLayout;
 
     header->addWidget(
         createSectionTitle(
-            "Safety Status"
-        )
-    );
+            QStringLiteral("Safety Status")));
 
     header->addStretch();
 
-
-    QLabel *pendingBadge =
+    auto *badge =
         new QLabel(
-            "Assessment pending",
-            card
-        );
+            QStringLiteral(
+                "ASSESSMENT PENDING"),
+            card);
 
-    pendingBadge->setStyleSheet(
-        "QLabel {"
-        "background-color: #FFF7ED;"
-        "color: #C2410C;"
-        "border-radius: 10px;"
-        "padding: 4px 9px;"
-        "font-size: 10px;"
-        "font-weight: 600;"
-        "}"
-    );
+    badge->setAlignment(
+        Qt::AlignCenter);
 
+    badge->setStyleSheet(
+        pendingBadgeStyle());
 
     header->addWidget(
-        pendingBadge
-    );
-
+        badge);
 
     layout->addLayout(
-        header
-    );
-
+        header);
 
     safetyDescriptionLabel_ =
         new QLabel(
-            "The device has been discovered and classified. "
-            "Detailed safety checks will be connected to the "
-            "SafetyEngine before any sanitization operation.",
-            card
-        );
+            QStringLiteral(
+                "The device has been discovered and classified. "
+                "Fresh safety validation must pass before this physical target can be sanitized."),
+            card);
 
     safetyDescriptionLabel_->setWordWrap(
-        true
-    );
+        true);
 
     safetyDescriptionLabel_->setStyleSheet(
-        "color: #667085;"
-        "font-size: 12px;"
-    );
-
+        secondaryTextStyle());
 
     layout->addWidget(
-        safetyDescriptionLabel_
-    );
-
+        safetyDescriptionLabel_);
 
     auto *checksLayout =
-        new QHBoxLayout();
+        new QHBoxLayout;
 
     checksLayout->setSpacing(
-        12
-    );
-
+        10);
 
     const QStringList checks = {
-        "Device identity",
-        "System disk",
-        "Boot dependency",
-        "Mounted volume"
+        QStringLiteral("Device identity"),
+        QStringLiteral("System disk"),
+        QStringLiteral("Boot dependency"),
+        QStringLiteral("Mounted volume")
     };
 
-
-    for (const QString &check : checks)
+    for (const QString &check :
+         checks)
     {
-        QLabel *checkLabel =
-            new QLabel(
-                "•  " + check,
-                card
-            );
+        auto *checkFrame =
+            new QFrame(card);
 
-        checkLabel->setStyleSheet(
-            "color: #667085;"
-            "font-size: 11px;"
-        );
+        checkFrame->setStyleSheet(
+            QStringLiteral(
+                "QFrame {"
+                "background:#F8FAFC;"
+                "border:1px solid #EAECF0;"
+                "border-radius:9px;"
+                "}"));
+
+        auto *checkLayout =
+            new QHBoxLayout(
+                checkFrame);
+
+        checkLayout->setContentsMargins(
+            9,
+            7,
+            9,
+            7);
+
+        checkLayout->setSpacing(
+            6);
+
+        auto *dot =
+            new QLabel(
+                QStringLiteral("•"),
+                checkFrame);
+
+        dot->setStyleSheet(
+            QStringLiteral(
+                "QLabel {"
+                "color:#98A2B3;"
+                "font-size:13px;"
+                "font-weight:800;"
+                "}"));
+
+        auto *label =
+            new QLabel(
+                check,
+                checkFrame);
+
+        label->setStyleSheet(
+            QStringLiteral(
+                "QLabel {"
+                "color:#667085;"
+                "font-size:10px;"
+                "font-weight:600;"
+                "}"));
+
+        checkLayout->addWidget(
+            dot);
+
+        checkLayout->addWidget(
+            label);
 
         checksLayout->addWidget(
-            checkLabel
-        );
+            checkFrame,
+            1);
     }
 
-
     layout->addLayout(
-        checksLayout
-    );
+        checksLayout);
 
     setSafetyPending();
+
     return card;
 }
 
-
 /*
- *  
  * Helpers
- *  
  */
-
 QFrame *DeviceDetailsPage::createCard()
 {
-    QFrame *card =
+    auto *card =
         new QFrame(this);
 
     card->setObjectName(
-        "deviceCard"
-    );
+        QStringLiteral("deviceCard"));
 
     card->setStyleSheet(
-        cardStyle()
-    );
+        cardStyle());
 
     return card;
 }
-
 
 QLabel *DeviceDetailsPage::createSectionTitle(
     const QString &title)
 {
-    QLabel *label =
+    auto *label =
         new QLabel(
             title,
-            this
-        );
+            this);
 
     label->setStyleSheet(
-        sectionTitleStyle()
-    );
+        sectionTitleStyle());
 
     return label;
 }
-
 
 QLabel *DeviceDetailsPage::createFieldLabel(
     const QString &text)
 {
-    QLabel *label =
+    auto *label =
         new QLabel(
             text,
-            this
-        );
+            this);
 
     label->setStyleSheet(
-        secondaryTextStyle()
-    );
+        fieldLabelStyle());
 
     return label;
 }
-
 
 QLabel *DeviceDetailsPage::createValueLabel(
     const QString &text)
 {
-    QLabel *label =
+    auto *label =
         new QLabel(
             text,
-            this
-        );
+            this);
 
     label->setStyleSheet(
-        valueTextStyle()
-    );
+        valueLabelStyle());
 
     label->setTextInteractionFlags(
-        Qt::TextSelectableByMouse
-    );
+        Qt::TextSelectableByMouse);
 
     return label;
 }
 
-
 /*
- *  
  * Formatting
- *  
  */
-
 QString DeviceDetailsPage::formatCapacity(
     std::uint64_t bytes) const
 {
@@ -1178,193 +1170,195 @@ QString DeviceDetailsPage::formatCapacity(
     constexpr double GB = MB * 1024.0;
     constexpr double TB = GB * 1024.0;
 
-
-    if (bytes >= static_cast<std::uint64_t>(TB))
+    if (bytes >=
+        static_cast<std::uint64_t>(TB))
     {
         return QString::number(
-            static_cast<double>(bytes) / TB,
-            'f',
-            2
-        ) + " TB";
+                   static_cast<double>(
+                       bytes) / TB,
+                   'f',
+                   2)
+            + QStringLiteral(" TB");
     }
 
-
-    if (bytes >= static_cast<std::uint64_t>(GB))
+    if (bytes >=
+        static_cast<std::uint64_t>(GB))
     {
         return QString::number(
-            static_cast<double>(bytes) / GB,
-            'f',
-            1
-        ) + " GB";
+                   static_cast<double>(
+                       bytes) / GB,
+                   'f',
+                   1)
+            + QStringLiteral(" GB");
     }
 
-
-    if (bytes >= static_cast<std::uint64_t>(MB))
+    if (bytes >=
+        static_cast<std::uint64_t>(MB))
     {
         return QString::number(
-            static_cast<double>(bytes) / MB,
-            'f',
-            1
-        ) + " MB";
+                   static_cast<double>(
+                       bytes) / MB,
+                   'f',
+                   1)
+            + QStringLiteral(" MB");
     }
 
-
-    if (bytes >= static_cast<std::uint64_t>(KB))
+    if (bytes >=
+        static_cast<std::uint64_t>(KB))
     {
         return QString::number(
-            static_cast<double>(bytes) / KB,
-            'f',
-            1
-        ) + " KB";
+                   static_cast<double>(
+                       bytes) / KB,
+                   'f',
+                   1)
+            + QStringLiteral(" KB");
     }
 
-
-    return QString::number(bytes) + " B";
+    return QString::number(
+               bytes)
+        + QStringLiteral(" B");
 }
-
 
 QString DeviceDetailsPage::mediaTypeText(
     MediaType type) const
 {
     switch (type)
     {
-        case MediaType::HDD:
-            return "HDD";
+    case MediaType::HDD:
+        return QStringLiteral("HDD");
 
-        case MediaType::SSD:
-            return "SSD";
+    case MediaType::SSD:
+        return QStringLiteral("SSD");
 
-        default:
-            return "Unknown";
+    default:
+        return QStringLiteral("Unknown");
     }
 }
-
 
 QString DeviceDetailsPage::busTypeText(
     BusType type) const
 {
     switch (type)
     {
-        case BusType::SATA:
-            return "SATA";
+    case BusType::SATA:
+        return QStringLiteral("SATA");
 
-        case BusType::SAS:
-            return "SAS";
+    case BusType::SAS:
+        return QStringLiteral("SAS");
 
-        case BusType::USB:
-            return "USB";
+    case BusType::USB:
+        return QStringLiteral("USB");
 
-        case BusType::NVMe:
-            return "NVMe";
+    case BusType::NVMe:
+        return QStringLiteral("NVMe");
 
-        default:
-            return "Unknown";
+    default:
+        return QStringLiteral("Unknown");
     }
 }
-
 
 QString DeviceDetailsPage::deviceTypeText(
     DeviceType type) const
 {
     switch (type)
     {
-        case DeviceType::Internal:
-            return "Internal";
+    case DeviceType::Internal:
+        return QStringLiteral("Internal");
 
-        case DeviceType::Removable:
-            return "Removable";
+    case DeviceType::Removable:
+        return QStringLiteral("Removable");
 
-        default:
-            return "Unknown";
+    default:
+        return QStringLiteral("Unknown");
     }
 }
 
+/*
+ * Safety state
+ */
 void DeviceDetailsPage::setSafetyPending()
 {
-    if (!safetyStatusLabel_)
+    if (safetyStatusLabel_)
     {
-        return;
+        safetyStatusLabel_->setText(
+            QStringLiteral(
+                "Assessment Pending"));
+
+        safetyStatusLabel_->setStyleSheet(
+            QStringLiteral(
+                "QLabel {"
+                "background:transparent;"
+                "border:none;"
+                "color:#B45309;"
+                "font-size:11px;"
+                "font-weight:700;"
+                "}"));
     }
-
-    safetyStatusLabel_->setText(
-        "Assessment Pending"
-    );
-
-    safetyStatusLabel_->setStyleSheet(
-        "QLabel {"
-        "color: #B45309;"
-        "font-size: 12px;"
-        "font-weight: 600;"
-        "}"
-    );
-
 
     if (safetyDescriptionLabel_)
     {
         safetyDescriptionLabel_->setText(
-            "Safety assessment has not been completed yet."
-        );
+            QStringLiteral(
+                "Safety assessment has not been completed yet. "
+                "Run fresh safety validation before sanitization."));
     }
 }
-
 
 void DeviceDetailsPage::setSafetyPassed()
 {
-    if (!safetyStatusLabel_)
+    if (safetyStatusLabel_)
     {
-        return;
+        safetyStatusLabel_->setText(
+            QStringLiteral(
+                "Safety Checks Passed"));
+
+        safetyStatusLabel_->setStyleSheet(
+            QStringLiteral(
+                "QLabel {"
+                "background:transparent;"
+                "border:none;"
+                "color:#027A48;"
+                "font-size:11px;"
+                "font-weight:700;"
+                "}"));
     }
-
-    safetyStatusLabel_->setText(
-        "Safety Checks Passed"
-    );
-
-    safetyStatusLabel_->setStyleSheet(
-        "QLabel {"
-        "color: #15803D;"
-        "font-size: 12px;"
-        "font-weight: 600;"
-        "}"
-    );
-
 
     if (safetyDescriptionLabel_)
     {
         safetyDescriptionLabel_->setText(
-            "The device passed the required safety checks."
-        );
+            QStringLiteral(
+                "The device passed the required safety checks "
+                "and is eligible for the next authorized workflow step."));
     }
 }
-
 
 void DeviceDetailsPage::setSafetyFailed(
     const QString &message)
 {
-    if (!safetyStatusLabel_)
+    if (safetyStatusLabel_)
     {
-        return;
+        safetyStatusLabel_->setText(
+            QStringLiteral(
+                "Sanitization Blocked"));
+
+        safetyStatusLabel_->setStyleSheet(
+            QStringLiteral(
+                "QLabel {"
+                "background:transparent;"
+                "border:none;"
+                "color:#B42318;"
+                "font-size:11px;"
+                "font-weight:700;"
+                "}"));
     }
-
-    safetyStatusLabel_->setText(
-        "Sanitization Blocked"
-    );
-
-    safetyStatusLabel_->setStyleSheet(
-        "QLabel {"
-        "color: #B42318;"
-        "font-size: 12px;"
-        "font-weight: 600;"
-        "}"
-    );
-
 
     if (safetyDescriptionLabel_)
     {
         safetyDescriptionLabel_->setText(
             message.isEmpty()
-                ? "The device did not pass the required safety checks."
-                : message
-        );
+                ? QStringLiteral(
+                    "The device did not pass the required safety checks.")
+                : message);
     }
 }
 

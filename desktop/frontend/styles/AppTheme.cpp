@@ -1,5 +1,7 @@
 #include "AppTheme.h"
 
+#include <QApplication>
+#include <QPalette>
 #include <QWidget>
 
 namespace AppTheme
@@ -8,390 +10,197 @@ namespace AppTheme
 void apply(QWidget *root)
 {
     if (!root)
-    {
         return;
-    }
+
+    QPalette palette;
+    palette.setColor(QPalette::Window, QColor("#F5F7FB"));
+    palette.setColor(QPalette::WindowText, QColor("#172033"));
+    palette.setColor(QPalette::Base, QColor("#FFFFFF"));
+    palette.setColor(QPalette::AlternateBase, QColor("#F8FAFC"));
+    palette.setColor(QPalette::Text, QColor("#172033"));
+    palette.setColor(QPalette::Button, QColor("#FFFFFF"));
+    palette.setColor(QPalette::ButtonText, QColor("#344054"));
+    palette.setColor(QPalette::BrightText, QColor("#FFFFFF"));
+    palette.setColor(QPalette::Highlight, QColor("#DBEAFE"));
+    palette.setColor(QPalette::HighlightedText, QColor("#172033"));
+    palette.setColor(QPalette::PlaceholderText, QColor("#98A2B3"));
+
+    QApplication::setPalette(palette);
 
     root->setStyleSheet(
+        QStringLiteral(
+            "QMainWindow {"
+            "background:#F5F7FB;"
+            "color:#172033;"
+            "}"
 
-        /*
-          
-         * MAIN WINDOW
-          
-         */
+            "QWidget {"
+            "font-family:'Segoe UI';"
+            "color:#172033;"
+            "}"
 
-        "QMainWindow {"
-        "background-color: #F8FAFC;"
-        "color: #172033;"
-        "}"
+            "QWidget#loginPage,"
+            "QWidget#appPage,"
+            "QWidget#dashboardPage,"
+            "QWidget#jobsPage,"
+            "QWidget#devicesPage,"
+            "QWidget#forensicsPage,"
+            "QWidget#settingsPage {"
+            "background:#F5F7FB;"
+            "}"
 
-        "QWidget {"
-        "font-family: 'Segoe UI';"
-        "color: #172033;"
-        "}"
+            "QScrollArea {"
+            "background:#F5F7FB;"
+            "border:none;"
+            "}"
 
-        /*
-          
-         * LOGIN PAGE
-          
-         */
+            "QScrollArea > QWidget > QWidget {"
+            "background:#F5F7FB;"
+            "}"
 
-        "QWidget#loginPage {"
-        "background-color: #F8FAFC;"
-        "}"
+            "QLabel {"
+            "background:transparent;"
+            "border:none;"
+            "}"
 
-        "QLabel#appTitle {"
-        "background-color: transparent;"
-        "color: #172033;"
-        "font-size: 30px;"
-        "font-weight: 700;"
-        "}"
+            "QLineEdit {"
+            "background:#FFFFFF;"
+            "color:#172033;"
+            "border:1px solid #D0D5DD;"
+            "border-radius:9px;"
+            "padding:10px 12px;"
+            "font-size:12px;"
+            "selection-background-color:#DBEAFE;"
+            "}"
 
-        "QLabel#appSubtitle {"
-        "background-color: transparent;"
-        "color: #667085;"
-        "font-size: 13px;"
-        "}"
+            "QLineEdit:focus {"
+            "border:1px solid #2563EB;"
+            "}"
 
-        "QLabel#emailLineLabel,"
-        "QLabel#passwordLabel {"
-        "background-color: transparent;"
-        "color: #344054;"
-        "font-size: 12px;"
-        "font-weight: 600;"
-        "}"
+            "QLineEdit:disabled {"
+            "background:#F2F4F7;"
+            "color:#98A2B3;"
+            "}"
 
-        "QLineEdit#emailLineEdit,"
-        "QLineEdit#passwordLineEdit {"
-        "background-color: #FFFFFF;"
-        "color: #172033;"
-        "border: 1px solid #D0D5DD;"
-        "border-radius: 7px;"
-        "padding: 9px 11px;"
-        "font-size: 13px;"
-        "}"
+            "QComboBox {"
+            "background:#FFFFFF;"
+            "color:#172033;"
+            "border:1px solid #D0D5DD;"
+            "border-radius:9px;"
+            "padding:9px 12px;"
+            "font-size:12px;"
+            "min-height:18px;"
+            "}"
 
-        "QLineEdit#emailLineEdit:focus,"
-        "QLineEdit#passwordLineEdit:focus {"
-        "border: 1px solid #2563EB;"
-        "}"
+            "QComboBox:hover {"
+            "border:1px solid #98A2B3;"
+            "}"
 
-        "QLineEdit#emailLineEdit::placeholder,"
-        "QLineEdit#passwordLineEdit::placeholder {"
-        "color: #98A2B3;"
-        "}"
+            "QComboBox:focus {"
+            "border:1px solid #2563EB;"
+            "}"
 
-        "QPushButton#loginButton {"
-        "background-color: #2563EB;"
-        "color: #FFFFFF;"
-        "border: none;"
-        "border-radius: 7px;"
-        "padding: 10px 18px;"
-        "font-size: 13px;"
-        "font-weight: 600;"
-        "}"
+            "QComboBox::drop-down {"
+            "border:none;"
+            "width:28px;"
+            "}"
 
-        "QPushButton#loginButton:hover {"
-        "background-color: #1D4ED8;"
-        "}"
+            "QComboBox QAbstractItemView {"
+            "background:#FFFFFF;"
+            "color:#172033;"
+            "border:1px solid #D0D5DD;"
+            "selection-background-color:#EFF6FF;"
+            "selection-color:#172033;"
+            "padding:4px;"
+            "}"
 
-        "QPushButton#loginButton:pressed {"
-        "background-color: #1E40AF;"
-        "}"
+            "QPushButton {"
+            "font-family:'Segoe UI';"
+            "font-size:12px;"
+            "font-weight:600;"
+            "border:none;"
+            "border-radius:9px;"
+            "}"
 
-        "QPushButton#loginButton:disabled {"
-        "background-color: #D0D5DD;"
-        "color: #98A2B3;"
-        "}"
+            "QPushButton:disabled {"
+            "color:#98A2B3;"
+            "}"
 
-        "QPushButton#forgotPasswordButton {"
-        "background-color: transparent;"
-        "color: #2563EB;"
-        "border: none;"
-        "font-size: 12px;"
-        "padding: 4px;"
-        "}"
+            "QTableWidget {"
+            "background:#FFFFFF;"
+            "alternate-background-color:#FAFBFC;"
+            "color:#172033;"
+            "border:1px solid #E4E7EC;"
+            "border-radius:12px;"
+            "gridline-color:transparent;"
+            "outline:none;"
+            "font-size:12px;"
+            "}"
 
-        "QPushButton#forgotPasswordButton:hover {"
-        "color: #1D4ED8;"
-        "text-decoration: underline;"
-        "}"
+            "QTableWidget::item {"
+            "padding:9px;"
+            "border:none;"
+            "}"
 
-        "QLabel#loginErrorLabel {"
-        "background-color: transparent;"
-        "color: #D92D20;"
-        "font-size: 12px;"
-        "}"
+            "QTableWidget::item:selected {"
+            "background:#EFF6FF;"
+            "color:#172033;"
+            "}"
 
-        /*
-          
-         * APPLICATION SHELL
-          
-         */
+            "QHeaderView::section {"
+            "background:#F8FAFC;"
+            "color:#667085;"
+            "border:none;"
+            "border-bottom:1px solid #E4E7EC;"
+            "padding:10px 9px;"
+            "font-size:10px;"
+            "font-weight:700;"
+            "}"
 
-        "QWidget#appPage {"
-        "background-color: #F8FAFC;"
-        "}"
-        "QFrame#sidebarFrame {"
-        "background-color: #FFFFFF;"
-        "border-right: 1px solid #E4E7EC;"
-        "}"
-        /*
-         * The sidebar is currently represented by the first
-         * layout inside appPage rather than a QWidget.
-         *
-         * We therefore give the navigation controls a clean,
-         * consistent appearance.
-         */
+            "QProgressBar {"
+            "background:#E9EEF5;"
+            "border:none;"
+            "border-radius:5px;"
+            "min-height:8px;"
+            "max-height:8px;"
+            "text-align:center;"
+            "}"
 
-        "QLabel#sidebarTitle {"
-        "background-color: transparent;"
-        "color: #172033;"
-        "font-size: 17px;"
-        "font-weight: 700;"
-        "padding: 6px 4px 18px 4px;"
-        "}"
+            "QProgressBar::chunk {"
+            "background:#2563EB;"
+            "border-radius:5px;"
+            "}"
 
-        /*
-          
-         * NAVIGATION
-          
-         */
+            "QScrollBar:vertical {"
+            "background:#F2F4F7;"
+            "width:10px;"
+            "border:none;"
+            "margin:0;"
+            "}"
 
-        "QPushButton#dashboardNavButton,"
-"QPushButton#devicesNavButton,"
-"QPushButton#wipeNavButton,"
-"QPushButton#reportsNavButton,"
-"QPushButton#settingsNavButton {"
-"background-color: transparent;"
-"color: #475467;"
-"border: none;"
-"border-radius: 7px;"
-"text-align: left;"
-"padding: 0px 12px;"
-"font-size: 13px;"
-"font-weight: 500;"
-"}"
+            "QScrollBar::handle:vertical {"
+            "background:#CBD5E1;"
+            "min-height:30px;"
+            "border-radius:5px;"
+            "}"
 
-"QPushButton#dashboardNavButton:hover,"
-"QPushButton#devicesNavButton:hover,"
-"QPushButton#wipeNavButton:hover,"
-"QPushButton#reportsNavButton:hover,"
-"QPushButton#settingsNavButton:hover {"
-"background-color: #F2F4F7;"
-"color: #172033;"
-"}"
+            "QScrollBar::handle:vertical:hover {"
+            "background:#98A2B3;"
+            "}"
 
-"QPushButton#logoutButton {"
-"background-color: transparent;"
-"color: #D92D20;"
-"border: none;"
-"border-radius: 7px;"
-"text-align: left;"
-"padding: 0px 12px;"
-"font-size: 13px;"
-"font-weight: 500;"
-"}"
+            "QScrollBar::add-line:vertical,"
+            "QScrollBar::sub-line:vertical {"
+            "height:0;"
+            "}"
 
-"QPushButton#logoutButton:hover {"
-"background-color: #FEF3F2;"
-"}"
-
-        /*
-          
-         * DASHBOARD
-          
-         */
-
-        "QLabel#welcomeLabel {"
-        "background-color: transparent;"
-        "color: #172033;"
-        "font-size: 20px;"
-        "font-weight: 700;"
-        "}"
-
-        "QLabel#roleBadge {"
-        "background-color: #EFF6FF;"
-        "color: #1D4ED8;"
-        "border-radius: 10px;"
-        "padding: 4px 10px;"
-        "font-size: 11px;"
-        "font-weight: 600;"
-        "}"
-
-        "QLabel#totalJobsTitle,"
-        "QLabel#completedJobsTitle,"
-        "QLabel#failedJobsTitle,"
-        "QLabel#inProgressTitle {"
-        "background-color: transparent;"
-        "color: #667085;"
-        "font-size: 12px;"
-        "}"
-
-        "QLabel#totalJobsValue,"
-        "QLabel#completedJobsValue,"
-        "QLabel#failedJobsValue,"
-        "QLabel#inProgressValue {"
-        "background-color: transparent;"
-        "font-size: 25px;"
-        "font-weight: 700;"
-        "}"
-
-        "QLabel#totalJobsValue {"
-        "color: #172033;"
-        "}"
-
-        "QLabel#completedJobsValue {"
-        "color: #039855;"
-        "}"
-
-        "QLabel#failedJobsValue {"
-        "color: #D92D20;"
-        "}"
-
-        "QLabel#inProgressValue {"
-        "color: #2563EB;"
-        "}"
-
-        "QLabel#recentJobsLabel {"
-        "background-color: transparent;"
-        "color: #344054;"
-        "font-size: 13px;"
-        "font-weight: 600;"
-        "}"
-
-        "QTableWidget {"
-        "background-color: #FFFFFF;"
-        "alternate-background-color: #F8FAFC;"
-        "color: #172033;"
-        "gridline-color: #EAECF0;"
-        "border: 1px solid #E4E7EC;"
-        "border-radius: 8px;"
-        "}"
-
-        "QTableWidget::item {"
-        "padding: 7px;"
-        "}"
-
-        "QTableWidget::item:selected {"
-        "background-color: #EFF6FF;"
-        "color: #172033;"
-        "}"
-
-        "QHeaderView::section {"
-        "background-color: #F8FAFC;"
-        "color: #667085;"
-        "padding: 8px;"
-        "border: none;"
-        "border-bottom: 1px solid #E4E7EC;"
-        "font-size: 12px;"
-        "font-weight: 600;"
-        "}"
-
-        /*
-          
-         * WIPE PAGE
-          
-         */
-
-        "QLabel#wipePageTitle,"
-        "QLabel#operationTitle,"
-        "QLabel#statusTitle {"
-        "background-color: transparent;"
-        "color: #172033;"
-        "font-weight: 700;"
-        "}"
-
-        "QLabel#deviceLabel,"
-        "QLabel#methodLabel {"
-        "background-color: transparent;"
-        "color: #475467;"
-        "font-size: 12px;"
-        "}"
-
-        "QComboBox#deviceComboBox,"
-        "QComboBox#methodComboBox {"
-        "background-color: #FFFFFF;"
-        "color: #172033;"
-        "border: 1px solid #D0D5DD;"
-        "border-radius: 6px;"
-        "padding: 7px 9px;"
-        "}"
-
-        "QComboBox#deviceComboBox:focus,"
-        "QComboBox#methodComboBox:focus {"
-        "border: 1px solid #2563EB;"
-        "}"
-
-        "QPushButton#startWipeButton {"
-        "background-color: #2563EB;"
-        "color: #FFFFFF;"
-        "border: none;"
-        "border-radius: 7px;"
-        "padding: 10px;"
-        "font-size: 13px;"
-        "font-weight: 600;"
-        "}"
-
-        "QPushButton#startWipeButton:hover {"
-        "background-color: #1D4ED8;"
-        "}"
-
-        "QLabel#statusLabel {"
-        "background-color: transparent;"
-        "color: #667085;"
-        "font-size: 13px;"
-        "}"
-
-        "QProgressBar {"
-        "background-color: #F2F4F7;"
-        "color: #344054;"
-        "border: 1px solid #D0D5DD;"
-        "border-radius: 6px;"
-        "text-align: center;"
-        "}"
-
-        "QProgressBar::chunk {"
-        "background-color: #2563EB;"
-        "border-radius: 6px;"
-        "}"
-
-        /*
-          
-         * PLACEHOLDER PAGES
-          
-         */
-
-        "QLabel#devicesPlaceholderLabel,"
-        "QLabel#reportsPlaceholderLabel,"
-        "QLabel#settingsPlaceholderLabel {"
-        "background-color: transparent;"
-        "color: #667085;"
-        "font-size: 14px;"
-        "}"
-
-        /*
-          
-         * GENERAL CONTROLS
-          
-         */
-
-        "QPushButton {"
-        "font-family: 'Segoe UI';"
-        "}"
-
-        "QScrollArea {"
-        "background-color: transparent;"
-        "border: none;"
-        "}"
-
-        "QToolTip {"
-        "background-color: #172033;"
-        "color: #FFFFFF;"
-        "border: none;"
-        "padding: 6px 8px;"
-        "}"
-
+            "QToolTip {"
+            "background:#172033;"
+            "color:#FFFFFF;"
+            "border:none;"
+            "padding:7px 9px;"
+            "border-radius:6px;"
+            "}"
+        )
     );
 }
 

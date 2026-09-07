@@ -1,74 +1,181 @@
 #include "AuthManager.h"
 
-#include <QNetworkRequest>
-#include <QNetworkReply>
-#include <QUrl>
-#include <QJsonObject>
 #include <QJsonDocument>
+#include <QJsonObject>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QUrl>
 #include <QDebug>
 
 AuthManager::AuthManager(QObject *parent)
     : QObject(parent)
+    , networkManager(new QNetworkAccessManager(this))
 {
-    networkManager = new QNetworkAccessManager(this);
 }
 
-void AuthManager::login(const QString &email, const QString &password)
+void AuthManager::login(
+    const QString &email,
+    const QString &password)
 {
-    QUrl url("http://localhost:5000/api/auth/login");
+    const QUrl url(
+        QStringLiteral("http://localhost:5000/api/auth/login"));
 
     QNetworkRequest request(url);
-    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    request.setHeader(
+        QNetworkRequest::ContentTypeHeader,
+        QStringLiteral("application/json"));
+    request.setRawHeader(
+        "Accept",
+        "application/json");
 
     QJsonObject json;
-    json["email"] = email;
-    json["password"] = password;
+    json.insert(
+        QStringLiteral("email"),
+        email);
+    json.insert(
+        QStringLiteral("password"),
+        password);
 
-    QJsonDocument document(json);
+    QNetworkReply *reply =
+        networkManager->post(
+            request,
+            QJsonDocument(json).toJson());
 
-    QNetworkReply *reply = networkManager->post(
-        request,
-        document.toJson()
-    );
-    connect(reply, &QNetworkReply::finished, this, [this,reply]() {
-        qDebug() << "Login request finished";
-        if (reply->error() != QNetworkReply::NoError) {
-            qDebug() << "Network error:" << reply->errorString();
-            reply->deleteLater();
-            return;
-        }
+    connect(
+        reply,
+        &QNetworkReply::finished,
+        this,
+        [this, reply]()
+        {
+            const int statusCode =
+                reply->attribute(
+                    QNetworkRequest::HttpStatusCodeAttribute)
+                    .toInt();
 
-        QByteArray responseData = reply->readAll();
+            const QByteArray responseData =
+                reply->readAll();
 
-        qDebug() << "Server response:" << responseData;
-        QJsonParseError parseError;
+            if (reply->error() !=
+                QNetworkReply::NoError)
+            {
+                QString message =
+                    reply->errorString();
 
-        QJsonDocument document =
-            QJsonDocument::fromJson(responseData, &parseError);
+                if (statusCode > 0)
+                {
+                    message =
+                        QStringLiteral(
+                            "Login failed (HTTP %1): %2")
+                            .arg(
+                                statusCode)
+                            .arg(
+                                message);
+                }
 
-        if (parseError.error != QJsonParseError::NoError) {
-            qDebug() << "JSON parse error:" << parseError.errorString();
-            reply->deleteLater();
-            return;
-        }
+                token_.clear();
+                role_.clear();
 
-        QJsonObject responseObject = document.object();
-        QString receivedToken = responseObject["token"].toString();
-        token_ = receivedToken;
-        QJsonObject userObject = responseObject["user"].toObject();
-        QString role = userObject["role"].toString();
-        if (role == "WORKSTATION_EMPLOYEE" || role == "ADMIN" || role=="WORKSTATION_HEAD"){
-            qDebug() << "Operator access granted";
+                qDebug()
+                    << "Login request failed:"
+                    << message;
+
+                emit loginFailed(
+                    message);
+
+                reply->deleteLater();
+                return;
+            }
+
+            QJsonParseError parseError;
+            const QJsonDocument document =
+                QJsonDocument::fromJson(
+                    responseData,
+                    &parseError);
+
+            if (parseError.error !=
+                QJsonParseError::NoError ||
+                !document.isObject())
+            {
+                token_.clear();
+                role_.clear();
+
+                const QString message =
+                    QStringLiteral(
+                        "Login failed: server returned invalid JSON.");
+
+                qDebug()
+                    << message
+                    << parseError.errorString();
+
+                emit loginFailed(
+                    message);
+
+                reply->deleteLater();
+                return;
+            }
+
+            const QJsonObject responseObject =
+                document.object();
+
+            const QString receivedToken =
+                responseObject
+                    .value(QStringLiteral("token"))
+                    .toString();
+
+            const QJsonObject userObject =
+                responseObject
+                    .value(QStringLiteral("user"))
+                    .toObject();
+
+            const QString receivedRole =
+                userObject
+                    .value(QStringLiteral("role"))
+                    .toString()
+                    .trimmed();
+
+            if (receivedToken.isEmpty())
+            {
+                token_.clear();
+                role_.clear();
+
+                emit loginFailed(
+                    QStringLiteral(
+                        "Login failed: server did not return an authentication token."));
+
+                reply->deleteLater();
+                return;
+            }
+
+            if (receivedRole !=
+                    QStringLiteral("WORKSTATION_EMPLOYEE") &&
+                receivedRole !=
+                    QStringLiteral("ADMIN") &&
+                receivedRole !=
+                    QStringLiteral("WORKSTATION_HEAD"))
+            {
+                token_.clear();
+                role_.clear();
+
+                emit loginFailed(
+                    QStringLiteral(
+                        "Only authorized workstation roles can access SecureWipe."));
+
+                reply->deleteLater();
+                return;
+            }
+
+            token_ =
+                receivedToken;
+            role_ =
+                receivedRole;
+
+            qDebug()
+                << "SecureWipe login successful. Role:"
+                << role_;
+
             emit loginSuccessful();
-        } else {
-            qDebug() << "Access denied. User is not an WORKSTATION_EMPLOYEE.";
-            emit loginFailed("Only workstation operators can access SecureWipe.");
-        }
-        qDebug() << "User role:" << role;
-        qDebug() << "JSON parsed successfully";
-
-        reply->deleteLater();
-    });
+            reply->deleteLater();
+        });
 }
 
 QString AuthManager::token() const
@@ -76,8 +183,13 @@ QString AuthManager::token() const
     return token_;
 }
 
+QString AuthManager::role() const
+{
+    return role_;
+}
 
 void AuthManager::clearToken()
 {
     token_.clear();
+    role_.clear();
 }

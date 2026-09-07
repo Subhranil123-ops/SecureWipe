@@ -20,8 +20,8 @@ public:
     );
 
     void updateSafetyStatus(
-    bool passed,
-    const QString &message = QString()
+        bool passed,
+        const QString &message = QString()
     );
 
 signals:
@@ -29,7 +29,7 @@ signals:
     void refreshRequested();
 
 private:
-    const StorageDevice &device_;
+    StorageDevice device_;
 
     QLabel *modelLabel_;
     QLabel *typeBadgeLabel_;
@@ -58,12 +58,15 @@ private:
     );
 
     QWidget *createDeviceHeader();
+
     QWidget *createClassificationCard(
         const ClassificationResult &classification
     );
+
     QWidget *createSystemStatusCard(
         const ClassificationResult &classification
     );
+
     QWidget *createSafetyCard();
 
     QFrame *createCard();

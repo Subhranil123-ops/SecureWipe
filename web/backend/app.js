@@ -34,6 +34,10 @@ app.use("/api/workstation-centers", workstationRoute);
 app.use("/api/users", userRoute);
 app.use("/api/workstations", workstationManagementRoute);
 app.use("/api/sanitization-requests", sanitizationRequestRoute);
+app.use(
+    "/api/sanitization-certificates",
+    sanitizationCertificateRoute
+);
 app.use("/api/forensics", forensicCaseRoute);
 
 //adding errors
