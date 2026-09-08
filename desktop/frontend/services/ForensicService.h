@@ -16,6 +16,7 @@ struct ForensicScanSummary
     bool completed = false;
 
     quint64 bytesScanned = 0;
+    quint64 totalBytes = 0;
     quint64 candidatesFound = 0;
     quint64 recoveredArtifacts = 0;
     quint64 validatedArtifacts = 0;

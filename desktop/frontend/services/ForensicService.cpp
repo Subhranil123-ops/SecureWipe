@@ -51,6 +51,9 @@ ForensicService::ForensicService(
                 summary_.bytesScanned =
                     result.summary.bytesScanned;
 
+                summary_.totalBytes =
+                    result.summary.totalBytes;
+
                 summary_.candidatesFound =
                     result.summary.candidatesFound;
 
@@ -950,9 +953,23 @@ void ForensicService::submitResults(
         QStringLiteral("workstationId"),
         workstationId.trimmed());
 
-    payload.insert(
-        QStringLiteral("sourceIdentifier"),
-        lastSource_);
+    if (
+        selectedCase_.sourceType ==
+            QStringLiteral("PHYSICAL_DEVICE") &&
+        selectedCase_.sourceIdentifier.trimmed().isEmpty())
+    {
+        emit resultsSubmitFailed(
+            QStringLiteral(
+                "The forensic case has no physical device identifier."));
+        return;
+    }
+
+    if (!selectedCase_.sourceIdentifier.trimmed().isEmpty())
+    {
+        payload.insert(
+            QStringLiteral("sourceIdentifier"),
+            selectedCase_.sourceIdentifier.trimmed());
+    }
 
     payload.insert(
         QStringLiteral("bytesScanned"),
@@ -962,7 +979,7 @@ void ForensicService::submitResults(
     payload.insert(
         QStringLiteral("totalBytes"),
         static_cast<qint64>(
-            summary_.bytesScanned));
+            summary_.totalBytes));
 
     payload.insert(
         QStringLiteral("candidatesFound"),
