@@ -46,554 +46,489 @@
 namespace
 {
 
-QFrame *makeCard(QWidget *parent)
-{
-    auto *card = new QFrame(parent);
-    card->setObjectName(QStringLiteral("surfaceCard"));
-    card->setStyleSheet(
-        "QFrame#surfaceCard {"
-        "background:#FFFFFF;"
-        "border:1px solid #E4E7EC;"
-        "border-radius:16px;"
-        "}");
-    return card;
-}
-
-QLabel *makeTitle(const QString &text, QWidget *parent)
-{
-    auto *label = new QLabel(text, parent);
-    label->setStyleSheet(
-        "QLabel {"
-        "background:transparent;"
-        "border:none;"
-        "color:#101828;"
-        "font-size:26px;"
-        "font-weight:700;"
-        "}");
-    return label;
-}
-
-QLabel *makeSubtitle(const QString &text, QWidget *parent)
-{
-    auto *label = new QLabel(text, parent);
-    label->setWordWrap(true);
-    label->setStyleSheet(
-        "QLabel {"
-        "background:transparent;"
-        "border:none;"
-        "color:#667085;"
-        "font-size:13px;"
-        "font-weight:400;"
-        "}");
-    return label;
-}
-
-QLabel *makeCaption(const QString &text, QWidget *parent)
-{
-    auto *label = new QLabel(text, parent);
-    label->setStyleSheet(
-        "QLabel {"
-        "background:transparent;"
-        "border:none;"
-        "color:#667085;"
-        "font-size:10px;"
-        "font-weight:700;"
-        "}");
-    return label;
-}
-
-QLabel *makeValue(const QString &text, QWidget *parent)
-{
-    auto *label = new QLabel(text, parent);
-    label->setWordWrap(true);
-    label->setTextInteractionFlags(
-        Qt::TextSelectableByMouse);
-    label->setStyleSheet(
-        "QLabel {"
-        "background:transparent;"
-        "border:none;"
-        "color:#172033;"
-        "font-size:13px;"
-        "font-weight:600;"
-        "}");
-    return label;
-}
-
-QLabel *makeFeatureTitle(
-    const QString &text,
-    QWidget *parent)
-{
-    auto *label = new QLabel(text, parent);
-    label->setStyleSheet(
-        "QLabel {"
-        "background:transparent;"
-        "border:none;"
-        "color:#172033;"
-        "font-size:12px;"
-        "font-weight:700;"
-        "}");
-    return label;
-}
-
-QLabel *makeFeatureText(
-    const QString &text,
-    QWidget *parent)
-{
-    auto *label = new QLabel(text, parent);
-    label->setWordWrap(true);
-    label->setStyleSheet(
-        "QLabel {"
-        "background:transparent;"
-        "border:none;"
-        "color:#667085;"
-        "font-size:11px;"
-        "line-height:17px;"
-        "}");
-    return label;
-}
-
-QPushButton *makePrimaryButton(
-    const QString &text,
-    QWidget *parent)
-{
-    auto *button = new QPushButton(text, parent);
-    button->setCursor(Qt::PointingHandCursor);
-    button->setMinimumHeight(44);
-    button->setStyleSheet(
-        "QPushButton {"
-        "background:#2563EB;"
-        "color:#FFFFFF;"
-        "border:none;"
-        "border-radius:10px;"
-        "padding:10px 18px;"
-        "font-size:12px;"
-        "font-weight:700;"
-        "}"
-        "QPushButton:hover {"
-        "background:#1D4ED8;"
-        "}"
-        "QPushButton:pressed {"
-        "background:#1E40AF;"
-        "}"
-        "QPushButton:disabled {"
-        "background:#CBD5E1;"
-        "color:#64748B;"
-        "}");
-    return button;
-}
-
-QPushButton *makeSecondaryButton(
-    const QString &text,
-    QWidget *parent)
-{
-    auto *button = new QPushButton(text, parent);
-    button->setCursor(Qt::PointingHandCursor);
-    button->setMinimumHeight(40);
-    button->setStyleSheet(
-        "QPushButton {"
-        "background:#FFFFFF;"
-        "color:#344054;"
-        "border:1px solid #D0D5DD;"
-        "border-radius:10px;"
-        "padding:9px 15px;"
-        "font-size:12px;"
-        "font-weight:600;"
-        "}"
-        "QPushButton:hover {"
-        "background:#F9FAFB;"
-        "border-color:#98A2B3;"
-        "}"
-        "QPushButton:pressed {"
-        "background:#F2F4F7;"
-        "}"
-        "QPushButton:disabled {"
-        "background:#F2F4F7;"
-        "color:#98A2B3;"
-        "}");
-    return button;
-}
-
-QPushButton *makeNavButton(
-    const QString &text,
-    QWidget *parent)
-{
-    auto *button = new QPushButton(text, parent);
-    button->setCursor(Qt::PointingHandCursor);
-    button->setMinimumHeight(44);
-    button->setStyleSheet(
-        "QPushButton {"
-        "background:transparent;"
-        "color:#475467;"
-        "border:none;"
-        "border-radius:10px;"
-        "text-align:left;"
-        "padding:0 14px;"
-        "font-size:12px;"
-        "font-weight:600;"
-        "}"
-        "QPushButton:hover {"
-        "background:#F2F4F7;"
-        "}");
-    return button;
-}
-
-QLabel *makeBadge(
-    const QString &text,
-    QWidget *parent)
-{
-    auto *label =
-        new QLabel(
-            text,
-            parent);
-
-    label->setAlignment(
-        Qt::AlignCenter);
-
-    label->setMinimumHeight(
-        28);
-
-    label->setMinimumWidth(
-        96);
-
-    return label;
-}
-
-QString badgeStyle(
-    const QString &status)
-{
-    const QString value =
-        status.trimmed().toUpper();
-
-    if (value == QStringLiteral("SAFE") ||
-        value == QStringLiteral("COMPLETED") ||
-        value == QStringLiteral("PASSED") ||
-        value == QStringLiteral("CONNECTED"))
+    QFrame *makeCard(QWidget *parent)
     {
-        return
+        auto *card = new QFrame(parent);
+        card->setObjectName(QStringLiteral("surfaceCard"));
+        card->setStyleSheet(
+            "QFrame#surfaceCard {"
+            "background:#FFFFFF;"
+            "border:1px solid #E4E7EC;"
+            "border-radius:16px;"
+            "}");
+        return card;
+    }
+
+    QLabel *makeTitle(const QString &text, QWidget *parent)
+    {
+        auto *label = new QLabel(text, parent);
+        label->setStyleSheet(
             "QLabel {"
-            "background:#ECFDF3;"
-            "color:#027A48;"
-            "border:1px solid #ABEFC6;"
-            "border-radius:8px;"
-            "padding:5px 10px;"
+            "background:transparent;"
+            "border:none;"
+            "color:#101828;"
+            "font-size:26px;"
+            "font-weight:700;"
+            "}");
+        return label;
+    }
+
+    QLabel *makeSubtitle(const QString &text, QWidget *parent)
+    {
+        auto *label = new QLabel(text, parent);
+        label->setWordWrap(true);
+        label->setStyleSheet(
+            "QLabel {"
+            "background:transparent;"
+            "border:none;"
+            "color:#667085;"
+            "font-size:13px;"
+            "font-weight:400;"
+            "}");
+        return label;
+    }
+
+    QLabel *makeCaption(const QString &text, QWidget *parent)
+    {
+        auto *label = new QLabel(text, parent);
+        label->setStyleSheet(
+            "QLabel {"
+            "background:transparent;"
+            "border:none;"
+            "color:#667085;"
             "font-size:10px;"
             "font-weight:700;"
-            "}";
+            "}");
+        return label;
     }
 
-    if (value == QStringLiteral("FAILED") ||
-        value == QStringLiteral("BLOCKED") ||
-        value == QStringLiteral("DISCONNECTED") ||
-        value == QStringLiteral("UNSUPPORTED"))
+    QLabel *makeValue(const QString &text, QWidget *parent)
     {
-        return
+        auto *label = new QLabel(text, parent);
+        label->setWordWrap(true);
+        label->setTextInteractionFlags(
+            Qt::TextSelectableByMouse);
+        label->setStyleSheet(
             "QLabel {"
-            "background:#FEF3F2;"
-            "color:#B42318;"
-            "border:1px solid #FECDCA;"
-            "border-radius:8px;"
-            "padding:5px 10px;"
-            "font-size:10px;"
+            "background:transparent;"
+            "border:none;"
+            "color:#172033;"
+            "font-size:13px;"
+            "font-weight:600;"
+            "}");
+        return label;
+    }
+
+    QLabel *makeFeatureTitle(
+        const QString &text,
+        QWidget *parent)
+    {
+        auto *label = new QLabel(text, parent);
+        label->setStyleSheet(
+            "QLabel {"
+            "background:transparent;"
+            "border:none;"
+            "color:#172033;"
+            "font-size:12px;"
             "font-weight:700;"
-            "}";
+            "}");
+        return label;
     }
 
-    return
-        "QLabel {"
-        "background:#EFF6FF;"
-        "color:#175CD3;"
-        "border:1px solid #B2CCFF;"
-        "border-radius:8px;"
-        "padding:5px 10px;"
-        "font-size:10px;"
-        "font-weight:700;"
-        "}";
-}
-
-QFrame *makeFeatureCard(
-    const QString &iconText,
-    const QString &title,
-    const QString &description,
-    QWidget *parent)
-{
-    auto *card =
-        new QFrame(parent);
-
-    card->setObjectName(
-        QStringLiteral("loginFeatureCard"));
-
-    card->setStyleSheet(
-        "QFrame#loginFeatureCard {"
-        "background:#FFFFFF;"
-        "border:1px solid #E4E7EC;"
-        "border-radius:14px;"
-        "}");
-
-    auto *layout =
-        new QHBoxLayout(card);
-
-    layout->setContentsMargins(
-        14,
-        13,
-        14,
-        13);
-
-    layout->setSpacing(
-        12);
-
-    auto *icon =
-        new QLabel(
-            iconText,
-            card);
-
-    icon->setAlignment(
-        Qt::AlignCenter);
-
-    icon->setFixedSize(
-        38,
-        38);
-
-    icon->setStyleSheet(
-        "QLabel {"
-        "background:#EFF6FF;"
-        "border:1px solid #BFDBFE;"
-        "border-radius:11px;"
-        "color:#2563EB;"
-        "font-size:17px;"
-        "font-weight:700;"
-        "}");
-
-    layout->addWidget(
-        icon);
-
-    auto *textLayout =
-        new QVBoxLayout;
-
-    textLayout->setSpacing(
-        3);
-
-    textLayout->addWidget(
-        makeFeatureTitle(
-            title,
-            card));
-
-    textLayout->addWidget(
-        makeFeatureText(
-            description,
-            card));
-
-    layout->addLayout(
-        textLayout,
-        1);
-
-    return card;
-}
-
-bool requestMatchesDeviceImpl(
-    const QString &requestedType,
-    const StorageDevice &device)
-{
-    DeviceClassifier classifier;
-
-    const ClassificationResult classification =
-        classifier.classify(device);
-
-    const QString type =
-        requestedType.trimmed();
-
-    if (type.compare(
-            QStringLiteral("SSD"),
-            Qt::CaseInsensitive) == 0)
+    QLabel *makeFeatureText(
+        const QString &text,
+        QWidget *parent)
     {
-        return classification.mediaType ==
-               MediaType::SSD;
+        auto *label = new QLabel(text, parent);
+        label->setWordWrap(true);
+        label->setStyleSheet(
+            "QLabel {"
+            "background:transparent;"
+            "border:none;"
+            "color:#667085;"
+            "font-size:11px;"
+            "line-height:17px;"
+            "}");
+        return label;
     }
 
-    if (type.compare(
-            QStringLiteral("HDD"),
-            Qt::CaseInsensitive) == 0)
+    QPushButton *makePrimaryButton(
+        const QString &text,
+        QWidget *parent)
     {
-        return classification.mediaType ==
-               MediaType::HDD;
+        auto *button = new QPushButton(text, parent);
+        button->setCursor(Qt::PointingHandCursor);
+        button->setMinimumHeight(44);
+        button->setStyleSheet(
+            "QPushButton {"
+            "background:#2563EB;"
+            "color:#FFFFFF;"
+            "border:none;"
+            "border-radius:10px;"
+            "padding:10px 18px;"
+            "font-size:12px;"
+            "font-weight:700;"
+            "}"
+            "QPushButton:hover {"
+            "background:#1D4ED8;"
+            "}"
+            "QPushButton:pressed {"
+            "background:#1E40AF;"
+            "}"
+            "QPushButton:disabled {"
+            "background:#CBD5E1;"
+            "color:#64748B;"
+            "}");
+        return button;
     }
 
-    if (type.compare(
-            QStringLiteral("USB Drive"),
-            Qt::CaseInsensitive) == 0)
+    QPushButton *makeSecondaryButton(
+        const QString &text,
+        QWidget *parent)
     {
-        return classification.busType ==
-               BusType::USB;
+        auto *button = new QPushButton(text, parent);
+        button->setCursor(Qt::PointingHandCursor);
+        button->setMinimumHeight(40);
+        button->setStyleSheet(
+            "QPushButton {"
+            "background:#FFFFFF;"
+            "color:#344054;"
+            "border:1px solid #D0D5DD;"
+            "border-radius:10px;"
+            "padding:9px 15px;"
+            "font-size:12px;"
+            "font-weight:600;"
+            "}"
+            "QPushButton:hover {"
+            "background:#F9FAFB;"
+            "border-color:#98A2B3;"
+            "}"
+            "QPushButton:pressed {"
+            "background:#F2F4F7;"
+            "}"
+            "QPushButton:disabled {"
+            "background:#F2F4F7;"
+            "color:#98A2B3;"
+            "}");
+        return button;
     }
 
-    if (type.compare(
-            QStringLiteral("NVMe SSD"),
-            Qt::CaseInsensitive) == 0)
+    QPushButton *makeNavButton(
+        const QString &text,
+        QWidget *parent)
     {
-        return classification.busType ==
-                   BusType::NVMe &&
-               classification.mediaType ==
+        auto *button = new QPushButton(text, parent);
+        button->setCursor(Qt::PointingHandCursor);
+        button->setMinimumHeight(44);
+        button->setStyleSheet(
+            "QPushButton {"
+            "background:transparent;"
+            "color:#475467;"
+            "border:none;"
+            "border-radius:10px;"
+            "text-align:left;"
+            "padding:0 14px;"
+            "font-size:12px;"
+            "font-weight:600;"
+            "}"
+            "QPushButton:hover {"
+            "background:#F2F4F7;"
+            "}");
+        return button;
+    }
+
+    QLabel *makeBadge(
+        const QString &text,
+        QWidget *parent)
+    {
+        auto *label =
+            new QLabel(
+                text,
+                parent);
+
+        label->setAlignment(
+            Qt::AlignCenter);
+
+        label->setMinimumHeight(
+            28);
+
+        label->setMinimumWidth(
+            96);
+
+        return label;
+    }
+
+    QString badgeStyle(
+        const QString &status)
+    {
+        const QString value =
+            status.trimmed().toUpper();
+
+        if (value == QStringLiteral("SAFE") ||
+            value == QStringLiteral("COMPLETED") ||
+            value == QStringLiteral("PASSED") ||
+            value == QStringLiteral("CONNECTED"))
+        {
+            return "QLabel {"
+                   "background:#ECFDF3;"
+                   "color:#027A48;"
+                   "border:1px solid #ABEFC6;"
+                   "border-radius:8px;"
+                   "padding:5px 10px;"
+                   "font-size:10px;"
+                   "font-weight:700;"
+                   "}";
+        }
+
+        if (value == QStringLiteral("FAILED") ||
+            value == QStringLiteral("BLOCKED") ||
+            value == QStringLiteral("DISCONNECTED") ||
+            value == QStringLiteral("UNSUPPORTED"))
+        {
+            return "QLabel {"
+                   "background:#FEF3F2;"
+                   "color:#B42318;"
+                   "border:1px solid #FECDCA;"
+                   "border-radius:8px;"
+                   "padding:5px 10px;"
+                   "font-size:10px;"
+                   "font-weight:700;"
+                   "}";
+        }
+
+        return "QLabel {"
+               "background:#EFF6FF;"
+               "color:#175CD3;"
+               "border:1px solid #B2CCFF;"
+               "border-radius:8px;"
+               "padding:5px 10px;"
+               "font-size:10px;"
+               "font-weight:700;"
+               "}";
+    }
+
+    QFrame *makeFeatureCard(
+        const QString &iconText,
+        const QString &title,
+        const QString &description,
+        QWidget *parent)
+    {
+        auto *card =
+            new QFrame(parent);
+
+        card->setObjectName(
+            QStringLiteral("loginFeatureCard"));
+
+        card->setStyleSheet(
+            "QFrame#loginFeatureCard {"
+            "background:#FFFFFF;"
+            "border:1px solid #E4E7EC;"
+            "border-radius:14px;"
+            "}");
+
+        auto *layout =
+            new QHBoxLayout(card);
+
+        layout->setContentsMargins(
+            14,
+            13,
+            14,
+            13);
+
+        layout->setSpacing(
+            12);
+
+        auto *icon =
+            new QLabel(
+                iconText,
+                card);
+
+        icon->setAlignment(
+            Qt::AlignCenter);
+
+        icon->setFixedSize(
+            38,
+            38);
+
+        icon->setStyleSheet(
+            "QLabel {"
+            "background:#EFF6FF;"
+            "border:1px solid #BFDBFE;"
+            "border-radius:11px;"
+            "color:#2563EB;"
+            "font-size:17px;"
+            "font-weight:700;"
+            "}");
+
+        layout->addWidget(
+            icon);
+
+        auto *textLayout =
+            new QVBoxLayout;
+
+        textLayout->setSpacing(
+            3);
+
+        textLayout->addWidget(
+            makeFeatureTitle(
+                title,
+                card));
+
+        textLayout->addWidget(
+            makeFeatureText(
+                description,
+                card));
+
+        layout->addLayout(
+            textLayout,
+            1);
+
+        return card;
+    }
+
+    bool requestMatchesDeviceImpl(
+        const QString &requestedType,
+        const StorageDevice &device)
+    {
+        DeviceClassifier classifier;
+
+        const ClassificationResult classification =
+            classifier.classify(device);
+
+        const QString type =
+            requestedType.trimmed();
+
+        if (type.compare(
+                QStringLiteral("SSD"),
+                Qt::CaseInsensitive) == 0)
+        {
+            return classification.mediaType ==
                    MediaType::SSD;
+        }
+
+        if (type.compare(
+                QStringLiteral("HDD"),
+                Qt::CaseInsensitive) == 0)
+        {
+            return classification.mediaType ==
+                   MediaType::HDD;
+        }
+
+        if (type.compare(
+                QStringLiteral("USB Drive"),
+                Qt::CaseInsensitive) == 0)
+        {
+            return classification.busType ==
+                   BusType::USB;
+        }
+
+        if (type.compare(
+                QStringLiteral("NVMe SSD"),
+                Qt::CaseInsensitive) == 0)
+        {
+            return classification.busType ==
+                       BusType::NVMe &&
+                   classification.mediaType ==
+                       MediaType::SSD;
+        }
+
+        return false;
     }
 
-    return false;
-}
+    void configureTable(
+        QTableWidget *table)
+    {
+        if (!table)
+            return;
 
-void configureTable(
-    QTableWidget *table)
-{
-    if (!table)
-        return;
+        table->setSelectionBehavior(
+            QAbstractItemView::SelectRows);
 
-    table->setSelectionBehavior(
-        QAbstractItemView::SelectRows);
+        table->setSelectionMode(
+            QAbstractItemView::SingleSelection);
 
-    table->setSelectionMode(
-        QAbstractItemView::SingleSelection);
+        table->setEditTriggers(
+            QAbstractItemView::NoEditTriggers);
 
-    table->setEditTriggers(
-        QAbstractItemView::NoEditTriggers);
+        table->setShowGrid(false);
+        table->setAlternatingRowColors(true);
+        table->setWordWrap(false);
 
-    table->setShowGrid(false);
-    table->setAlternatingRowColors(true);
-    table->setWordWrap(false);
+        table->verticalHeader()->setVisible(
+            false);
 
-    table->verticalHeader()->setVisible(
-        false);
+        table->verticalHeader()
+            ->setDefaultSectionSize(46);
 
-    table->verticalHeader()
-        ->setDefaultSectionSize(46);
+        table->horizontalHeader()
+            ->setHighlightSections(false);
 
-    table->horizontalHeader()
-        ->setHighlightSections(false);
+        table->setFocusPolicy(
+            Qt::NoFocus);
+    }
 
-    table->setFocusPolicy(
-        Qt::NoFocus);
-}
+    void addStatCard(
+        QHBoxLayout *layout,
+        const QString &caption,
+        QLabel **value)
+    {
+        auto *card =
+            makeCard(
+                layout->parentWidget());
 
-void addStatCard(
-    QHBoxLayout *layout,
-    const QString &caption,
-    QLabel **value)
-{
-    auto *card =
-        makeCard(
-            layout->parentWidget());
+        auto *box =
+            new QVBoxLayout(card);
 
-    auto *box =
-        new QVBoxLayout(card);
+        box->setContentsMargins(
+            18,
+            16,
+            18,
+            16);
 
-    box->setContentsMargins(
-        18,
-        16,
-        18,
-        16);
+        box->setSpacing(
+            6);
 
-    box->setSpacing(
-        6);
+        box->addWidget(
+            makeCaption(
+                caption,
+                card));
 
-    box->addWidget(
-        makeCaption(
-            caption,
-            card));
+        *value =
+            new QLabel(
+                QStringLiteral("0"),
+                card);
 
-    *value =
-        new QLabel(
-            QStringLiteral("0"),
+        (*value)->setStyleSheet(
+            "QLabel {"
+            "background:transparent;"
+            "border:none;"
+            "color:#101828;"
+            "font-size:25px;"
+            "font-weight:700;"
+            "}");
+
+        box->addWidget(
+            *value);
+
+        layout->addWidget(
             card);
-
-    (*value)->setStyleSheet(
-        "QLabel {"
-        "background:transparent;"
-        "border:none;"
-        "color:#101828;"
-        "font-size:25px;"
-        "font-weight:700;"
-        "}");
-
-    box->addWidget(
-        *value);
-
-    layout->addWidget(
-        card);
-}
+    }
 
 }
 
 MainWindow::MainWindow(
     QWidget *parent)
-    : QMainWindow(parent)
-    , authManager_(
-          new AuthManager(this))
-    , requestService_(
-          new SanitizationRequestService(this))
-    , resultService_(
-          new SanitizationResultService(this))
-    , deviceController_(
-          new DeviceController(this))
-    , deviceTableModel_(
-          new DeviceTableModel(this))
-    , deviceDetailsPage_(nullptr)
-    , forensicPage_(nullptr)
-    , root_(nullptr)
-    , rootStack_(nullptr)
-    , loginPage_(nullptr)
-    , appPage_(nullptr)
-    , contentStack_(nullptr)
-    , emailEdit_(nullptr)
-    , passwordEdit_(nullptr)
-    , loginErrorLabel_(nullptr)
-    , loginButton_(nullptr)
-    , operatorNameLabel_(nullptr)
-    , operatorRoleLabel_(nullptr)
-    , connectionBadgeLabel_(nullptr)
-    , dashboardNavButton_(nullptr)
-    , devicesNavButton_(nullptr)
-    , jobsNavButton_(nullptr)
-    , forensicsNavButton_(nullptr)
-    , settingsNavButton_(nullptr)
-    , logoutButton_(nullptr)
-    , dashboardPage_(nullptr)
-    , devicesPage_(nullptr)
-    , jobsPage_(nullptr)
-    , forensicsPage_(nullptr)
-    , settingsPage_(nullptr)
-    , dashboardJobsTable_(nullptr)
-    , assignedJobsTable_(nullptr)
-    , deviceTable_(nullptr)
-    , devicesInventoryTable_(nullptr)
-    , totalJobsValue_(nullptr)
-    , activeJobsValue_(nullptr)
-    , completedJobsValue_(nullptr)
-    , failedJobsValue_(nullptr)
-    , jobComboBox_(nullptr)
-    , jobRequestIdValue_(nullptr)
-    , jobDeviceTypeValue_(nullptr)
-    , jobRequestedMethodValue_(nullptr)
-    , jobAssetValue_(nullptr)
-    , jobWorkstationValue_(nullptr)
-    , targetModelValue_(nullptr)
-    , targetSerialValue_(nullptr)
-    , targetCapacityValue_(nullptr)
-    , targetInterfaceValue_(nullptr)
-    , targetPathValue_(nullptr)
-    , targetSafetyBadge_(nullptr)
-    , targetSafetyText_(nullptr)
-    , capabilityValue_(nullptr)
-    , selectedMethodValue_(nullptr)
-    , pipelineStatusValue_(nullptr)
-    , verificationValue_(nullptr)
-    , operationValue_(nullptr)
-    , bytesProcessedValue_(nullptr)
-    , bytesVerifiedValue_(nullptr)
-    , samplesValue_(nullptr)
-    , certificateValue_(nullptr)
-    , evidenceValue_(nullptr)
-    , jobMessageLabel_(nullptr)
-    , operationProgress_(nullptr)
-    , refreshJobsButton_(nullptr)
-    , refreshDevicesButton_(nullptr)
-    , validateTargetButton_(nullptr)
-    , startSanitizationButton_(nullptr)
+    : QMainWindow(parent), authManager_(
+                               new AuthManager(this)),
+      requestService_(
+          new SanitizationRequestService(this)),
+      resultService_(
+          new SanitizationResultService(this)),
+      deviceController_(
+          new DeviceController(this)),
+      deviceTableModel_(
+          new DeviceTableModel(this)),
+      deviceDetailsPage_(nullptr), forensicPage_(nullptr), root_(nullptr), rootStack_(nullptr), loginPage_(nullptr), appPage_(nullptr), contentStack_(nullptr), emailEdit_(nullptr), passwordEdit_(nullptr), loginErrorLabel_(nullptr), loginButton_(nullptr), operatorNameLabel_(nullptr), operatorRoleLabel_(nullptr), connectionBadgeLabel_(nullptr), dashboardNavButton_(nullptr), devicesNavButton_(nullptr), jobsNavButton_(nullptr), forensicsNavButton_(nullptr), settingsNavButton_(nullptr), logoutButton_(nullptr), dashboardPage_(nullptr), devicesPage_(nullptr), jobsPage_(nullptr), forensicsPage_(nullptr), settingsPage_(nullptr), dashboardJobsTable_(nullptr), assignedJobsTable_(nullptr), deviceTable_(nullptr), devicesInventoryTable_(nullptr), totalJobsValue_(nullptr), activeJobsValue_(nullptr), completedJobsValue_(nullptr), failedJobsValue_(nullptr), jobComboBox_(nullptr), jobRequestIdValue_(nullptr), jobDeviceTypeValue_(nullptr), jobRequestedMethodValue_(nullptr), jobAssetValue_(nullptr), jobWorkstationValue_(nullptr), targetModelValue_(nullptr), targetSerialValue_(nullptr), targetCapacityValue_(nullptr), targetInterfaceValue_(nullptr), targetPathValue_(nullptr), targetSafetyBadge_(nullptr), targetSafetyText_(nullptr), capabilityValue_(nullptr), selectedMethodValue_(nullptr), pipelineStatusValue_(nullptr), verificationValue_(nullptr), operationValue_(nullptr), bytesProcessedValue_(nullptr), bytesVerifiedValue_(nullptr), samplesValue_(nullptr), certificateValue_(nullptr), evidenceValue_(nullptr), jobMessageLabel_(nullptr), operationProgress_(nullptr), refreshJobsButton_(nullptr), refreshDevicesButton_(nullptr), validateTargetButton_(nullptr), startSanitizationButton_(nullptr)
 {
     setWindowTitle(
         QStringLiteral("SecureWipe"));
@@ -713,7 +648,8 @@ MainWindow::MainWindow(
                     R"(^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$)"));
 
             if (!pattern.match(
-                    email).hasMatch())
+                            email)
+                     .hasMatch())
             {
                 loginErrorLabel_->setText(
                     QStringLiteral(
@@ -1698,7 +1634,7 @@ void MainWindow::buildLoginPage()
         "}");
 
     const auto makeEyeIcon = [](
-        bool visible)
+                                 bool visible)
     {
         QPixmap pixmap(
             22,
@@ -2522,16 +2458,14 @@ void MainWindow::buildDashboardPage()
         4);
 
     dashboardJobsTable_->setHorizontalHeaderLabels(
-        {
-            QStringLiteral(
-                "Request"),
-            QStringLiteral(
-                "Device"),
-            QStringLiteral(
-                "Method"),
-            QStringLiteral(
-                "Status")
-        });
+        {QStringLiteral(
+             "Request"),
+         QStringLiteral(
+             "Device"),
+         QStringLiteral(
+             "Method"),
+         QStringLiteral(
+             "Status")});
 
     configureTable(
         dashboardJobsTable_);
@@ -2672,18 +2606,16 @@ void MainWindow::buildJobsPage()
         5);
 
     assignedJobsTable_->setHorizontalHeaderLabels(
-        {
-            QStringLiteral(
-                "Request ID"),
-            QStringLiteral(
-                "Device Type"),
-            QStringLiteral(
-                "Method"),
-            QStringLiteral(
-                "Asset"),
-            QStringLiteral(
-                "Status")
-        });
+        {QStringLiteral(
+             "Request ID"),
+         QStringLiteral(
+             "Device Type"),
+         QStringLiteral(
+             "Method"),
+         QStringLiteral(
+             "Asset"),
+         QStringLiteral(
+             "Status")});
 
     configureTable(
         assignedJobsTable_);
@@ -2923,20 +2855,18 @@ void MainWindow::buildJobsPage()
         6);
 
     deviceTable_->setHorizontalHeaderLabels(
-        {
-            QStringLiteral(
-                "Model"),
-            QStringLiteral(
-                "Serial"),
-            QStringLiteral(
-                "Interface"),
-            QStringLiteral(
-                "Capacity"),
-            QStringLiteral(
-                "System"),
-            QStringLiteral(
-                "Device ID")
-        });
+        {QStringLiteral(
+             "Model"),
+         QStringLiteral(
+             "Serial"),
+         QStringLiteral(
+             "Interface"),
+         QStringLiteral(
+             "Capacity"),
+         QStringLiteral(
+             "System"),
+         QStringLiteral(
+             "Device ID")});
 
     configureTable(
         deviceTable_);
@@ -3639,20 +3569,18 @@ void MainWindow::buildDevicesPage()
         6);
 
     devicesInventoryTable_->setHorizontalHeaderLabels(
-        {
-            QStringLiteral(
-                "Model"),
-            QStringLiteral(
-                "Serial"),
-            QStringLiteral(
-                "Interface"),
-            QStringLiteral(
-                "Capacity"),
-            QStringLiteral(
-                "System"),
-            QStringLiteral(
-                "Device ID")
-        });
+        {QStringLiteral(
+             "Model"),
+         QStringLiteral(
+             "Serial"),
+         QStringLiteral(
+             "Interface"),
+         QStringLiteral(
+             "Capacity"),
+         QStringLiteral(
+             "System"),
+         QStringLiteral(
+             "Device ID")});
 
     configureTable(
         devicesInventoryTable_);
@@ -3870,6 +3798,7 @@ void MainWindow::buildForensicsPage()
     forensicPage_ =
         new ForensicPage(
             deviceController_,
+            authManager_,
             page);
 
     forensicPage_->setSizePolicy(
@@ -4237,8 +4166,7 @@ void MainWindow::setActiveNav(
         jobsNavButton_,
         devicesNavButton_,
         forensicsNavButton_,
-        settingsNavButton_
-    };
+        settingsNavButton_};
 
     for (QPushButton *item :
          buttons)
@@ -4378,36 +4306,36 @@ void MainWindow::handleAssignedRequests(
 
         const QString requestId =
             request.value(
-                QStringLiteral(
-                    "requestId"))
+                       QStringLiteral(
+                           "requestId"))
                 .toString();
 
         const QString deviceType =
             request.value(
-                QStringLiteral(
-                    "deviceType"))
+                       QStringLiteral(
+                           "deviceType"))
                 .toString();
 
         const QString method =
             request.value(
-                QStringLiteral(
-                    "sanitizationMethod"))
+                       QStringLiteral(
+                           "sanitizationMethod"))
                 .toString();
 
         const QString status =
             request.value(
-                QStringLiteral(
-                    "status"))
+                       QStringLiteral(
+                           "status"))
                 .toString();
 
         const QString asset =
             request.value(
-                QStringLiteral(
-                    "asset"))
+                       QStringLiteral(
+                           "asset"))
                 .toString(
                     request.value(
-                        QStringLiteral(
-                            "customer"))
+                               QStringLiteral(
+                                   "customer"))
                         .toString());
 
         if (requestId.isEmpty())
@@ -4567,6 +4495,25 @@ void MainWindow::handleAssignedRequests(
             method,
             Qt::UserRole + 2);
 
+        const QJsonValue workstationValue =
+            request.value(
+                QStringLiteral("assignedWorkstation"));
+
+        QString workstationId;
+
+        if (workstationValue.isObject())
+        {
+            workstationId =
+                workstationValue.toObject()
+                    .value(QStringLiteral("workstationId"))
+                    .toString();
+        }
+
+        jobComboBox_->setItemData(
+            index,
+            workstationId,
+            Qt::UserRole + 3);
+
         if (!selectedRequestId_.isEmpty() &&
             requestId ==
                 selectedRequestId_)
@@ -4618,8 +4565,8 @@ QJsonObject MainWindow::selectedRequestObject() const
             value.toObject();
 
         if (request.value(
-                QStringLiteral(
-                    "requestId"))
+                       QStringLiteral(
+                           "requestId"))
                 .toString() ==
             selectedRequestId_)
         {
@@ -4636,6 +4583,7 @@ void MainWindow::selectRequestFromJobs(
     selectedRequestId_.clear();
     selectedRequestDeviceType_.clear();
     selectedRequestMethod_.clear();
+    selectedWorkstationId_.clear();
 
     if (index < 0)
     {
@@ -4646,21 +4594,28 @@ void MainWindow::selectRequestFromJobs(
 
     selectedRequestId_ =
         jobComboBox_->itemData(
-            index,
-            Qt::UserRole)
+                        index,
+                        Qt::UserRole)
             .toString();
 
     selectedRequestDeviceType_ =
         jobComboBox_->itemData(
-            index,
-            Qt::UserRole + 1)
+                        index,
+                        Qt::UserRole + 1)
             .toString();
 
     selectedRequestMethod_ =
         jobComboBox_->itemData(
-            index,
-            Qt::UserRole + 2)
+                        index,
+                        Qt::UserRole + 2)
             .toString();
+
+    selectedWorkstationId_ =
+        jobComboBox_->itemData(
+                        index,
+                        Qt::UserRole + 3)
+            .toString()
+            .trimmed();
 
     populateJobDetails();
     resetTargetPanel();
@@ -4674,56 +4629,82 @@ void MainWindow::populateJobDetails()
 
     jobRequestIdValue_->setText(
         request.value(
-            QStringLiteral(
-                "requestId"))
+                   QStringLiteral(
+                       "requestId"))
             .toString(
                 QStringLiteral(
                     "—")));
 
     jobDeviceTypeValue_->setText(
         request.value(
-            QStringLiteral(
-                "deviceType"))
+                   QStringLiteral(
+                       "deviceType"))
             .toString(
                 QStringLiteral(
                     "—")));
 
     jobRequestedMethodValue_->setText(
         request.value(
-            QStringLiteral(
-                "sanitizationMethod"))
+                   QStringLiteral(
+                       "sanitizationMethod"))
             .toString(
                 QStringLiteral(
                     "—")));
 
     jobAssetValue_->setText(
         request.value(
-            QStringLiteral(
-                "asset"))
+                   QStringLiteral(
+                       "asset"))
             .toString(
                 request.value(
-                    QStringLiteral(
-                        "customer"))
+                           QStringLiteral(
+                               "customer"))
                     .toString(
                         QStringLiteral(
                             "—"))));
 
-    jobWorkstationValue_->setText(
+    QString workstationDisplay;
+
+    const QJsonValue workstationValue =
         request.value(
-            QStringLiteral(
-                "workstationCenter"))
-            .toString(
-                request.value(
-                    QStringLiteral(
-                        "center"))
-                    .toString(
-                        QStringLiteral(
-                            "—"))));
+            QStringLiteral("assignedWorkstation"));
+
+    if (workstationValue.isObject())
+    {
+        const QJsonObject workstation =
+            workstationValue.toObject();
+
+        workstationDisplay =
+            workstation.value(
+                           QStringLiteral("workstationId"))
+                .toString();
+
+        const QString name =
+            workstation.value(
+                           QStringLiteral("name"))
+                .toString();
+
+        if (!name.isEmpty())
+        {
+            workstationDisplay +=
+                QStringLiteral(" • %1")
+                    .arg(name);
+        }
+    }
+
+    if (workstationDisplay.isEmpty())
+    {
+        workstationDisplay =
+            QStringLiteral("—");
+    }
+
+    jobWorkstationValue_->setText(
+        workstationDisplay);
 
     const QString status =
         request.value(
-            QStringLiteral(
-                "status"))
+                   QStringLiteral(
+                       "status"))
             .toString();
 
     if (status ==
@@ -5227,8 +5208,8 @@ void MainWindow::runTargetSafetyCheck()
         targetSafetyBadge_->setStyleSheet(badgeStyle("BLOCKED"));
 
         QString details = result.summary.empty()
-            ? QStringLiteral("The core SafetyEngine did not authorize this target.")
-            : QString::fromStdString(result.summary);
+                              ? QStringLiteral("The core SafetyEngine did not authorize this target.")
+                              : QString::fromStdString(result.summary);
 
         for (const SafetyCheckResult &check : result.checks)
         {
@@ -5236,8 +5217,8 @@ void MainWindow::runTargetSafetyCheck()
                 details += QStringLiteral("\n");
 
             const QString state = check.passed
-                ? QStringLiteral("✓")
-                : QStringLiteral("✗");
+                                      ? QStringLiteral("✓")
+                                      : QStringLiteral("✗");
             const QString name = QString::fromStdString(check.checkName);
             const QString message = QString::fromStdString(check.message);
 
@@ -5347,8 +5328,8 @@ void MainWindow::runTargetSafetyCheck()
     targetSafetyBadge_->setStyleSheet(badgeStyle("SAFE"));
 
     QString details = result.summary.empty()
-        ? QStringLiteral("Core safety gate passed. This target is authorized to proceed to final confirmation.")
-        : QString::fromStdString(result.summary);
+                          ? QStringLiteral("Core safety gate passed. This target is authorized to proceed to final confirmation.")
+                          : QString::fromStdString(result.summary);
 
     for (const SafetyCheckResult &check : result.checks)
     {
@@ -5356,8 +5337,8 @@ void MainWindow::runTargetSafetyCheck()
             details += QStringLiteral("\n");
 
         const QString state = check.passed
-            ? QStringLiteral("✓")
-            : QStringLiteral("✗");
+                                  ? QStringLiteral("✓")
+                                  : QStringLiteral("✗");
         const QString name = QString::fromStdString(check.checkName);
         const QString message = QString::fromStdString(check.message);
 
@@ -5374,7 +5355,9 @@ void MainWindow::runTargetSafetyCheck()
     const QString status = request.value(QStringLiteral("status")).toString();
     const bool requestReady = status == QStringLiteral("ASSIGNED");
 
-    startSanitizationButton_->setEnabled(requestReady && result.isOverallSafe);
+    startSanitizationButton_->setEnabled(
+        requestReady &&
+        result.isOverallSafe);
     validateTargetButton_->setEnabled(true);
 
     if (requestReady)
@@ -5413,9 +5396,18 @@ void MainWindow::startSanitization()
     const QJsonObject request =
         selectedRequestObject();
 
+    if (selectedWorkstationId_.trimmed().isEmpty())
+    {
+        QMessageBox::warning(
+            this,
+            QStringLiteral("Workstation unavailable"),
+            QStringLiteral("The selected request does not contain an assigned workstation ID."));
+        return;
+    }
+
     if (request.value(
-            QStringLiteral(
-                "status"))
+                   QStringLiteral(
+                       "status"))
             .toString() !=
         QStringLiteral(
             "ASSIGNED"))
@@ -5572,6 +5564,36 @@ void MainWindow::startSanitization()
         return;
     }
 
+    const QString actorId =
+        authManager_->userId().trimmed();
+
+    if (actorId.isEmpty())
+    {
+        QMessageBox::critical(
+            this,
+            QStringLiteral(
+                "Authentication"),
+            QStringLiteral(
+                "Authenticated employee ID is missing. The sanitization operation cannot start."));
+
+        return;
+    }
+
+    const QString workstationId =
+        selectedWorkstationId_.trimmed();
+
+    if (workstationId.isEmpty())
+    {
+        QMessageBox::critical(
+            this,
+            QStringLiteral(
+                "Workstation"),
+            QStringLiteral(
+                "Assigned workstation ID is missing. The sanitization operation cannot start."));
+
+        return;
+    }
+
     const StorageDevice targetCopy =
         *target;
 
@@ -5624,14 +5646,15 @@ void MainWindow::startSanitization()
         token,
         selectedRequestId_,
         QStringLiteral(
-            "IN_PROGRESS"));
+            "IN_PROGRESS"),
+        selectedWorkstationId_);
 
     connect(
         requestService_,
         &SanitizationRequestService::
             requestStatusUpdated,
         this,
-        [this, targetCopy](
+        [this, targetCopy, actorId, workstationId](
             const QString &requestId,
             const QString &status)
         {
@@ -5680,8 +5703,8 @@ void MainWindow::startSanitization()
 
             watcher->setFuture(
                 QtConcurrent::run(
-                    [targetCopy, requestId]()
-                    -> SecureWipe::SanitizationPipelineResult
+                    [targetCopy, requestId, actorId, workstationId]()
+                        -> SecureWipe::SanitizationPipelineResult
                     {
                         try
                         {
@@ -5690,7 +5713,8 @@ void MainWindow::startSanitization()
                             return pipeline.execute(
                                 targetCopy,
                                 requestId.toStdString(),
-                                std::string());
+                                actorId.toStdString(),
+                                workstationId.toStdString());
                         }
                         catch (
                             const std::exception &exception)
@@ -5840,6 +5864,7 @@ void MainWindow::submitPipelineResult(
     resultService_->submitResult(
         token,
         selectedRequestId_,
+        selectedWorkstationId_,
         pipelineResult);
 
     if (pipelineResult.sanitization.isSuccess())
@@ -5920,12 +5945,12 @@ void MainWindow::updatePipelineUiForResult(
                     SecureWipe::SanitizationStatus::COMPLETED
                 ? QStringLiteral(
                       "COMPLETED")
-                : result.status ==
-                          SecureWipe::SanitizationStatus::FAILED
-                      ? QStringLiteral(
-                            "FAILED")
-                      : QStringLiteral(
-                            "IN_PROGRESS")));
+            : result.status ==
+                    SecureWipe::SanitizationStatus::FAILED
+                ? QStringLiteral(
+                      "FAILED")
+                : QStringLiteral(
+                      "IN_PROGRESS")));
 
     verificationValue_->setText(
         verificationText(
@@ -6239,6 +6264,8 @@ void MainWindow::logout()
     selectedRequestId_.clear();
     selectedRequestDeviceType_.clear();
     selectedRequestMethod_.clear();
+    selectedRequestSerialNumber_.clear();
+    selectedWorkstationId_.clear();
 
     assignedRequests_ =
         QJsonArray();
@@ -6303,7 +6330,7 @@ QString MainWindow::formatCapacity(
     if (value >= tb)
     {
         return QStringLiteral(
-            "%1 TB")
+                   "%1 TB")
             .arg(
                 value / tb,
                 0,
@@ -6312,7 +6339,7 @@ QString MainWindow::formatCapacity(
     }
 
     return QStringLiteral(
-        "%1 GB")
+               "%1 GB")
         .arg(
             value / gb,
             0,
@@ -6326,7 +6353,7 @@ QString MainWindow::formatBytes(
     if (bytes < 1024)
     {
         return QStringLiteral(
-            "%1 B")
+                   "%1 B")
             .arg(bytes);
     }
 
@@ -6349,7 +6376,7 @@ QString MainWindow::formatBytes(
     if (value >= gb)
     {
         return QStringLiteral(
-            "%1 GB")
+                   "%1 GB")
             .arg(
                 value / gb,
                 0,
@@ -6360,7 +6387,7 @@ QString MainWindow::formatBytes(
     if (value >= mb)
     {
         return QStringLiteral(
-            "%1 MB")
+                   "%1 MB")
             .arg(
                 value / mb,
                 0,
@@ -6369,7 +6396,7 @@ QString MainWindow::formatBytes(
     }
 
     return QStringLiteral(
-        "%1 KB")
+               "%1 KB")
         .arg(
             value / kb,
             0,
@@ -6383,7 +6410,7 @@ QString MainWindow::formatDuration(
     if (milliseconds < 1000)
     {
         return QStringLiteral(
-            "%1 ms")
+                   "%1 ms")
             .arg(
                 milliseconds);
     }
@@ -6400,7 +6427,7 @@ QString MainWindow::formatDuration(
     if (hours > 0)
     {
         return QStringLiteral(
-            "%1h %2m %3s")
+                   "%1h %2m %3s")
             .arg(
                 hours)
             .arg(
@@ -6412,7 +6439,7 @@ QString MainWindow::formatDuration(
     if (minutes > 0)
     {
         return QStringLiteral(
-            "%1m %2s")
+                   "%1m %2s")
             .arg(
                 minutes)
             .arg(
@@ -6420,7 +6447,7 @@ QString MainWindow::formatDuration(
     }
 
     return QStringLiteral(
-        "%1.%2 s")
+               "%1.%2 s")
         .arg(
             seconds)
         .arg(

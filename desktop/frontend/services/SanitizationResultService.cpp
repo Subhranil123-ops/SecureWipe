@@ -189,6 +189,7 @@ SanitizationResultService::SanitizationResultService(
 void SanitizationResultService::submitResult(
     const QString &token,
     const QString &requestId,
+    const QString &workstationId,
     const SecureWipe::SanitizationPipelineResult
         &pipelineResult)
 {
@@ -208,6 +209,14 @@ void SanitizationResultService::submitResult(
         return;
     }
 
+    if (workstationId.trimmed().isEmpty())
+    {
+        emit resultSubmissionFailed(
+            QStringLiteral(
+                "Assigned workstation ID is missing."));
+        return;
+    }
+
     const QUrl url(
         QStringLiteral(
             "%1/api/sanitization-results/%2")
@@ -221,9 +230,13 @@ void SanitizationResultService::submitResult(
             url,
             token);
 
-    const QJsonObject payload =
+    QJsonObject payload =
         resultToJson(
             pipelineResult);
+
+    payload.insert(
+        QStringLiteral("workstationId"),
+        workstationId.trimmed());
 
     const QByteArray requestBody =
         QJsonDocument(payload)
@@ -239,7 +252,7 @@ void SanitizationResultService::submitResult(
         reply,
         &QNetworkReply::finished,
         this,
-        [this, reply, requestId, token, pipelineResult]()
+        [this, reply, requestId, workstationId, token, pipelineResult]()
         {
             QJsonObject response;
             QString errorMessage;
@@ -282,6 +295,7 @@ void SanitizationResultService::submitResult(
                 submitCertificate(
                     token,
                     requestId,
+                    workstationId,
                     pipelineResult);
             }
         });
@@ -290,6 +304,7 @@ void SanitizationResultService::submitResult(
 void SanitizationResultService::submitCertificate(
     const QString &token,
     const QString &requestId,
+    const QString &workstationId,
     const SecureWipe::SanitizationPipelineResult
         &pipelineResult)
 {
@@ -306,6 +321,14 @@ void SanitizationResultService::submitCertificate(
         emit certificateSubmissionFailed(
             QStringLiteral(
                 "Request ID is missing."));
+        return;
+    }
+
+    if (workstationId.trimmed().isEmpty())
+    {
+        emit certificateSubmissionFailed(
+            QStringLiteral(
+                "Assigned workstation ID is missing."));
         return;
     }
 
@@ -539,6 +562,11 @@ QJsonObject SanitizationResultService::certificateToJson(
         QStringLiteral("requestId"),
         QString::fromStdString(
             certificate.requestId));
+
+    object.insert(
+        QStringLiteral("workstationId"),
+        QString::fromStdString(
+            certificate.workstationId));
 
     object.insert(
         QStringLiteral("deviceId"),

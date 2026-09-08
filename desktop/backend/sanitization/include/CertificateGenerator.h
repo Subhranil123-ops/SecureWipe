@@ -12,7 +12,8 @@ public:
 
     SecureWipe::SanitizationCertificate generate(
         const SecureWipe::SanitizationResult& result,
-        const std::string& requestId = "") const;
+        const std::string& requestId = "",
+        const std::string& workstationId = "") const;
 
 private:
     std::string generateCertificateId(

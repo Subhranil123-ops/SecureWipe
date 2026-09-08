@@ -1,6 +1,7 @@
 const SanitizationResult = require("../models/SanitizationResult");
 const SanitizationRequest = require("../models/SanitizationRequest");
 const SanitizationCertificate = require("../models/SanitizationCertificate");
+const Workstation = require("../models/WorkStation");
 const AppError = require("../utils/AppError");
 
 const submitSanitizationResult = async (
@@ -60,6 +61,53 @@ const submitSanitizationResult = async (
                 403
             );
         }
+
+        if (!request.assignedWorkstation) {
+            throw new AppError(
+                "This sanitization request has no assigned workstation",
+                409
+            );
+        }
+
+        const workstation =
+            await Workstation.findById(
+                request.assignedWorkstation
+            );
+
+        if (!workstation) {
+            throw new AppError(
+                "The workstation assigned to this sanitization request no longer exists",
+                409
+            );
+        }
+
+        if (
+            !workstation.assignedEmployee ||
+            workstation.assignedEmployee.toString() !==
+                user._id.toString()
+        ) {
+            throw new AppError(
+                "The assigned workstation is not bound to the authenticated employee",
+                403
+            );
+        }
+
+        if (
+            workstation.workstationCenter.toString() !==
+            request.workstationCenter.toString()
+        ) {
+            throw new AppError(
+                "The assigned workstation does not belong to the request workstation center",
+                403
+            );
+        }
+
+        if (workstation.status !== "ACTIVE") {
+            throw new AppError(
+                "The assigned workstation is not active",
+                409
+            );
+        }
     }
 
     if (
@@ -93,7 +141,8 @@ const submitSanitizationResult = async (
         "interfaceType",
         "method",
         "status",
-        "verificationStatus"
+        "verificationStatus",
+        "workstationId"
     ];
 
     for (
@@ -109,6 +158,61 @@ const submitSanitizationResult = async (
                 400
             );
         }
+    }
+
+    const submittedWorkstationId =
+        String(payload.workstationId || "").trim();
+
+    if (!submittedWorkstationId) {
+        throw new AppError(
+            "Workstation ID is required",
+            400
+        );
+    }
+
+    if (
+        !request.assignedWorkstation
+    ) {
+        throw new AppError(
+            "This sanitization request has no assigned workstation",
+            409
+        );
+    }
+
+    const assignedWorkstation =
+        await Workstation.findById(
+            request.assignedWorkstation
+        );
+
+    if (!assignedWorkstation) {
+        throw new AppError(
+            "The workstation assigned to this sanitization request no longer exists",
+            409
+        );
+    }
+
+    if (
+        assignedWorkstation.workstationId !==
+        submittedWorkstationId
+    ) {
+        throw new AppError(
+            "The submitted workstation does not match the workstation assigned to this request",
+            403
+        );
+    }
+
+    if (
+        user.role === "WORKSTATION_EMPLOYEE" &&
+        (
+            !assignedWorkstation.assignedEmployee ||
+            assignedWorkstation.assignedEmployee.toString() !==
+                user._id.toString()
+        )
+    ) {
+        throw new AppError(
+            "The submitted workstation is not assigned to the authenticated employee",
+            403
+        );
     }
 
     if (
@@ -191,6 +295,9 @@ const submitSanitizationResult = async (
 
             submittedBy:
                 user._id,
+
+            workstationId:
+                submittedWorkstationId,
 
             deviceId:
                 String(

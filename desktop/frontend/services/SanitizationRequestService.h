@@ -21,7 +21,8 @@ public:
     void updateRequestStatus(
         const QString &token,
         const QString &requestId,
-        const QString &status
+        const QString &status,
+        const QString &workstationId
     );
 
 signals:

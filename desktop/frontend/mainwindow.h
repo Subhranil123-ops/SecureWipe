@@ -126,6 +126,7 @@ private:
     QString selectedRequestDeviceType_;
     QString selectedRequestMethod_;
     QString selectedRequestSerialNumber_;
+    QString selectedWorkstationId_;
 
     bool operationRunning_ = false;
 
