@@ -143,7 +143,8 @@ void SanitizationRequestService::fetchAssignedRequests(
 void SanitizationRequestService::updateRequestStatus(
     const QString &token,
     const QString &requestId,
-    const QString &status)
+    const QString &status,
+    const QString &workstationId)
 {
     if (token.trimmed().isEmpty())
     {
@@ -166,6 +167,14 @@ void SanitizationRequestService::updateRequestStatus(
         emit requestStatusUpdateFailed(
             QStringLiteral(
                 "Request status is missing."));
+        return;
+    }
+
+    if (workstationId.trimmed().isEmpty())
+    {
+        emit requestStatusUpdateFailed(
+            QStringLiteral(
+                "Assigned workstation ID is missing."));
         return;
     }
 
@@ -199,6 +208,10 @@ void SanitizationRequestService::updateRequestStatus(
     body.insert(
         QStringLiteral("status"),
         status);
+
+    body.insert(
+        QStringLiteral("workstationId"),
+        workstationId.trimmed());
 
     const QByteArray requestBody =
         QJsonDocument(body)

@@ -22,12 +22,14 @@ public:
     void submitResult(
         const QString &token,
         const QString &requestId,
+        const QString &workstationId,
         const SecureWipe::SanitizationPipelineResult &pipelineResult
     );
 
     void submitCertificate(
         const QString &token,
         const QString &requestId,
+        const QString &workstationId,
         const SecureWipe::SanitizationPipelineResult &pipelineResult
     );
 

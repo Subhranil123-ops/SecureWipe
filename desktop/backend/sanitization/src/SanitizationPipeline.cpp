@@ -74,7 +74,8 @@ const std::filesystem::path& SanitizationPipeline::evidenceDirectory() const
 SecureWipe::SanitizationPipelineResult SanitizationPipeline::execute(
     const StorageDevice& device,
     const std::string& requestId,
-    const std::string& actorId)
+    const std::string& actorId,
+    const std::string& workstationId)
 {
     SecureWipe::SanitizationPipelineResult pipelineResult;
     pipelineResult.auditLogPath = auditLogPath_.string();
@@ -364,7 +365,10 @@ SecureWipe::SanitizationPipelineResult SanitizationPipeline::execute(
         }
 
         pipelineResult.certificate =
-            certificateGenerator_.generate(pipelineResult.sanitization, requestId);
+            certificateGenerator_.generate(
+                pipelineResult.sanitization,
+                requestId,
+                workstationId);
 
         pipelineResult.certificateGenerated =
             pipelineResult.certificate.isValid();

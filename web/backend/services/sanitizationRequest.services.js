@@ -269,7 +269,7 @@ const updateSanitizationRequestStatus = async (
     if (
         !request.workstationCenter ||
         String(request.workstationCenter) !==
-            String(center._id)
+        String(center._id)
     ) {
         throw new AppError(
             "You are not authorized to review this request",
@@ -278,6 +278,7 @@ const updateSanitizationRequestStatus = async (
     }
 
     request.status = status;
+
     request.reviewedBy = user._id;
     request.reviewedAt = new Date();
 
@@ -472,7 +473,7 @@ const assignSanitizationRequest = async (
     if (
         !request.workstationCenter ||
         String(request.workstationCenter) !==
-            String(center._id)
+        String(center._id)
     ) {
         throw new AppError(
             "You can only assign requests belonging to your own center",
@@ -510,7 +511,7 @@ const assignSanitizationRequest = async (
     if (
         !employee.workstationCenter ||
         String(employee.workstationCenter) !==
-            String(center._id)
+        String(center._id)
     ) {
         throw new AppError(
             "Selected employee does not belong to your workstation center",
@@ -572,7 +573,7 @@ const assignSanitizationRequest = async (
         if (
             requestedWorkstationId &&
             requestedWorkstationId !==
-                workstation.workstationId
+            workstation.workstationId
         ) {
             throw new AppError(
                 `Employee ${employee.name} is already assigned to workstation ${workstation.workstationId}. This employee cannot be assigned to another workstation.`,
@@ -685,10 +686,9 @@ const assignSanitizationRequest = async (
 
         newlyBoundWorkstation = true;
     }
-
     /*
-     * Final workstation consistency check.
-     */
+ * Final workstation consistency check.
+ */
     if (
         !workstation ||
         String(
@@ -944,11 +944,58 @@ const updateEmployeeSanitizationStatus =
             String(
                 request.assignedEmployee
             ) !==
-                String(user._id)
+            String(user._id)
         ) {
             throw new AppError(
                 "This request is not assigned to you",
                 403
+            );
+        }
+
+        if (!request.assignedWorkstation) {
+            throw new AppError(
+                "This request has no assigned workstation",
+                409
+            );
+        }
+
+        const workstation =
+            await Workstation.findById(
+                request.assignedWorkstation
+            );
+
+        if (!workstation) {
+            throw new AppError(
+                "The workstation assigned to this request no longer exists",
+                409
+            );
+        }
+
+        if (
+            !workstation.assignedEmployee ||
+            String(workstation.assignedEmployee) !==
+            String(user._id)
+        ) {
+            throw new AppError(
+                "The assigned workstation is not bound to the authenticated employee",
+                403
+            );
+        }
+
+        if (
+            String(workstation.workstationCenter) !==
+            String(request.workstationCenter)
+        ) {
+            throw new AppError(
+                "The assigned workstation does not belong to the request workstation center",
+                403
+            );
+        }
+
+        if (workstation.status !== "ACTIVE") {
+            throw new AppError(
+                "The assigned workstation is not active",
+                409
             );
         }
 
@@ -968,7 +1015,7 @@ const updateEmployeeSanitizationStatus =
 
         const allowedNextStatuses =
             allowedTransitions[
-                request.status
+            request.status
             ];
 
         if (
@@ -996,7 +1043,7 @@ const updateEmployeeSanitizationStatus =
 
         if (
             newStatus ===
-                "COMPLETED" ||
+            "COMPLETED" ||
             newStatus === "FAILED"
         ) {
             request.completedAt =

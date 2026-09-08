@@ -12,6 +12,10 @@ const SanitizationRequest = require(
     "../models/SanitizationRequest"
 );
 
+const Workstation = require(
+    "../models/WorkStation"
+);
+
 const AppError = require("../utils/AppError");
 
 const canonicalTimestamp = value => {
@@ -37,6 +41,7 @@ const buildCanonicalData = certificate => {
         `certificateId=${certificate.certificateId}`,
         `operationId=${certificate.operationId}`,
         `requestId=${certificate.requestId}`,
+        `workstationId=${certificate.workstationId}`,
 
         `deviceId=${certificate.deviceId}`,
         `model=${certificate.model}`,
@@ -152,6 +157,51 @@ const submitCertificate = async (
     }
 
     if (
+        !request.assignedWorkstation
+    ) {
+        throw new AppError(
+            "This sanitization request has no assigned workstation",
+            409
+        );
+    }
+
+    const assignedWorkstation =
+        await Workstation.findById(
+            request.assignedWorkstation
+        );
+
+    if (!assignedWorkstation) {
+        throw new AppError(
+            "The workstation assigned to this sanitization request no longer exists",
+            409
+        );
+    }
+
+    if (
+        assignedWorkstation.status !==
+        "ACTIVE"
+    ) {
+        throw new AppError(
+            "The workstation assigned to this sanitization request is not active",
+            409
+        );
+    }
+
+    if (
+        user.role === "WORKSTATION_EMPLOYEE" &&
+        (
+            !assignedWorkstation.assignedEmployee ||
+            assignedWorkstation.assignedEmployee.toString() !==
+            user._id.toString()
+        )
+    ) {
+        throw new AppError(
+            "The assigned workstation is not bound to the authenticated employee",
+            403
+        );
+    }
+
+    if (
         !payload ||
         typeof payload !== "object"
     ) {
@@ -176,6 +226,27 @@ const submitCertificate = async (
     }
 
     if (
+        !result.workstationId ||
+        result.workstationId !==
+        assignedWorkstation.workstationId
+    ) {
+        throw new AppError(
+            "Sanitization result workstation does not match the request workstation",
+            403
+        );
+    }
+
+    if (
+        String(payload.workstationId || "").trim() !==
+        assignedWorkstation.workstationId
+    ) {
+        throw new AppError(
+            "Certificate workstation does not match the workstation assigned to this request",
+            403
+        );
+    }
+
+    if (
         result.method !==
         "HOST_OVERWRITE"
     ) {
@@ -187,9 +258,9 @@ const submitCertificate = async (
 
     if (
         result.status !==
-            "COMPLETED" ||
+        "COMPLETED" ||
         result.verificationStatus !==
-            "PASSED" ||
+        "PASSED" ||
         !result.verificationPerformed ||
         !result.verificationPassed
     ) {
@@ -229,7 +300,8 @@ const submitCertificate = async (
         "verificationSamples",
         "generatedAt",
         "hashAlgorithm",
-        "certificateHash"
+        "certificateHash",
+        "workstationId"
     ];
 
     for (
@@ -237,7 +309,7 @@ const submitCertificate = async (
     ) {
         if (
             payload[field] ===
-                undefined ||
+            undefined ||
             payload[field] === null ||
             payload[field] === ""
         ) {
@@ -266,6 +338,11 @@ const submitCertificate = async (
 
         requestId:
             request.requestId,
+
+        workstationId:
+            String(
+                payload.workstationId
+            ),
 
         deviceId:
             String(
@@ -458,12 +535,22 @@ const submitCertificate = async (
     }
 
     if (
+        certificateData.workstationId !==
+        result.workstationId
+    ) {
+        throw new AppError(
+            "Certificate workstation does not match sanitization result",
+            400
+        );
+    }
+
+    if (
         certificateData.deviceId !==
-            result.deviceId ||
+        result.deviceId ||
         certificateData.serialNumber !==
-            result.serialNumber ||
+        result.serialNumber ||
         certificateData.capacityBytes !==
-            result.capacityBytes
+        result.capacityBytes
     ) {
         throw new AppError(
             "Certificate device identity does not match sanitization result",
@@ -473,11 +560,11 @@ const submitCertificate = async (
 
     if (
         certificateData.verificationStatus !==
-            result.verificationStatus ||
+        result.verificationStatus ||
         certificateData.verificationPerformed !==
-            result.verificationPerformed ||
+        result.verificationPerformed ||
         certificateData.verificationPassed !==
-            result.verificationPassed
+        result.verificationPassed
     ) {
         throw new AppError(
             "Certificate verification evidence does not match sanitization result",
@@ -534,7 +621,6 @@ const submitCertificate = async (
             400
         );
     }
-
     const certificate =
         await SanitizationCertificate.create({
             ...certificateData,
@@ -634,7 +720,7 @@ const getCertificateById = async (
 
     if (
         user.role ===
-            "WORKSTATION_EMPLOYEE" &&
+        "WORKSTATION_EMPLOYEE" &&
         request.assignedEmployee?.toString() !==
         user._id.toString()
     ) {
@@ -646,7 +732,7 @@ const getCertificateById = async (
 
     if (
         user.role ===
-            "WORKSTATION_HEAD" &&
+        "WORKSTATION_HEAD" &&
         request.workstationCenter.toString() !==
         user.workstationCenter?.toString()
     ) {
@@ -679,6 +765,9 @@ const verifyCertificateIntegrity =
 
             requestId:
                 certificate.requestId,
+
+            workstationId:
+                certificate.workstationId,
 
             deviceId:
                 certificate.deviceId,

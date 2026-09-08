@@ -76,13 +76,15 @@ namespace
 
 SanitizationCertificate CertificateGenerator::generate(
     const SanitizationResult &result,
-    const std::string &requestId) const
+    const std::string &requestId,
+    const std::string &workstationId) const
 {
     SanitizationCertificate certificate;
 
     certificate.certificateId = generateCertificateId(result);
     certificate.operationId = result.operationId;
     certificate.requestId = requestId;
+    certificate.workstationId = workstationId;
 
     certificate.deviceId = result.deviceId;
     certificate.model = result.model;
@@ -179,6 +181,7 @@ std::string CertificateGenerator::buildCanonicalData(
     stream << "certificateId=" << certificate.certificateId << '\n';
     stream << "operationId=" << certificate.operationId << '\n';
     stream << "requestId=" << certificate.requestId << '\n';
+    stream << "workstationId=" << certificate.workstationId << '\n';
 
     stream << "deviceId=" << certificate.deviceId << '\n';
     stream << "model=" << certificate.model << '\n';

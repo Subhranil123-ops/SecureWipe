@@ -11,13 +11,23 @@ router.use(Authenticate);
 
 router.get(
     "/dashboard",
-    Authorize("ADMIN", "CUSTOMER", "WORKSTATION_HEAD", "WORKSTATION_EMPLOYEE"),
+    Authorize(
+        "ADMIN",
+        "CUSTOMER",
+        "WORKSTATION_HEAD",
+        "WORKSTATION_EMPLOYEE"
+    ),
     controller.getDashboard
 );
 
 router.get(
     "/",
-    Authorize("ADMIN", "CUSTOMER", "WORKSTATION_HEAD", "WORKSTATION_EMPLOYEE"),
+    Authorize(
+        "ADMIN",
+        "CUSTOMER",
+        "WORKSTATION_HEAD",
+        "WORKSTATION_EMPLOYEE"
+    ),
     controller.getCases
 );
 
@@ -30,8 +40,24 @@ router.post(
 
 router.get(
     "/:caseId",
-    Authorize("ADMIN", "CUSTOMER", "WORKSTATION_HEAD", "WORKSTATION_EMPLOYEE"),
+    Authorize(
+        "ADMIN",
+        "CUSTOMER",
+        "WORKSTATION_HEAD",
+        "WORKSTATION_EMPLOYEE"
+    ),
     controller.getCase
+);
+
+router.get(
+    "/:caseId/audit",
+    Authorize(
+        "ADMIN",
+        "CUSTOMER",
+        "WORKSTATION_HEAD",
+        "WORKSTATION_EMPLOYEE"
+    ),
+    controller.getAuditTrail
 );
 
 router.patch(
@@ -42,19 +68,31 @@ router.patch(
 
 router.patch(
     "/:caseId/status",
-    Authorize("ADMIN", "WORKSTATION_HEAD", "WORKSTATION_EMPLOYEE"),
+    Authorize(
+        "ADMIN",
+        "WORKSTATION_HEAD",
+        "WORKSTATION_EMPLOYEE"
+    ),
     controller.updateStatus
 );
 
 router.post(
     "/:caseId/results",
-    Authorize("ADMIN", "WORKSTATION_EMPLOYEE"),
+    Authorize(
+        "ADMIN",
+        "WORKSTATION_EMPLOYEE"
+    ),
     controller.ingestResult
 );
 
 router.post(
     "/:caseId/report",
-    Authorize("ADMIN", "CUSTOMER", "WORKSTATION_HEAD", "WORKSTATION_EMPLOYEE"),
+    Authorize(
+        "ADMIN",
+        "CUSTOMER",
+        "WORKSTATION_HEAD",
+        "WORKSTATION_EMPLOYEE"
+    ),
     controller.generateReport
 );
 

@@ -22,6 +22,13 @@ const sanitizationResultSchema = new mongoose.Schema(
             index: true
         },
 
+        workstationId: {
+            type: String,
+            required: true,
+            trim: true,
+            index: true
+        },
+
         deviceId: {
             type: String,
             required: true,

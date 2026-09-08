@@ -22,6 +22,13 @@ const sanitizationCertificateSchema = new mongoose.Schema(
             index: true
         },
 
+        workstationId: {
+            type: String,
+            required: true,
+            trim: true,
+            index: true
+        },
+
         result: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "SanitizationResult",

@@ -14,6 +14,7 @@ namespace SecureWipe
         std::string certificateId;
         std::string operationId;
         std::string requestId;
+        std::string workstationId;
 
         // Device identity
         std::string deviceId;
