@@ -65,6 +65,12 @@ const sanitizationRequestSchema = new mongoose.Schema(
             min: 1
         },
 
+        serialNumber: {
+            type: String,
+            required: true,
+            trim: true
+        },
+
         assetIdentifier: {
             type: String,
             trim: true,
@@ -74,12 +80,6 @@ const sanitizationRequestSchema = new mongoose.Schema(
         // --------------------------------------------------
         // SANITIZATION INFORMATION
         // --------------------------------------------------
-
-        sanitizationMethod: {
-            type: String,
-            required: true,
-            trim: true
-        },
 
         additionalRequirements: {
             type: String,

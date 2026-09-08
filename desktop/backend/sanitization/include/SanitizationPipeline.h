@@ -51,7 +51,8 @@ public:
         const StorageDevice& device,
         const std::string& requestId = {},
         const std::string& actorId = {},
-        const std::string& workstationId = {});
+        const std::string& workstationId = {},
+        const std::string& expectedSerialNumber = {});
 
     const std::filesystem::path& evidenceDirectory() const;
 

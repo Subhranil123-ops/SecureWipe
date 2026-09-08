@@ -6,7 +6,6 @@ import { getActiveWorkstationCenters, } from "../../../services/workstationCente
 import {
     DEVICE_TYPES,
     CAPACITIES,
-    SANITIZATION_METHODS,
     validateSanitizationForm,
 } from "../../../utils/sanitizationValidation";
 
@@ -19,7 +18,7 @@ const INITIAL_FORM_DATA = {
     capacity: "",
     deviceCount: 1,
     assetIdentifier: "",
-    sanitizationMethod: "",
+    serialNumber: "",
     additionalRequirements: "",
     preferredDate: "",
     notes: "",
@@ -273,8 +272,8 @@ export default function CustomerSanitizationRequest() {
                 formData.capacity || "—",
             deviceCount:
                 formData.deviceCount || "—",
-            method:
-                formData.sanitizationMethod ||
+            serialNumber:
+                formData.serialNumber ||
                 "—",
             preferredDate:
                 formData.preferredDate || "—",
@@ -425,8 +424,8 @@ export default function CustomerSanitizationRequest() {
                             assetIdentifier:
                                 formData.assetIdentifier,
 
-                            sanitizationMethod:
-                                formData.sanitizationMethod,
+                            serialNumber:
+                                formData.serialNumber.trim(),
 
                             additionalRequirements:
                                 formData.additionalRequirements,
@@ -699,6 +698,17 @@ export default function CustomerSanitizationRequest() {
                             />
 
                             <InputField
+                                label="Physical Device Serial Number"
+                                name="serialNumber"
+                                value={formData.serialNumber}
+                                onChange={handleChange}
+                                onBlur={handleBlur}
+                                error={errors.serialNumber}
+                                placeholder="Enter the exact device serial number"
+                                required
+                            />
+
+                            <InputField
                                 label="Device / Asset Identifier"
                                 name="assetIdentifier"
                                 value={formData.assetIdentifier}
@@ -718,18 +728,9 @@ export default function CustomerSanitizationRequest() {
 
                         <div className="mt-5 space-y-5">
 
-                            <SelectField
-                                label="Preferred Sanitization Method"
-                                name="sanitizationMethod"
-                                value={formData.sanitizationMethod}
-                                onChange={handleChange}
-                                onBlur={handleBlur}
-                                options={SANITIZATION_METHODS}
-                                error={
-                                    errors.sanitizationMethod
-                                }
-                                required
-                            />
+                            <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm text-blue-800">
+                                The sanitization method is selected automatically by the workstation capability engine after the authorized physical device is detected and safety-validated.
+                            </div>
 
                             <TextAreaField
                                 label="Additional Requirements"
@@ -885,11 +886,11 @@ export default function CustomerSanitizationRequest() {
 
                             <div>
                                 <p className="text-xs font-medium uppercase text-gray-500">
-                                    Preferred Method
+                                    Physical Serial Number
                                 </p>
 
-                                <p className="mt-1 text-sm text-gray-900">
-                                    {summary.method}
+                                <p className="mt-1 text-sm text-gray-900 break-all">
+                                    {summary.serialNumber}
                                 </p>
                             </div>
 

@@ -322,8 +322,8 @@ function SanitizationExecution() {
                     />
 
                     <Meta
-                        label="Requested Method"
-                        value={request.sanitizationMethod}
+                        label="Authorized Serial Number"
+                        value={request.serialNumber}
                     />
 
                     <Meta

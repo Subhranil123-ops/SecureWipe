@@ -87,7 +87,7 @@ function WorkstationHeadSanitizationRequests() {
                     request.deviceType,
                     request.capacity,
                     request.assetIdentifier,
-                    request.sanitizationMethod,
+                    request.serialNumber,
                     request.status,
                     request.assignedEmployee?.name,
                     request.assignedWorkstation?.name,
@@ -330,7 +330,7 @@ function WorkstationHeadSanitizationRequests() {
                                     <Th>Request</Th>
                                     <Th>Customer</Th>
                                     <Th>Device</Th>
-                                    <Th>Method</Th>
+                                    <Th>Serial Number</Th>
                                     <Th>Status</Th>
                                     <Th>Assignment</Th>
                                 </tr>
@@ -405,9 +405,7 @@ function WorkstationHeadSanitizationRequests() {
 
                                             <td className="px-4 py-4">
                                                 <span className="inline-flex rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
-                                                    {formatMethod(
-                                                        request.sanitizationMethod
-                                                    )}
+                                                    {request.serialNumber || "N/A"}
                                                 </span>
                                             </td>
 

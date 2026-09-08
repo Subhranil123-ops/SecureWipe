@@ -10,13 +10,9 @@ class SanitizationRequestService : public QObject
     Q_OBJECT
 
 public:
-    explicit SanitizationRequestService(
-        QObject *parent = nullptr
-    );
+    explicit SanitizationRequestService(QObject *parent = nullptr);
 
-    void fetchAssignedRequests(
-        const QString &token
-    );
+    void fetchAssignedRequests(const QString &token);
 
     void updateRequestStatus(
         const QString &token,
@@ -25,21 +21,28 @@ public:
         const QString &workstationId
     );
 
-signals:
-    void assignedRequestsFetched(
-        const QJsonArray &requests
+    void bindWorkstationIdentity(
+        const QString &token,
+        const QString &workstationId
     );
 
-    void requestFetchFailed(
-        const QString &message
-    );
+signals:
+    void assignedRequestsFetched(const QJsonArray &requests);
+
+    void requestFetchFailed(const QString &message);
 
     void requestStatusUpdated(
         const QString &requestId,
         const QString &status
     );
 
-    void requestStatusUpdateFailed(
+    void requestStatusUpdateFailed(const QString &message);
+
+    void workstationIdentityVerified(
+        const QString &workstationId
+    );
+
+    void workstationIdentityVerificationFailed(
         const QString &message
     );
 

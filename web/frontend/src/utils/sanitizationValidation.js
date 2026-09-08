@@ -21,14 +21,6 @@ export const CAPACITIES = [
     "Other",
 ];
 
-export const SANITIZATION_METHODS = [
-    "Secure Erase",
-    "Cryptographic Erase",
-    "Overwrite",
-    "Standard Sanitization",
-    "To Be Determined",
-];
-
 const EMAIL_REGEX =
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -41,8 +33,8 @@ export function validateSanitizationForm(
     const errors = {};
 
     if (!formData.workstationCenter) {
-    errors.workstationCenter =
-        "Please select a workstation center.";
+        errors.workstationCenter =
+            "Please select a workstation center.";
     }
 
     const name = formData.name.trim();
@@ -88,6 +80,17 @@ export function validateSanitizationForm(
             "Please select a valid storage device type.";
     }
 
+    const serialNumber =
+        (formData.serialNumber || "").trim();
+
+    if (!serialNumber) {
+        errors.serialNumber =
+            "Physical device serial number is required.";
+    } else if (serialNumber.length > 100) {
+        errors.serialNumber =
+            "Serial number must not exceed 100 characters.";
+    }
+
     if (
         !CAPACITIES.includes(
             formData.capacity
@@ -121,15 +124,6 @@ export function validateSanitizationForm(
     ) {
         errors.deviceCount =
             "Number of devices cannot exceed 100.";
-    }
-
-    if (
-        !SANITIZATION_METHODS.includes(
-            formData.sanitizationMethod
-        )
-    ) {
-        errors.sanitizationMethod =
-            "Please select a valid sanitization method.";
     }
 
     if (
