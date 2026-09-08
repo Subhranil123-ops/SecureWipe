@@ -2,9 +2,9 @@ const asyncHandler =
     require("../utils/asyncHandler");
 
 const {
-    submitSanitizationCertificate,
-    getSanitizationCertificate,
-    verifySanitizationCertificate,
+    submitCertificate,
+    getCertificateById,
+    verifyCertificateIntegrity,
 } = require(
     "../services/sanitizationCertificate.services"
 );
@@ -12,9 +12,8 @@ const {
 module.exports.submitCertificate =
     asyncHandler(
         async (req, res) => {
-
             const certificate =
-                await submitSanitizationCertificate(
+                await submitCertificate(
                     req.params.requestId,
                     req.body,
                     req.user
@@ -32,9 +31,8 @@ module.exports.submitCertificate =
 module.exports.getCertificate =
     asyncHandler(
         async (req, res) => {
-
             const certificate =
-                await getSanitizationCertificate(
+                await getCertificateById(
                     req.params.certificateId,
                     req.user
                 );
@@ -49,16 +47,15 @@ module.exports.getCertificate =
 module.exports.verifyCertificate =
     asyncHandler(
         async (req, res) => {
-
-            const result =
-                await verifySanitizationCertificate(
+            const verification =
+                await verifyCertificateIntegrity(
                     req.params.certificateId,
                     req.user
                 );
 
             res.status(200).json({
                 success: true,
-                data: result,
+                data: verification,
             });
         }
     );
