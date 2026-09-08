@@ -4,6 +4,7 @@
 
 #include "StorageDevice.h"
 
+class AuthManager;
 class DeviceController;
 class ForensicService;
 
@@ -22,11 +23,13 @@ class ForensicPage : public QWidget
 public:
     explicit ForensicPage(
         DeviceController *deviceController,
+        AuthManager *authManager,
         QWidget *parent = nullptr
     );
 
 private:
     DeviceController *deviceController_;
+    AuthManager *authManager_;
     ForensicService *forensicService_;
 
     QComboBox *sourceTypeCombo_;
@@ -59,6 +62,17 @@ private:
 
     QTableWidget *resultsTable_;
 
+    QComboBox *forensicCaseCombo_;
+    QLabel *forensicCaseStatusLabel_;
+    QLabel *forensicCaseDetailsLabel_;
+    QLabel *forensicAssignmentLabel_;
+    QPushButton *refreshCasesButton_;
+    QPushButton *loadCaseButton_;
+    QPushButton *submitResultsButton_;
+
+    QString selectedForensicCaseId_;
+    QString selectedForensicWorkstationId_;
+
     void buildUi();
 
     void refreshDeviceList();
@@ -73,6 +87,15 @@ private:
     );
 
     QString selectedSource() const;
+
+    void loadAssignedForensicCases();
+    void loadSelectedForensicCase();
+    void prepareCaseForAcquisition();
+    void submitForensicResults();
+
+    void updateForensicCaseUi();
+
+    bool hasForensicCase() const;
 
     static QString formatBytes(
         std::uint64_t bytes
