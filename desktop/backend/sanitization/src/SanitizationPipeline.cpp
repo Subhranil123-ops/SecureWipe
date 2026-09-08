@@ -75,7 +75,8 @@ SecureWipe::SanitizationPipelineResult SanitizationPipeline::execute(
     const StorageDevice& device,
     const std::string& requestId,
     const std::string& actorId,
-    const std::string& workstationId)
+    const std::string& workstationId,
+    const std::string& expectedSerialNumber)
 {
     SecureWipe::SanitizationPipelineResult pipelineResult;
     pipelineResult.auditLogPath = auditLogPath_.string();
@@ -165,7 +166,38 @@ SecureWipe::SanitizationPipelineResult SanitizationPipeline::execute(
             return pipelineResult;
         }
 
-        safetyEngine_.setExpectedTarget(device);
+        if (!expectedSerialNumber.empty())
+        {
+            if (device.getSerialNumber() != expectedSerialNumber)
+            {
+                pipelineResult.sanitization = initialResult;
+                pipelineResult.sanitization.status = SecureWipe::SanitizationStatus::FAILED;
+                pipelineResult.sanitization.error = SecureWipe::SanitizationErrorCode::SAFETY_VALIDATION_FAILED;
+                pipelineResult.sanitization.message = "Physical target serial number does not match the authorized request.";
+                pipelineResult.sanitization.errorMessage = pipelineResult.sanitization.message;
+
+                if (!this->appendAudit(
+                        SecureWipe::SanitizationAuditEvent::PIPELINE_FAILED,
+                        auditErrorSeverity(),
+                        pipelineResult.sanitization,
+                        requestId,
+                        actorId,
+                        pipelineResult.sanitization.message,
+                        auditError))
+                    auditOk = false;
+
+                pipelineResult.auditTrailPersisted = auditOk;
+                pipelineResult.pipelineMessage = pipelineResult.sanitization.message;
+                return pipelineResult;
+            }
+
+            safetyEngine_.setExpectedTargetSerial(expectedSerialNumber);
+        }
+        else
+        {
+            safetyEngine_.setExpectedTarget(device);
+        }
+
         const SafetyResult safetyResult = safetyEngine_.evaluateWithResult(device);
         initialResult.message = safetyResult.summary;
 

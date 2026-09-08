@@ -23,7 +23,6 @@ const registerSchema = Joi.object({
             "string.email": "Please enter a valid email address"
         }),
 
-
     password: Joi.string()
         .min(8)
         .max(128)
@@ -156,7 +155,6 @@ const workstationSchema = Joi.object({
         .required(),
 });
 
-
 const sanitizationRequestSchema =
     Joi.object({
         name: Joi.string()
@@ -217,14 +215,9 @@ const sanitizationRequestSchema =
             .allow("")
             .optional(),
 
-        sanitizationMethod: Joi.string()
-            .valid(
-                "Secure Erase",
-                "Cryptographic Erase",
-                "Overwrite",
-                "Standard Sanitization",
-                "To Be Determined"
-            )
+        serialNumber: Joi.string()
+            .trim()
+            .max(100)
             .required(),
 
         additionalRequirements:
@@ -252,13 +245,13 @@ const sanitizationRequestSchema =
         consent: Joi.boolean()
             .valid(true)
             .required(),
-            
+
         workstationCenter: Joi.string()
             .required()
             .messages({
-            "any.required": "Workstation center is required",
-            "string.empty": "Workstation center is required"
-        }),
+                "any.required": "Workstation center is required",
+                "string.empty": "Workstation center is required"
+            }),
     });
 
 module.exports = {

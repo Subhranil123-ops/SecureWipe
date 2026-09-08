@@ -39,6 +39,13 @@ const createSanitizationRequest = async (data, user) => {
         );
     }
 
+    if (!data || !String(data.serialNumber || "").trim()) {
+        throw new AppError(
+            "Physical device serial number is required",
+            400
+        );
+    }
+
     const center = await WorkstationCenter.findOne({
         centerId: data.workstationCenter,
     });
@@ -69,8 +76,8 @@ const createSanitizationRequest = async (data, user) => {
         deviceType: data.deviceType,
         capacity: data.capacity,
         deviceCount: data.deviceCount,
+        serialNumber: String(data.serialNumber).trim(),
         assetIdentifier: data.assetIdentifier || "",
-        sanitizationMethod: data.sanitizationMethod,
         additionalRequirements:
             data.additionalRequirements || "",
         preferredDate:
@@ -686,9 +693,10 @@ const assignSanitizationRequest = async (
 
         newlyBoundWorkstation = true;
     }
+
     /*
- * Final workstation consistency check.
- */
+     * Final workstation consistency check.
+     */
     if (
         !workstation ||
         String(
@@ -1015,7 +1023,7 @@ const updateEmployeeSanitizationStatus =
 
         const allowedNextStatuses =
             allowedTransitions[
-            request.status
+                request.status
             ];
 
         if (
