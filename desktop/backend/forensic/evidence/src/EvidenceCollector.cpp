@@ -212,8 +212,25 @@ EvidenceCollector::collectWithSummary(
     summary.sourceOpened =
         true;
 
+    LARGE_INTEGER sourceSize{};
+
+    if (GetFileSizeEx(
+            deviceHandle,
+            &sourceSize) &&
+        sourceSize.QuadPart >= 0)
+    {
+        summary.totalBytes =
+            static_cast<std::uint64_t>(
+                sourceSize.QuadPart);
+    }
+
     std::cout
         << "Forensic source opened successfully.\n";
+
+    std::cout
+        << "Source size: "
+        << summary.totalBytes
+        << " bytes\n";
 
     std::vector<std::uint8_t>
         buffer;

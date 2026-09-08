@@ -14,6 +14,7 @@ struct EvidenceCollectionSummary
     bool completed = false;
 
     std::uint64_t bytesScanned = 0;
+    std::uint64_t totalBytes = 0;
     std::uint64_t candidatesFound = 0;
     std::uint64_t recoveredArtifacts = 0;
     std::uint64_t validatedArtifacts = 0;

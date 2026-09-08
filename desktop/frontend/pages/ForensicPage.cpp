@@ -115,6 +115,51 @@ namespace
 
 }
 
+    bool isUnknownDeviceIdentifier(const QString &value)
+    {
+        const QString normalized = value.trimmed();
+        return normalized.isEmpty() ||
+               normalized.compare(QStringLiteral("Unknown"), Qt::CaseInsensitive) == 0 ||
+               normalized.compare(QStringLiteral("N/A"), Qt::CaseInsensitive) == 0 ||
+               normalized.compare(QStringLiteral("NA"), Qt::CaseInsensitive) == 0;
+    }
+
+    bool matchesPhysicalCaseSource(
+        const ForensicCaseInfo &item,
+        const StorageDevice &device,
+        QString &reason)
+    {
+        if (item.sourceType != QStringLiteral("PHYSICAL_DEVICE"))
+        {
+            return true;
+        }
+
+        const QString expected = item.sourceIdentifier.trimmed();
+        const QString serial = QString::fromStdString(device.getSerialNumber()).trimmed();
+
+        if (expected.isEmpty())
+        {
+            reason = QStringLiteral("The forensic case does not contain a physical device identifier.");
+            return false;
+        }
+
+        if (isUnknownDeviceIdentifier(serial))
+        {
+            reason = QStringLiteral("The selected device does not expose a usable serial number, so SecureWipe cannot safely bind it to this forensic case.");
+            return false;
+        }
+
+        if (QString::compare(expected, serial, Qt::CaseInsensitive) != 0)
+        {
+            reason = QStringLiteral("Selected device serial %1 does not match the case identifier %2.")
+                .arg(serial.toHtmlEscaped(), expected.toHtmlEscaped());
+            return false;
+        }
+
+        reason.clear();
+        return true;
+    }
+
 ForensicPage::ForensicPage(
     DeviceController *deviceController,
     AuthManager *authManager,
@@ -201,6 +246,7 @@ ForensicPage::ForensicPage(
             selectedForensicCaseId_ = forensicService_->selectedCase().caseId;
             selectedForensicWorkstationId_ = forensicService_->selectedCase().assignedWorkstationMongoId;
             updateForensicCaseUi();
+            updateSourceState();
         });
 
     connect(
@@ -217,11 +263,31 @@ ForensicPage::ForensicPage(
         forensicService_,
         &ForensicService::caseStatusUpdated,
         this,
-        [this]()
+        [this](const QString &status)
         {
             updateForensicCaseUi();
+            updateSourceState();
+
             if (!selectedForensicCaseId_.isEmpty())
+            {
                 forensicService_->loadCase(selectedForensicCaseId_);
+            }
+
+            if (status == QStringLiteral("ACQUIRING"))
+            {
+                QTimer::singleShot(0, this, [this]()
+                {
+                    if (!forensicService_ || forensicService_->isRunning() || !hasForensicCase())
+                    {
+                        return;
+                    }
+
+                    if (forensicService_->selectedCase().status == QStringLiteral("ACQUIRING"))
+                    {
+                        startScan();
+                    }
+                });
+            }
         });
 
     connect(
@@ -1657,6 +1723,12 @@ void ForensicPage::refreshDeviceList()
                     "System"));
         }
 
+        if (!serial.isEmpty() && !isUnknownDeviceIdentifier(serial))
+        {
+            metadata.append(
+                QStringLiteral("SN %1").arg(serial));
+        }
+
         if (!metadata.isEmpty())
         {
             displayName +=
@@ -1880,141 +1952,104 @@ void ForensicPage::updateDeviceSelection()
 
 void ForensicPage::updateSourceState()
 {
-    if (
-        !sourceTypeCombo_ ||
-        !scanButton_)
+    if (!sourceTypeCombo_ || !scanButton_)
     {
         return;
     }
 
-    const int sourceType =
-        sourceTypeCombo_->currentIndex();
-
-    bool valid =
-        false;
-
+    const int sourceType = sourceTypeCombo_->currentIndex();
+    bool valid = false;
     QString status;
 
-    if (
-        sourceType == 0)
+    if (sourceType == 0)
     {
-        const int index =
-            deviceCombo_
-                ? deviceCombo_->currentIndex()
-                : -1;
+        const int index = deviceCombo_ ? deviceCombo_->currentIndex() : -1;
 
-        if (
-            deviceController_ &&
-            index >= 0)
+        if (deviceController_ && index >= 0)
         {
-            const auto &devices =
-                deviceController_->devices();
+            const auto &devices = deviceController_->devices();
 
-            if (
-                index <
-                static_cast<int>(
-                    devices.size()))
+            if (index < static_cast<int>(devices.size()))
             {
-                const StorageDevice &device =
-                    devices.at(
-                        static_cast<std::size_t>(
-                            index));
+                const StorageDevice &device = devices.at(static_cast<std::size_t>(index));
+                const QString deviceId = QString::fromStdString(device.getDeviceId()).trimmed();
 
-                const QString deviceId =
-                    QString::fromStdString(
-                        device.getDeviceId())
-                        .trimmed();
+                valid = !deviceId.isEmpty();
 
-                valid =
-                    !deviceId.isEmpty();
-
-                if (valid)
+                if (valid && hasForensicCase())
                 {
-                    status =
-                        QStringLiteral(
-                            "Physical device ready for read-only acquisition.");
+                    const ForensicCaseInfo &item = forensicService_->selectedCase();
+                    QString bindingReason;
+
+                    if (!matchesPhysicalCaseSource(item, device, bindingReason))
+                    {
+                        valid = false;
+                        status = bindingReason;
+                    }
+                    else
+                    {
+                        status = QStringLiteral("Assigned physical device matched. Read-only acquisition is ready.");
+                    }
+                }
+                else if (valid)
+                {
+                    status = QStringLiteral("Physical device ready for read-only acquisition.");
                 }
             }
         }
 
-        if (!valid)
+        if (!valid && status.isEmpty())
         {
-            status =
-                QStringLiteral(
-                    "Select a physical storage device to continue.");
+            status = QStringLiteral("Select a physical storage device to continue.");
         }
     }
     else
     {
-        const QString path =
-            imagePathEdit_
-                ? imagePathEdit_->text().trimmed()
-                : QString();
+        const QString path = imagePathEdit_ ? imagePathEdit_->text().trimmed() : QString();
 
-        if (
-            !path.isEmpty())
+        if (!path.isEmpty())
         {
-            QFileInfo fileInfo(
-                path);
+            QFileInfo fileInfo(path);
 
-            if (
-                fileInfo.exists() &&
-                fileInfo.isFile() &&
-                fileInfo.isReadable())
+            if (fileInfo.exists() && fileInfo.isFile() && fileInfo.isReadable())
             {
-                valid =
-                    true;
-
-                status =
-                    QStringLiteral(
-                        "Forensic image is ready for read-only acquisition.");
+                valid = true;
+                status = QStringLiteral("Forensic image is ready for read-only acquisition.");
             }
             else
             {
-                status =
-                    QStringLiteral(
-                        "The selected source cannot be opened for reading.");
+                status = QStringLiteral("The selected forensic source cannot be opened for reading.");
             }
         }
         else
         {
-            status =
-                QStringLiteral(
-                    "Select a forensic image or raw source to continue.");
+            status = QStringLiteral("Select a forensic image or raw source to continue.");
         }
     }
 
-    scanButton_->setEnabled(
-        valid &&
-        !forensicService_->isRunning());
-
-    if (
-        !forensicService_->isRunning())
+    if (hasForensicCase())
     {
-        sourceStatusLabel_->setText(
-            status);
+        const QString caseStatus = forensicService_->selectedCase().status;
 
-        if (valid)
+        if (caseStatus == QStringLiteral("PENDING") ||
+            caseStatus == QStringLiteral("COMPLETED") ||
+            caseStatus == QStringLiteral("FAILED") ||
+            caseStatus == QStringLiteral("CANCELLED"))
         {
-            sourceStatusLabel_->setStyleSheet(
-                "QLabel {"
-                "background:transparent;"
-                "border:none;"
-                "color:#027A48;"
-                "font-size:11px;"
-                "font-weight:600;"
-                "}");
+            valid = false;
+            status = QStringLiteral("The selected forensic case is %1 and is not ready for acquisition.").arg(caseStatus);
         }
-        else
-        {
-            sourceStatusLabel_->setStyleSheet(
-                "QLabel {"
-                "background:transparent;"
-                "border:none;"
-                "color:#667085;"
-                "font-size:11px;"
-                "}");
-        }
+    }
+
+    scanButton_->setEnabled(valid && !forensicService_->isRunning());
+
+    if (!forensicService_->isRunning())
+    {
+        sourceStatusLabel_->setText(status);
+        sourceStatusLabel_->setStyleSheet(
+            valid
+                ? "QLabel { background:transparent; border:none; color:#027A48; font-size:11px; font-weight:600; }"
+                : "QLabel { background:transparent; border:none; color:#667085; font-size:11px; }");
     }
 }
 
@@ -2072,224 +2107,154 @@ QString ForensicPage::selectedSource() const
 
 void ForensicPage::startScan()
 {
-    if (
-        !forensicService_ ||
-        forensicService_->isRunning())
+    if (!forensicService_ || forensicService_->isRunning())
     {
         return;
+    }
+
+    const QString source = selectedSource();
+
+    if (source.isEmpty())
+    {
+        QMessageBox::warning(
+            this,
+            QStringLiteral("No forensic source"),
+            QStringLiteral("Please select a physical device or forensic image before starting acquisition."));
+        return;
+    }
+
+    const bool physicalDevice = sourceTypeCombo_ && sourceTypeCombo_->currentIndex() == 0;
+
+    if (physicalDevice && deviceController_ && deviceCombo_)
+    {
+        const int index = deviceCombo_->currentIndex();
+        const auto &devices = deviceController_->devices();
+
+        if (index < 0 || index >= static_cast<int>(devices.size()))
+        {
+            QMessageBox::warning(
+                this,
+                QStringLiteral("Invalid physical device"),
+                QStringLiteral("The selected physical device is no longer available. Refresh device discovery and try again."));
+            updateSourceState();
+            return;
+        }
+
+        const StorageDevice &device = devices.at(static_cast<std::size_t>(index));
+
+        if (hasForensicCase() && forensicService_->selectedCase().sourceType == QStringLiteral("PHYSICAL_DEVICE"))
+        {
+            QString bindingReason;
+            if (!matchesPhysicalCaseSource(forensicService_->selectedCase(), device, bindingReason))
+            {
+                QMessageBox::warning(
+                    this,
+                    QStringLiteral("Device does not match forensic case"),
+                    bindingReason);
+                updateSourceState();
+                return;
+            }
+        }
+
+        if (device.isSystemDisk())
+        {
+            const QMessageBox::StandardButton answer = QMessageBox::warning(
+                this,
+                QStringLiteral("System disk selected"),
+                QStringLiteral(
+                    "You are about to perform a forensic read-only acquisition of the system disk.\n\n"
+                    "SecureWipe will not write, erase or sanitize the source, but the scan may inspect sensitive deleted data and can take significant time.\n\n"
+                    "Do you want to continue?"),
+                QMessageBox::Cancel | QMessageBox::Yes,
+                QMessageBox::Cancel);
+
+            if (answer != QMessageBox::Yes)
+            {
+                return;
+            }
+        }
+    }
+
+    if (!physicalDevice)
+    {
+        QFileInfo fileInfo(source);
+
+        if (!fileInfo.exists() || !fileInfo.isFile() || !fileInfo.isReadable())
+        {
+            QMessageBox::warning(
+                this,
+                QStringLiteral("Invalid source"),
+                QStringLiteral("The selected forensic source does not exist or cannot be read."));
+            return;
+        }
     }
 
     if (hasForensicCase())
     {
         const ForensicCaseInfo &item = forensicService_->selectedCase();
+
         if (item.status == QStringLiteral("ASSIGNED"))
         {
             prepareCaseForAcquisition();
             return;
         }
+
         if (item.status != QStringLiteral("ACQUIRING") && item.status != QStringLiteral("ANALYZING"))
         {
-            QMessageBox::information(this, QStringLiteral("Case is not ready"), QStringLiteral("The selected case must be ASSIGNED, ACQUIRING or ANALYZING before acquisition."));
-            return;
-        }
-    }
-
-    const QString source =
-        selectedSource();
-
-    if (
-        source.isEmpty())
-    {
-        QMessageBox::warning(
-            this,
-            QStringLiteral(
-                "No forensic source"),
-            QStringLiteral(
-                "Please select a physical device or "
-                "forensic image before starting acquisition."));
-
-        return;
-    }
-
-    const bool physicalDevice =
-        sourceTypeCombo_ &&
-        sourceTypeCombo_->currentIndex() == 0;
-
-    if (
-        physicalDevice &&
-        deviceController_ &&
-        deviceCombo_)
-    {
-        const int index =
-            deviceCombo_->currentIndex();
-
-        const auto &devices =
-            deviceController_->devices();
-
-        if (
-            index >= 0 &&
-            index <
-                static_cast<int>(
-                    devices.size()))
-        {
-            const StorageDevice &device =
-                devices.at(
-                    static_cast<std::size_t>(
-                        index));
-
-            if (
-                device.isSystemDisk())
-            {
-                const QMessageBox::StandardButton
-                    answer =
-                        QMessageBox::warning(
-                            this,
-                            QStringLiteral(
-                                "System disk selected"),
-                            QStringLiteral(
-                                "You are about to perform a forensic "
-                                "read-only acquisition of the system disk.\n\n"
-                                "SecureWipe will not write, erase or sanitize "
-                                "the source, but the scan may inspect sensitive "
-                                "deleted data and can take significant time.\n\n"
-                                "Do you want to continue?"),
-                            QMessageBox::Cancel |
-                                QMessageBox::Yes,
-                            QMessageBox::Cancel);
-
-                if (
-                    answer !=
-                    QMessageBox::Yes)
-                {
-                    return;
-                }
-            }
-        }
-    }
-
-    if (
-        !physicalDevice)
-    {
-        QFileInfo fileInfo(
-            source);
-
-        if (
-            !fileInfo.exists() ||
-            !fileInfo.isFile() ||
-            !fileInfo.isReadable())
-        {
-            QMessageBox::warning(
+            QMessageBox::information(
                 this,
-                QStringLiteral(
-                    "Invalid source"),
-                QStringLiteral(
-                    "The selected forensic source does not exist "
-                    "or cannot be read."));
-
+                QStringLiteral("Case is not ready"),
+                QStringLiteral("The selected case must be ASSIGNED, ACQUIRING or ANALYZING before acquisition."));
+            updateForensicCaseUi();
+            updateSourceState();
             return;
         }
     }
 
-    // Clear the previous result set before a new acquisition.
-    resultsTable_->setRowCount(
-        0);
+    resultsTable_->setRowCount(0);
+    setMetric(recoveredValue_, QStringLiteral("0"));
+    setMetric(validatedValue_, QStringLiteral("0"));
+    setMetric(highConfidenceValue_, QStringLiteral("0"));
+    setMetric(recoveredBytesValue_, QStringLiteral("0 B"));
+    setMetric(candidatesValue_, QStringLiteral("0"));
 
-    setMetric(
-        recoveredValue_,
-        QStringLiteral("0"));
-
-    setMetric(
-        validatedValue_,
-        QStringLiteral("0"));
-
-    setMetric(
-        highConfidenceValue_,
-        QStringLiteral("0"));
-
-    setMetric(
-        recoveredBytesValue_,
-        QStringLiteral("0 B"));
-
-    setMetric(
-        candidatesValue_,
-        QStringLiteral("0"));
-
-    setScanState(
-        QStringLiteral(
-            "Acquisition in progress…"),
-        true);
-
-    resultsSummaryLabel_->setText(
-        QStringLiteral(
-            "Reading source"));
-
+    setScanState(QStringLiteral("Acquisition in progress…"), true);
+    resultsSummaryLabel_->setText(QStringLiteral("Reading source"));
     setEmptyState(
-        QStringLiteral(
-            "Acquiring forensic evidence"),
-        QStringLiteral(
-            "The source is being read in a separate worker. "
-            "Please keep the application open until acquisition completes."),
-        QStringLiteral(
-            "…"));
+        QStringLiteral("Acquiring forensic evidence"),
+        QStringLiteral("The source is being read in a separate worker. Please keep the application open until acquisition completes."),
+        QStringLiteral("…"));
 
-    scanButton_->setEnabled(
-        false);
-
-    sourceStatusLabel_->setText(
-        QStringLiteral(
-            "Acquisition in progress. Source is being accessed read-only."));
-
+    scanButton_->setEnabled(false);
+    sourceStatusLabel_->setText(QStringLiteral("Acquisition in progress. Source is being accessed read-only."));
     sourceStatusLabel_->setStyleSheet(
-        "QLabel {"
-        "background:transparent;"
-        "border:none;"
-        "color:#2563EB;"
-        "font-size:11px;"
-        "font-weight:600;"
-        "}");
+        "QLabel { background:transparent; border:none; color:#2563EB; font-size:11px; font-weight:600; }");
 
-    ForensicScanDialog dialog(
-        source,
-        window());
+    ForensicScanDialog dialog(source, window());
 
-    forensicService_->scan(
-        source);
+    forensicService_->scan(source);
 
-    QTimer::singleShot(
-        0,
-        &dialog,
-        [&dialog]()
+    QTimer::singleShot(0, &dialog, [&dialog]()
+    {
+        if (dialog.isVisible())
         {
-            if (
-                dialog.isVisible())
-            {
-                return;
-            }
+            return;
+        }
+        dialog.show();
+    });
 
-            dialog.show();
-        });
-
-    while (
-        forensicService_->isRunning())
+    while (forensicService_->isRunning())
     {
         dialog.repaint();
-
-        QCoreApplication::processEvents(
-            QEventLoop::AllEvents,
-            50);
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
     }
 
-    if (
-        dialog.isVisible())
+    if (dialog.isVisible())
     {
         dialog.close();
     }
 
-    // The service has completed by this point.
-    // The connected scanFinished/scanFailed signal
-    // updates the workspace state.
-    QCoreApplication::processEvents(
-        QEventLoop::AllEvents);
+    QCoreApplication::processEvents(QEventLoop::AllEvents);
 }
 
 void ForensicPage::renderResults()
