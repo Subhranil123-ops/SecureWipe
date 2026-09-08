@@ -21,17 +21,21 @@ void AuthManager::login(
         QStringLiteral("http://localhost:5000/api/auth/login"));
 
     QNetworkRequest request(url);
+
     request.setHeader(
         QNetworkRequest::ContentTypeHeader,
         QStringLiteral("application/json"));
+
     request.setRawHeader(
         "Accept",
         "application/json");
 
     QJsonObject json;
+
     json.insert(
         QStringLiteral("email"),
         email);
+
     json.insert(
         QStringLiteral("password"),
         password);
@@ -66,38 +70,36 @@ void AuthManager::login(
                     message =
                         QStringLiteral(
                             "Login failed (HTTP %1): %2")
-                            .arg(
-                                statusCode)
-                            .arg(
-                                message);
+                            .arg(statusCode)
+                            .arg(message);
                 }
 
-                token_.clear();
-                role_.clear();
+                clearToken();
 
                 qDebug()
                     << "Login request failed:"
                     << message;
 
-                emit loginFailed(
-                    message);
+                emit loginFailed(message);
 
                 reply->deleteLater();
                 return;
             }
 
             QJsonParseError parseError;
+
             const QJsonDocument document =
                 QJsonDocument::fromJson(
                     responseData,
                     &parseError);
 
-            if (parseError.error !=
-                QJsonParseError::NoError ||
-                !document.isObject())
+            if (
+                parseError.error !=
+                    QJsonParseError::NoError ||
+                !document.isObject()
+            )
             {
-                token_.clear();
-                role_.clear();
+                clearToken();
 
                 const QString message =
                     QStringLiteral(
@@ -107,8 +109,7 @@ void AuthManager::login(
                     << message
                     << parseError.errorString();
 
-                emit loginFailed(
-                    message);
+                emit loginFailed(message);
 
                 reply->deleteLater();
                 return;
@@ -120,7 +121,8 @@ void AuthManager::login(
             const QString receivedToken =
                 responseObject
                     .value(QStringLiteral("token"))
-                    .toString();
+                    .toString()
+                    .trimmed();
 
             const QJsonObject userObject =
                 responseObject
@@ -133,10 +135,70 @@ void AuthManager::login(
                     .toString()
                     .trimmed();
 
+            const QString receivedUserId =
+                userObject
+                    .value(QStringLiteral("_id"))
+                    .toString()
+                    .trimmed()
+                    .isEmpty()
+                    ? userObject
+                          .value(QStringLiteral("id"))
+                          .toString()
+                          .trimmed()
+                    : userObject
+                          .value(QStringLiteral("_id"))
+                          .toString()
+                          .trimmed();
+
+            const QString receivedName =
+                userObject
+                    .value(QStringLiteral("name"))
+                    .toString()
+                    .trimmed();
+
+            const QString receivedEmail =
+                userObject
+                    .value(QStringLiteral("email"))
+                    .toString()
+                    .trimmed();
+
+            QString receivedWorkstationCenter;
+
+            const QJsonValue workstationCenterValue =
+                userObject.value(
+                    QStringLiteral("workstationCenter"));
+
+            if (workstationCenterValue.isObject())
+            {
+                const QJsonObject centerObject =
+                    workstationCenterValue.toObject();
+
+                receivedWorkstationCenter =
+                    centerObject
+                        .value(QStringLiteral("_id"))
+                        .toString()
+                        .trimmed();
+
+                if (receivedWorkstationCenter.isEmpty())
+                {
+                    receivedWorkstationCenter =
+                        centerObject
+                            .value(QStringLiteral("id"))
+                            .toString()
+                            .trimmed();
+                }
+            }
+            else
+            {
+                receivedWorkstationCenter =
+                    workstationCenterValue
+                        .toString()
+                        .trimmed();
+            }
+
             if (receivedToken.isEmpty())
             {
-                token_.clear();
-                role_.clear();
+                clearToken();
 
                 emit loginFailed(
                     QStringLiteral(
@@ -153,12 +215,11 @@ void AuthManager::login(
                 receivedRole !=
                     QStringLiteral("WORKSTATION_HEAD"))
             {
-                token_.clear();
-                role_.clear();
+                clearToken();
 
                 emit loginFailed(
                     QStringLiteral(
-                        "Only authorized workstation roles can access SecureWipe."));
+                        "Only authorized workstation roles can access SecureWipe desktop."));
 
                 reply->deleteLater();
                 return;
@@ -166,14 +227,33 @@ void AuthManager::login(
 
             token_ =
                 receivedToken;
+
             role_ =
                 receivedRole;
 
+            userId_ =
+                receivedUserId;
+
+            name_ =
+                receivedName;
+
+            email_ =
+                receivedEmail;
+
+            workstationCenterId_ =
+                receivedWorkstationCenter;
+
             qDebug()
-                << "SecureWipe login successful. Role:"
-                << role_;
+                << "SecureWipe login successful."
+                << "Role:"
+                << role_
+                << "User ID:"
+                << userId_
+                << "Workstation Center:"
+                << workstationCenterId_;
 
             emit loginSuccessful();
+
             reply->deleteLater();
         });
 }
@@ -188,8 +268,32 @@ QString AuthManager::role() const
     return role_;
 }
 
+QString AuthManager::userId() const
+{
+    return userId_;
+}
+
+QString AuthManager::name() const
+{
+    return name_;
+}
+
+QString AuthManager::email() const
+{
+    return email_;
+}
+
+QString AuthManager::workstationCenterId() const
+{
+    return workstationCenterId_;
+}
+
 void AuthManager::clearToken()
 {
     token_.clear();
     role_.clear();
+    userId_.clear();
+    name_.clear();
+    email_.clear();
+    workstationCenterId_.clear();
 }

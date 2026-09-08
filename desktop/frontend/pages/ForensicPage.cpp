@@ -1,5 +1,7 @@
 #include "ForensicPage.h"
 
+#include "../AuthManager.h"
+
 #include "../controllers/DeviceController.h"
 #include "../dialogs/ForensicEvidenceDialog.h"
 #include "../dialogs/ForensicScanDialog.h"
@@ -115,9 +117,11 @@ namespace
 
 ForensicPage::ForensicPage(
     DeviceController *deviceController,
+    AuthManager *authManager,
     QWidget *parent)
     : QWidget(parent),
       deviceController_(deviceController),
+      authManager_(authManager),
       forensicService_(
           new ForensicService(this)),
       sourceTypeCombo_(nullptr),
@@ -141,9 +145,147 @@ ForensicPage::ForensicPage(
       emptyStateIconLabel_(nullptr),
       emptyStateTitleLabel_(nullptr),
       emptyStateBodyLabel_(nullptr),
-      resultsTable_(nullptr)
+      resultsTable_(nullptr),
+      forensicCaseCombo_(nullptr),
+      forensicCaseStatusLabel_(nullptr),
+      forensicCaseDetailsLabel_(nullptr),
+      forensicAssignmentLabel_(nullptr),
+      refreshCasesButton_(nullptr),
+      loadCaseButton_(nullptr),
+      submitResultsButton_(nullptr)
 {
     buildUi();
+
+    if (authManager_)
+    {
+        forensicService_->setAuthenticationToken(
+            authManager_->token());
+    }
+
+    connect(
+        forensicService_,
+        &ForensicService::casesLoaded,
+        this,
+        [this]()
+        {
+            forensicCaseCombo_->blockSignals(true);
+            forensicCaseCombo_->clear();
+            for (const auto &item : forensicService_->cases())
+            {
+                forensicCaseCombo_->addItem(
+                    QStringLiteral("%1 · %2")
+                        .arg(item.caseId, item.title),
+                    item.caseId);
+            }
+            forensicCaseCombo_->blockSignals(false);
+            updateForensicCaseUi();
+        });
+
+    connect(
+        forensicService_,
+        &ForensicService::casesLoadFailed,
+        this,
+        [this](const QString &message)
+        {
+            forensicCaseStatusLabel_->setText(
+                QStringLiteral("Could not load assigned cases · %1").arg(message));
+            updateForensicCaseUi();
+        });
+
+    connect(
+        forensicService_,
+        &ForensicService::caseLoaded,
+        this,
+        [this]()
+        {
+            selectedForensicCaseId_ = forensicService_->selectedCase().caseId;
+            selectedForensicWorkstationId_ = forensicService_->selectedCase().assignedWorkstationMongoId;
+            updateForensicCaseUi();
+        });
+
+    connect(
+        forensicService_,
+        &ForensicService::caseLoadFailed,
+        this,
+        [this](const QString &message)
+        {
+            forensicCaseStatusLabel_->setText(
+                QStringLiteral("Case could not be loaded · %1").arg(message));
+        });
+
+    connect(
+        forensicService_,
+        &ForensicService::caseStatusUpdated,
+        this,
+        [this]()
+        {
+            updateForensicCaseUi();
+            if (!selectedForensicCaseId_.isEmpty())
+                forensicService_->loadCase(selectedForensicCaseId_);
+        });
+
+    connect(
+        forensicService_,
+        &ForensicService::caseStatusUpdateFailed,
+        this,
+        [this](const QString &message)
+        {
+            QMessageBox::warning(this, QStringLiteral("Case status update failed"), message);
+            updateForensicCaseUi();
+        });
+
+    connect(
+        forensicService_,
+        &ForensicService::resultsSubmitted,
+        this,
+        [this]()
+        {
+            submitResultsButton_->setEnabled(false);
+            forensicCaseStatusLabel_->setText(
+                QStringLiteral("Evidence submitted successfully to the backend."));
+            if (!selectedForensicCaseId_.isEmpty())
+                forensicService_->loadCase(selectedForensicCaseId_);
+        });
+
+    connect(
+        forensicService_,
+        &ForensicService::resultsSubmitFailed,
+        this,
+        [this](const QString &message)
+        {
+            QMessageBox::warning(this, QStringLiteral("Evidence submission failed"), message);
+            updateForensicCaseUi();
+        });
+
+    connect(
+        forensicCaseCombo_,
+        QOverload<int>::of(&QComboBox::currentIndexChanged),
+        this,
+        [this](int index)
+        {
+            selectedForensicCaseId_ = index >= 0
+                ? forensicCaseCombo_->itemData(index).toString()
+                : QString();
+            loadSelectedForensicCase();
+        });
+
+    connect(
+        refreshCasesButton_,
+        &QPushButton::clicked,
+        this,
+        &ForensicPage::loadAssignedForensicCases);
+
+    connect(
+        loadCaseButton_,
+        &QPushButton::clicked,
+        this,
+        &ForensicPage::prepareCaseForAcquisition);
+
+    connect(
+        submitResultsButton_,
+        &QPushButton::clicked,
+        this,
+        &ForensicPage::submitForensicResults);
 
     connect(
         forensicService_,
@@ -208,8 +350,9 @@ ForensicPage::ForensicPage(
     }
 
     refreshDeviceList();
-
+    loadAssignedForensicCases();
     updateSourceState();
+    updateForensicCaseUi();
 }
 
 void ForensicPage::buildUi()
@@ -477,6 +620,66 @@ void ForensicPage::buildUi()
 
     layout->addLayout(
         header);
+
+    // ---------------------------------------------------------
+    // Forensic case card
+    // ---------------------------------------------------------
+
+    auto *caseCard = makeCard(content);
+    auto *caseLayout = new QVBoxLayout(caseCard);
+    caseLayout->setContentsMargins(20, 18, 20, 18);
+    caseLayout->setSpacing(12);
+
+    auto *caseHeader = new QHBoxLayout();
+    auto *caseTitleBlock = new QVBoxLayout();
+    caseTitleBlock->setSpacing(3);
+    caseTitleBlock->addWidget(makeTextLabel(QStringLiteral("Assigned forensic case"), caseCard, 15, QStringLiteral("#101828"), 700));
+    caseTitleBlock->addWidget(makeDescription(QStringLiteral("Select the case assigned to this workstation employee, review its source and assignment, then acquire and submit the recovered evidence."), caseCard));
+    caseHeader->addLayout(caseTitleBlock, 1);
+    caseHeader->addWidget(makeBadge(QStringLiteral("CASE WORKFLOW"), QStringLiteral("#F2F4F7"), QStringLiteral("#344054"), caseCard), 0, Qt::AlignTop);
+    caseLayout->addLayout(caseHeader);
+    caseLayout->addWidget(makeDivider(caseCard));
+
+    auto *caseRow = new QHBoxLayout();
+    caseRow->setSpacing(8);
+    forensicCaseCombo_ = new QComboBox(caseCard);
+    forensicCaseCombo_->setMinimumHeight(40);
+    forensicCaseCombo_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    refreshCasesButton_ = new QPushButton(QStringLiteral("Refresh"), caseCard);
+    refreshCasesButton_->setObjectName(QStringLiteral("forensicSecondaryButton"));
+    refreshCasesButton_->setMinimumHeight(40);
+    loadCaseButton_ = new QPushButton(QStringLiteral("Start case acquisition"), caseCard);
+    loadCaseButton_->setObjectName(QStringLiteral("forensicPrimaryButton"));
+    loadCaseButton_->setMinimumHeight(40);
+    caseRow->addWidget(forensicCaseCombo_, 1);
+    caseRow->addWidget(refreshCasesButton_);
+    caseRow->addWidget(loadCaseButton_);
+    caseLayout->addLayout(caseRow);
+
+    forensicCaseStatusLabel_ = makeDescription(QStringLiteral("No assigned forensic case loaded."), caseCard);
+    forensicCaseStatusLabel_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    caseLayout->addWidget(forensicCaseStatusLabel_);
+
+    forensicCaseDetailsLabel_ = makeDescription(QStringLiteral("Case details will appear here."), caseCard);
+    forensicCaseDetailsLabel_->setWordWrap(true);
+    forensicCaseDetailsLabel_->setStyleSheet(QStringLiteral("QLabel { background:#F8FAFC; border:1px solid #EAECF0; border-radius:7px; color:#344054; font-size:11px; padding:9px 10px; }"));
+    forensicCaseDetailsLabel_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    caseLayout->addWidget(forensicCaseDetailsLabel_);
+
+    forensicAssignmentLabel_ = makeDescription(QStringLiteral("Assignment: —"), caseCard);
+    forensicAssignmentLabel_->setWordWrap(true);
+    caseLayout->addWidget(forensicAssignmentLabel_);
+
+    auto *caseActionRow = new QHBoxLayout();
+    caseActionRow->addStretch();
+    submitResultsButton_ = new QPushButton(QStringLiteral("Submit recovered evidence  →"), caseCard);
+    submitResultsButton_->setObjectName(QStringLiteral("forensicPrimaryButton"));
+    submitResultsButton_->setMinimumHeight(42);
+    submitResultsButton_->setEnabled(false);
+    caseActionRow->addWidget(submitResultsButton_);
+    caseLayout->addLayout(caseActionRow);
+
+    layout->addWidget(caseCard);
 
     // ---------------------------------------------------------
     // Source card
@@ -1224,9 +1427,8 @@ void ForensicPage::buildUi()
     auto *footer =
         makeTextLabel(
             QStringLiteral(
-                "Forensic acquisition is read-only. "
-                "Evidence remains in the current desktop session "
-                "and is not automatically persisted as a formal report."),
+                "Forensic acquisition is read-only. Accepted evidence can be submitted "
+                "to the assigned backend case with its validation, SHA-256 and confidence data."),
             content,
             10,
             QStringLiteral("#98A2B3"));
@@ -1877,6 +2079,21 @@ void ForensicPage::startScan()
         return;
     }
 
+    if (hasForensicCase())
+    {
+        const ForensicCaseInfo &item = forensicService_->selectedCase();
+        if (item.status == QStringLiteral("ASSIGNED"))
+        {
+            prepareCaseForAcquisition();
+            return;
+        }
+        if (item.status != QStringLiteral("ACQUIRING") && item.status != QStringLiteral("ANALYZING"))
+        {
+            QMessageBox::information(this, QStringLiteral("Case is not ready"), QStringLiteral("The selected case must be ASSIGNED, ACQUIRING or ANALYZING before acquisition."));
+            return;
+        }
+    }
+
     const QString source =
         selectedSource();
 
@@ -2437,6 +2654,14 @@ void ForensicPage::renderResults()
     }
 
     updateSourceState();
+
+    if (submitResultsButton_)
+    {
+        const bool caseReady = hasForensicCase() &&
+            (forensicService_->selectedCase().status == QStringLiteral("ACQUIRING") ||
+             forensicService_->selectedCase().status == QStringLiteral("ANALYZING"));
+        submitResultsButton_->setEnabled(caseReady && !results.isEmpty());
+    }
 }
 
 void ForensicPage::showEvidenceDetails(
@@ -2460,6 +2685,131 @@ void ForensicPage::showEvidenceDetails(
         window());
 
     dialog.exec();
+}
+
+void ForensicPage::loadAssignedForensicCases()
+{
+    if (!forensicService_)
+        return;
+
+    if (authManager_)
+        forensicService_->setAuthenticationToken(authManager_->token());
+
+    forensicCaseStatusLabel_->setText(QStringLiteral("Loading assigned forensic cases…"));
+    forensicService_->loadAssignedCases();
+}
+
+void ForensicPage::loadSelectedForensicCase()
+{
+    if (!forensicService_ || selectedForensicCaseId_.isEmpty())
+    {
+        updateForensicCaseUi();
+        return;
+    }
+
+    forensicCaseStatusLabel_->setText(QStringLiteral("Loading case %1…").arg(selectedForensicCaseId_));
+    forensicService_->loadCase(selectedForensicCaseId_);
+}
+
+void ForensicPage::prepareCaseForAcquisition()
+{
+    if (!forensicService_ || !hasForensicCase())
+    {
+        QMessageBox::information(this, QStringLiteral("No case selected"), QStringLiteral("Select an assigned forensic case first."));
+        return;
+    }
+
+    const ForensicCaseInfo &item = forensicService_->selectedCase();
+    if (item.status != QStringLiteral("ASSIGNED"))
+    {
+        if (item.status == QStringLiteral("ACQUIRING") || item.status == QStringLiteral("ANALYZING"))
+        {
+            updateForensicCaseUi();
+            return;
+        }
+        QMessageBox::information(this, QStringLiteral("Case is not assigned"), QStringLiteral("This case is currently %1 and cannot be started from the workstation desktop.").arg(item.status));
+        return;
+    }
+
+    selectedForensicWorkstationId_ = item.assignedWorkstationMongoId;
+    if (selectedForensicWorkstationId_.isEmpty())
+    {
+        QMessageBox::warning(this, QStringLiteral("No workstation assigned"), QStringLiteral("The case does not have an assigned workstation. Ask the workstation head to complete the assignment."));
+        return;
+    }
+
+    loadCaseButton_->setEnabled(false);
+    forensicCaseStatusLabel_->setText(QStringLiteral("Moving case to ACQUIRING…"));
+    forensicService_->startCaseAcquisition(item.caseId, selectedForensicWorkstationId_);
+}
+
+void ForensicPage::submitForensicResults()
+{
+    if (!forensicService_ || !hasForensicCase())
+        return;
+
+    const ForensicCaseInfo &item = forensicService_->selectedCase();
+    const QVector<EvidenceItem> &results = forensicService_->results();
+
+    if (results.isEmpty())
+    {
+        QMessageBox::information(this, QStringLiteral("No evidence to submit"), QStringLiteral("Complete a forensic acquisition and obtain at least one validated artifact before submitting results."));
+        return;
+    }
+
+    if (item.assignedWorkstationMongoId.isEmpty())
+    {
+        QMessageBox::warning(this, QStringLiteral("No workstation assignment"), QStringLiteral("The selected case has no assigned workstation identity."));
+        return;
+    }
+
+    selectedForensicWorkstationId_ = item.assignedWorkstationMongoId;
+    submitResultsButton_->setEnabled(false);
+    forensicCaseStatusLabel_->setText(QStringLiteral("Submitting validated evidence to the case…"));
+    forensicService_->submitResults(item.caseId, selectedForensicWorkstationId_);
+}
+
+void ForensicPage::updateForensicCaseUi()
+{
+    if (!forensicService_ || !forensicCaseCombo_)
+        return;
+
+    const bool hasCase = forensicService_->hasSelectedCase();
+    const ForensicCaseInfo &item = forensicService_->selectedCase();
+
+    loadCaseButton_->setEnabled(hasCase && (item.status == QStringLiteral("ASSIGNED") || item.status == QStringLiteral("ACQUIRING") || item.status == QStringLiteral("ANALYZING")) && !forensicService_->isRunning());
+
+    if (!hasCase)
+    {
+        forensicCaseStatusLabel_->setText(QStringLiteral("No assigned forensic case loaded."));
+        forensicCaseDetailsLabel_->setText(QStringLiteral("Select a case from the list. The desktop will only acquire evidence for a case that has been assigned to the authenticated workstation employee."));
+        forensicAssignmentLabel_->setText(QStringLiteral("Assignment: —"));
+        submitResultsButton_->setEnabled(false);
+        return;
+    }
+
+    forensicCaseStatusLabel_->setText(QStringLiteral("Case %1 · %2").arg(item.caseId, item.status));
+
+    const QString sourceType = item.sourceType.isEmpty() ? QStringLiteral("—") : item.sourceType;
+    const QString sourceName = item.sourceName.isEmpty() ? QStringLiteral("—") : item.sourceName;
+    const QString sourceIdentifier = item.sourceIdentifier.isEmpty() ? QStringLiteral("—") : item.sourceIdentifier;
+    const QString assetIdentifier = item.assetIdentifier.isEmpty() ? QStringLiteral("—") : item.assetIdentifier;
+
+    forensicCaseDetailsLabel_->setText(QStringLiteral("<b>%1</b><br>%2<br><br><span style='color:#667085;'>Source type:</span> %3<br><span style='color:#667085;'>Source:</span> %4<br><span style='color:#667085;'>Source identifier:</span> %5<br><span style='color:#667085;'>Asset:</span> %6")
+        .arg(item.title.toHtmlEscaped(), item.description.toHtmlEscaped(), sourceType.toHtmlEscaped(), sourceName.toHtmlEscaped(), sourceIdentifier.toHtmlEscaped(), assetIdentifier.toHtmlEscaped()));
+
+    const QString employee = item.assignedEmployeeName.isEmpty() ? QStringLiteral("—") : item.assignedEmployeeName;
+    const QString workstation = item.assignedWorkstationName.isEmpty() ? QStringLiteral("—") : item.assignedWorkstationName;
+    const QString workstationId = item.assignedWorkstationId.isEmpty() ? QStringLiteral("—") : item.assignedWorkstationId;
+    forensicAssignmentLabel_->setText(QStringLiteral("Assignment: <b>%1</b> · workstation <b>%2</b> (%3)").arg(employee.toHtmlEscaped(), workstation.toHtmlEscaped(), workstationId.toHtmlEscaped()));
+
+    const bool canSubmit = !forensicService_->results().isEmpty() && (item.status == QStringLiteral("ACQUIRING") || item.status == QStringLiteral("ANALYZING"));
+    submitResultsButton_->setEnabled(canSubmit && !forensicService_->isRunning());
+}
+
+bool ForensicPage::hasForensicCase() const
+{
+    return forensicService_ && forensicService_->hasSelectedCase() && !selectedForensicCaseId_.isEmpty();
 }
 
 QString ForensicPage::formatBytes(

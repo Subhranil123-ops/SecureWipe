@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "StorageDevice.h"
@@ -31,6 +32,13 @@ public:
 
     // Save the device selected by the user.
     bool selectTarget(int index);
+
+    // Save the device selected by the user and bind it to the
+    // sanitization request's authoritative serial number.
+    bool selectTarget(
+        int index,
+        const std::string &expectedSerialNumber
+    );
 
     // Rediscover devices and validate the
     // previously selected target.
