@@ -47,6 +47,7 @@ namespace SecureWipe
         std::string operationId;
         std::string requestId;
         std::string actorId;
+        std::string workstationId;
 
         std::string deviceId;
         std::string model;

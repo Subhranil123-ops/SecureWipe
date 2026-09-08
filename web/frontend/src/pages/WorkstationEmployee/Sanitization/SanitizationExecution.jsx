@@ -25,9 +25,12 @@ function SanitizationExecution() {
     const [actionLoading, setActionLoading] = useState(false);
     const [error, setError] = useState("");
 
-    const loadData = async () => {
+    const loadData = async (showLoading = true) => {
         try {
-            setLoading(true);
+            if (showLoading) {
+                setLoading(true);
+            }
+
             setError("");
 
             const requests = await getEmployeeSanitizationRequests();
@@ -63,6 +66,8 @@ function SanitizationExecution() {
                 setResult(null);
                 setCertificate(null);
             }
+
+            return matchedRequest;
         } catch (err) {
             console.error(
                 "Failed to load sanitization execution:",
@@ -73,13 +78,64 @@ function SanitizationExecution() {
                 err.message ||
                     "Failed to load sanitization execution."
             );
+
+            return null;
         } finally {
-            setLoading(false);
+            if (showLoading) {
+                setLoading(false);
+            }
         }
     };
 
     useEffect(() => {
-        loadData();
+        let cancelled = false;
+        let timerId = null;
+
+        const poll = async () => {
+            if (cancelled) {
+                return;
+            }
+
+            const latestRequest = await loadData(false);
+
+            if (cancelled || !latestRequest) {
+                return;
+            }
+
+            if (
+                [
+                    "ASSIGNED",
+                    "IN_PROGRESS",
+                    "VERIFYING",
+                ].includes(latestRequest.status)
+            ) {
+                timerId = window.setTimeout(poll, 2000);
+            }
+        };
+
+        loadData(true).then((latestRequest) => {
+            if (cancelled || !latestRequest) {
+                return;
+            }
+
+            if (
+                [
+                    "ASSIGNED",
+                    "IN_PROGRESS",
+                    "VERIFYING",
+                ].includes(latestRequest.status)
+            ) {
+                timerId = window.setTimeout(poll, 2000);
+            }
+        });
+
+        return () => {
+            cancelled = true;
+
+            if (timerId !== null) {
+                window.clearTimeout(timerId);
+            }
+        };
     }, [requestId]);
 
     const canStart = request?.status === "ASSIGNED";

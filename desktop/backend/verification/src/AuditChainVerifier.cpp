@@ -493,6 +493,8 @@ namespace
         std::string operationId;
         std::string requestId;
         std::string actorId;
+        std::string workstationId;
+        bool hasWorkstationId = false;
         std::string deviceId;
         std::string model;
         std::string serialNumber;
@@ -539,6 +541,23 @@ namespace
             return {};
         }
 
+        const auto workstationIterator =
+            object.objectValue.find("workstationId");
+
+        if (workstationIterator != object.objectValue.end())
+        {
+            if (workstationIterator->second.type !=
+                JsonValue::Type::String)
+            {
+                error = "JSON field is not a string: workstationId";
+                return {};
+            }
+
+            workstationId =
+                workstationIterator->second.stringValue;
+            hasWorkstationId = true;
+        }
+
         const std::vector<JsonValue>* safetyChecks = nullptr;
 
         if (!getArray(
@@ -559,6 +578,10 @@ namespace
         canonical << "operationId=" << operationId << '\n';
         canonical << "requestId=" << requestId << '\n';
         canonical << "actorId=" << actorId << '\n';
+
+        if (hasWorkstationId)
+            canonical << "workstationId=" << workstationId << '\n';
+
         canonical << "deviceId=" << deviceId << '\n';
         canonical << "model=" << model << '\n';
         canonical << "serialNumber=" << serialNumber << '\n';
