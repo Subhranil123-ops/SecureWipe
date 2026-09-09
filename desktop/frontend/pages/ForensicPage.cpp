@@ -160,6 +160,36 @@ namespace
         return true;
     }
 
+    bool matchesCaseSourceType(
+        const ForensicCaseInfo &item,
+        bool physicalUi,
+        QString &reason)
+    {
+        const QString sourceType =
+            item.sourceType.trimmed();
+
+        if (sourceType.isEmpty())
+        {
+            reason =
+                QStringLiteral("The selected forensic case has no source type.");
+            return false;
+        }
+
+        const bool casePhysical =
+            sourceType == QStringLiteral("PHYSICAL_DEVICE");
+
+        if (casePhysical != physicalUi)
+        {
+            reason = casePhysical
+                ? QStringLiteral("This forensic case requires a physical storage device. Select a physical device source.")
+                : QStringLiteral("This forensic case requires a forensic image. Select a forensic image source.");
+            return false;
+        }
+
+        reason.clear();
+        return true;
+    }
+
 ForensicPage::ForensicPage(
     DeviceController *deviceController,
     AuthManager *authManager,
@@ -1961,6 +1991,22 @@ void ForensicPage::updateSourceState()
     bool valid = false;
     QString status;
 
+    if (hasForensicCase())
+    {
+        QString sourceTypeReason;
+        if (!matchesCaseSourceType(
+                forensicService_->selectedCase(),
+                sourceType == 0,
+                sourceTypeReason))
+        {
+            scanButton_->setEnabled(false);
+            sourceStatusLabel_->setText(sourceTypeReason);
+            sourceStatusLabel_->setStyleSheet(
+                "QLabel { background:transparent; border:none; color:#B42318; font-size:11px; font-weight:600; }");
+            return;
+        }
+    }
+
     if (sourceType == 0)
     {
         const int index = deviceCombo_ ? deviceCombo_->currentIndex() : -1;
@@ -2124,6 +2170,23 @@ void ForensicPage::startScan()
     }
 
     const bool physicalDevice = sourceTypeCombo_ && sourceTypeCombo_->currentIndex() == 0;
+
+    if (hasForensicCase())
+    {
+        QString sourceTypeReason;
+        if (!matchesCaseSourceType(
+                forensicService_->selectedCase(),
+                physicalDevice,
+                sourceTypeReason))
+        {
+            QMessageBox::warning(
+                this,
+                QStringLiteral("Source type does not match case"),
+                sourceTypeReason);
+            updateSourceState();
+            return;
+        }
+    }
 
     if (physicalDevice && deviceController_ && deviceCombo_)
     {

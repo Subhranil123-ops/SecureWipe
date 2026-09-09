@@ -953,6 +953,18 @@ void ForensicService::submitResults(
         QStringLiteral("workstationId"),
         workstationId.trimmed());
 
+    if (selectedCase_.sourceType.trimmed().isEmpty())
+    {
+        emit resultsSubmitFailed(
+            QStringLiteral(
+                "The forensic case has no source type."));
+        return;
+    }
+
+    payload.insert(
+        QStringLiteral("sourceType"),
+        selectedCase_.sourceType.trimmed());
+
     if (
         selectedCase_.sourceType ==
             QStringLiteral("PHYSICAL_DEVICE") &&

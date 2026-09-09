@@ -17,4 +17,11 @@ router.post(
     workstationController.createWorkstation
 );
 
+router.post(
+    "/identity",
+    Authenticate,
+    Authorize("WORKSTATION_EMPLOYEE"),
+    workstationController.bindWorkstationIdentity
+);
+
 module.exports = router;

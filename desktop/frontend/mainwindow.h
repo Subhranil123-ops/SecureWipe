@@ -129,6 +129,8 @@ private:
     QString selectedWorkstationId_;
 
     bool operationRunning_ = false;
+    bool workstationIdentityVerified_ = false;
+    QString verifiedWorkstationId_;
 
     void buildUi();
     void buildLoginPage();

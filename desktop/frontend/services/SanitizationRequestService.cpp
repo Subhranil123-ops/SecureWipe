@@ -1,14 +1,14 @@
 #include "SanitizationRequestService.h"
 
-#include <QCryptographicHash>
-#include <QHostInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
-#include <QNetworkReply>
-#include <QNetworkRequest>
+#include <QCryptographicHash>
+#include <QHostInfo>
 #include <QSettings>
 #include <QSysInfo>
+#include <QNetworkReply>
+#include <QNetworkRequest>
 #include <QUrl>
 
 namespace
@@ -16,30 +16,37 @@ namespace
 constexpr const char *kApiBaseUrl = "http://localhost:5000";
 }
 
-SanitizationRequestService::SanitizationRequestService(QObject *parent)
+SanitizationRequestService::SanitizationRequestService(
+    QObject *parent)
     : QObject(parent)
     , networkManager_(new QNetworkAccessManager(this))
 {
 }
 
-void SanitizationRequestService::fetchAssignedRequests(const QString &token)
+void SanitizationRequestService::fetchAssignedRequests(
+    const QString &token)
 {
     if (token.trimmed().isEmpty())
     {
         emit requestFetchFailed(
-            QStringLiteral("Employee authentication token is missing."));
+            QStringLiteral(
+                "Employee authentication token is missing."));
         return;
     }
 
     const QUrl url(
-        QStringLiteral("%1/api/sanitization-requests/employee")
-            .arg(QString::fromLatin1(kApiBaseUrl)));
+        QStringLiteral(
+            "%1/api/sanitization-requests/employee")
+            .arg(
+                QString::fromLatin1(
+                    kApiBaseUrl)));
 
     QNetworkRequest request(url);
 
     request.setRawHeader(
         "Authorization",
-        QByteArray("Bearer ") + token.toUtf8());
+        QByteArray("Bearer ") +
+            token.toUtf8());
 
     request.setRawHeader(
         "Accept",
@@ -56,13 +63,15 @@ void SanitizationRequestService::fetchAssignedRequests(const QString &token)
         {
             const int statusCode =
                 reply->attribute(
-                    QNetworkRequest::HttpStatusCodeAttribute)
+                    QNetworkRequest::
+                        HttpStatusCodeAttribute)
                     .toInt();
 
             const QByteArray body =
                 reply->readAll();
 
-            if (reply->error() != QNetworkReply::NoError)
+            if (reply->error() !=
+                QNetworkReply::NoError)
             {
                 emit requestFetchFailed(
                     QStringLiteral(
@@ -84,7 +93,8 @@ void SanitizationRequestService::fetchAssignedRequests(const QString &token)
                     body,
                     &parseError);
 
-            if (parseError.error != QJsonParseError::NoError ||
+            if (parseError.error !=
+                    QJsonParseError::NoError ||
                 !document.isObject())
             {
                 emit requestFetchFailed(
@@ -175,8 +185,11 @@ void SanitizationRequestService::updateRequestStatus(
     const QUrl url(
         QStringLiteral(
             "%1/api/sanitization-requests/%2/employee-status")
-            .arg(QString::fromLatin1(kApiBaseUrl))
-            .arg(requestId));
+            .arg(
+                QString::fromLatin1(
+                    kApiBaseUrl))
+            .arg(
+                requestId));
 
     QNetworkRequest request(url);
 
@@ -294,7 +307,6 @@ void SanitizationRequestService::updateRequestStatus(
             reply->deleteLater();
         });
 }
-
 void SanitizationRequestService::bindWorkstationIdentity(
     const QString &token,
     const QString &workstationId)
@@ -356,19 +368,23 @@ void SanitizationRequestService::bindWorkstationIdentity(
                 QCryptographicHash::Sha256)
                 .toHex());
 
+    const QString legacyMachineFingerprint =
+        QString::fromLatin1(
+            QCryptographicHash::hash(
+                machineGuid.toUtf8(),
+                QCryptographicHash::Sha256)
+                .toHex());
+
     const QString hostname =
         QHostInfo::localHostName().trimmed();
 
     QJsonObject operatingSystem;
-
     operatingSystem.insert(
         QStringLiteral("name"),
         QSysInfo::prettyProductName());
-
     operatingSystem.insert(
         QStringLiteral("version"),
         QSysInfo::kernelVersion());
-
     operatingSystem.insert(
         QStringLiteral("architecture"),
         QSysInfo::currentCpuArchitecture());
@@ -405,6 +421,9 @@ void SanitizationRequestService::bindWorkstationIdentity(
     body.insert(
         QStringLiteral("machineFingerprint"),
         machineFingerprint);
+    body.insert(
+        QStringLiteral("legacyMachineFingerprint"),
+        legacyMachineFingerprint);
 
     body.insert(
         QStringLiteral("hostname"),
@@ -464,7 +483,8 @@ void SanitizationRequestService::bindWorkstationIdentity(
                     responseBody,
                     &parseError);
 
-            if (parseError.error !=
+            if (
+                parseError.error !=
                     QJsonParseError::NoError ||
                 !document.isObject())
             {
