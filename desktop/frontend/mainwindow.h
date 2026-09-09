@@ -132,6 +132,16 @@ private:
     bool workstationIdentityVerified_ = false;
     QString verifiedWorkstationId_;
 
+    // Cached outcome of the last completed runTargetSafetyCheck() SAFE
+    // branch (i.e. core SafetyResult::isOverallSafe was true along with
+    // every serial/type/capability/method gate). This lets the Start
+    // button be re-evaluated cheaply (see updateStartSanitizationReadiness())
+    // whenever workstation-verification or request state changes on its
+    // own, without re-running hardware target rediscovery. It is reset to
+    // false any time the selected target/request changes or a fresh
+    // safety check has not yet passed.
+    bool lastSafetyCheckPassed_ = false;
+
     void buildUi();
     void buildLoginPage();
     void buildAppShell();
@@ -175,6 +185,16 @@ private:
     void resetTargetPanel();
 
     void runTargetSafetyCheck();
+
+    // Single source of truth for Start Sanitization button enablement.
+    // Recomputes requestReady / workstationReady from current state and
+    // combines them with the cached lastSafetyCheckPassed_ flag. This is
+    // a cheap, side-effect-free readout (no hardware access), so it is
+    // safe to call from every site that can change any of those three
+    // inputs (safety check completion, workstation verification events,
+    // assigned-job refresh reconciliation, target/request selection).
+    void updateStartSanitizationReadiness();
+
     void startSanitization();
 
     void finishSanitization(

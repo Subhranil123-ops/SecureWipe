@@ -245,6 +245,7 @@ ForensicPage::ForensicPage(
         {
             forensicCaseCombo_->blockSignals(true);
             forensicCaseCombo_->clear();
+
             for (const auto &item : forensicService_->cases())
             {
                 forensicCaseCombo_->addItem(
@@ -252,8 +253,28 @@ ForensicPage::ForensicPage(
                         .arg(item.caseId, item.title),
                     item.caseId);
             }
+
+            if (forensicCaseCombo_->count() > 0)
+            {
+                forensicCaseCombo_->setCurrentIndex(0);
+                selectedForensicCaseId_ =
+                    forensicCaseCombo_->currentData().toString();
+            }
+            else
+            {
+                selectedForensicCaseId_.clear();
+            }
+
             forensicCaseCombo_->blockSignals(false);
-            updateForensicCaseUi();
+
+            if (!selectedForensicCaseId_.isEmpty())
+            {
+                loadSelectedForensicCase();
+            }
+            else
+            {
+                updateForensicCaseUi();
+            }
         });
 
     connect(
