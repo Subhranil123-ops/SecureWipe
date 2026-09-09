@@ -33,6 +33,7 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QScrollArea>
+#include <QStringList>
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QVBoxLayout>
@@ -5653,26 +5654,63 @@ void MainWindow::runTargetSafetyCheck()
         !verifiedWorkstationId_.isEmpty() &&
         verifiedWorkstationId_ == selectedWorkstationId_.trimmed();
 
-    startSanitizationButton_->setEnabled(
+    const bool canStart =
         requestReady &&
         result.isOverallSafe &&
-        workstationReady);
+        workstationReady;
+
+    startSanitizationButton_->setEnabled(canStart);
     validateTargetButton_->setEnabled(true);
 
-    if (requestReady)
+    if (canStart)
     {
         jobMessageLabel_->setText(
             QStringLiteral("Safety gate passed. Final target confirmation is available."));
         jobMessageLabel_->setStyleSheet(
             "QLabel { background:transparent; border:none; color:#027A48; font-size:12px; font-weight:700; }");
+        return;
     }
-    else
+
+    /*
+     * Every prerequisite panel (device, capability, safety badge) can be
+     * green while the button stays disabled because requestReady and
+     * workstationReady are independent gates. Report every gate that is
+     * actually failing instead of only checking requestReady, so a stuck
+     * request status or a stale workstation binding is visible instead of
+     * silently leaving the operator with no explanation.
+     */
+    QStringList blockingReasons;
+
+    if (!requestReady)
     {
-        jobMessageLabel_->setText(
-            QStringLiteral("Safety gate passed, but the selected request is not ASSIGNED. Destructive execution remains disabled."));
-        jobMessageLabel_->setStyleSheet(
-            "QLabel { background:transparent; border:none; color:#B54708; font-size:12px; font-weight:700; }");
+        blockingReasons << QStringLiteral(
+            "the selected request status is \"%1\" (must be ASSIGNED)")
+            .arg(status.isEmpty() ? QStringLiteral("UNKNOWN") : status);
     }
+
+    if (!workstationReady)
+    {
+        blockingReasons << QStringLiteral(
+            "workstation identity is not verified for this exact assignment (verified=\"%1\", assigned=\"%2\")")
+            .arg(verifiedWorkstationId_.isEmpty() ? QStringLiteral("none") : verifiedWorkstationId_,
+                 selectedWorkstationId_.trimmed().isEmpty() ? QStringLiteral("none") : selectedWorkstationId_.trimmed());
+    }
+
+    if (!result.isOverallSafe)
+    {
+        blockingReasons << QStringLiteral("the core safety gate did not report an overall-safe result");
+    }
+
+    const QString reasonText = blockingReasons.join(QStringLiteral("; "));
+
+    jobMessageLabel_->setText(
+        QStringLiteral("Safety gate passed, but sanitization remains blocked: %1.").arg(reasonText));
+    jobMessageLabel_->setStyleSheet(
+        "QLabel { background:transparent; border:none; color:#B54708; font-size:12px; font-weight:700; }");
+
+    targetSafetyText_->setText(
+        targetSafetyText_->text() +
+        QStringLiteral("\n\nStart sanitization is disabled because: %1.").arg(reasonText));
 }
 
 void MainWindow::startSanitization()
