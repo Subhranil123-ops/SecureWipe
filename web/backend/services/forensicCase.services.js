@@ -33,6 +33,25 @@ const populateCase = query => query
     .populate("assignedEmployee", "name email role status")
     .populate("assignedWorkstation", "workstationId name status connectionStatus hostname operatingSystem");
 
+const hydrateWorkstationHeadCenter = async user => {
+    if (
+        !user ||
+        user.role !== "WORKSTATION_HEAD" ||
+        !user._id
+    ) {
+        return;
+    }
+
+    const center =
+        await WorkstationCenter.findOne({
+            head: user._id,
+            status: "ACTIVE"
+        }).select("_id").lean();
+
+    user.workstationCenter =
+        center?._id || null;
+};
+
 const ensureCaseAccess = (item, user) => {
     if (!item) {
         throw new AppError("Forensic case not found", 404);
@@ -314,6 +333,8 @@ const getForensicAuditTrail = async (
     caseId,
     user
 ) => {
+    await hydrateWorkstationHeadCenter(user);
+
     const item =
         await ForensicCase.findOne({
             caseId
@@ -371,7 +392,7 @@ const getForensicAuditTrail = async (
                         ? String(event.actor._id)
                         : event.actor
                             ? String(event.actor)
-                            : "",
+                            : null,
 
                 actorName:
                     event.actorName || "",
@@ -388,7 +409,7 @@ const getForensicAuditTrail = async (
                             ? String(
                                 event.workstation
                             )
-                            : "",
+                            : null,
 
                 workstationId:
                     event.workstation?.workstationId ||
@@ -409,7 +430,7 @@ const getForensicAuditTrail = async (
                             ? String(
                                 event.workstationCenter
                             )
-                            : "",
+                            : null,
 
                 workstationCenterId:
                     event.workstationCenter?.centerId ||
@@ -480,6 +501,8 @@ const createForensicCase = async (
     data,
     user
 ) => {
+    await hydrateWorkstationHeadCenter(user);
+
     if (
         !user ||
         user.role !== "CUSTOMER"
@@ -592,6 +615,8 @@ const createForensicCase = async (
 
 const getCasesForUser =
     async user => {
+        await hydrateWorkstationHeadCenter(user);
+
         const filter = {};
 
         if (
@@ -632,6 +657,8 @@ const getCaseById =
         caseId,
         user
     ) => {
+        await hydrateWorkstationHeadCenter(user);
+
         const item =
             await populateCase(
                 ForensicCase.findOne({
@@ -649,6 +676,8 @@ const getCaseById =
 
 const getDashboard =
     async user => {
+        await hydrateWorkstationHeadCenter(user);
+
         const filter = {};
 
         if (
@@ -742,8 +771,7 @@ const getDashboard =
                                 ]
                             }
                         },
-
-                        failedCases:
+                                                failedCases:
                         {
                             $sum: {
                                 $cond: [
@@ -826,6 +854,8 @@ const assignCase =
         data,
         user
     ) => {
+        await hydrateWorkstationHeadCenter(user);
+
         if (
             !user ||
             ![
@@ -910,15 +940,6 @@ const assignCase =
             );
         }
 
-        if (
-            !data?.workstationId
-        ) {
-            throw new AppError(
-                "A workstation is required before assignment",
-                400
-            );
-        }
-
         const employee =
             await User.findOne({
                 _id:
@@ -938,23 +959,97 @@ const assignCase =
             );
         }
 
-        const selectedWorkstation =
-            await Workstation.findOne({
-                _id:
-                    data.workstationId,
-                workstationCenter:
-                    centerId,
+        const existingEmployeeWorkstations =
+            await Workstation.find({
                 assignedEmployee:
                     employee._id,
+                workstationCenter:
+                    centerId,
                 status:
                     "ACTIVE"
             });
 
-        if (!selectedWorkstation) {
+        if (
+            existingEmployeeWorkstations.length >
+            1
+        ) {
             throw new AppError(
-                "Selected workstation is not assigned to this employee or is not active",
-                400
+                "Employee is linked to multiple active workstations. Resolve the workstation assignment before assigning this forensic case.",
+                409
             );
+        }
+
+        let selectedWorkstation =
+            existingEmployeeWorkstations[0] ||
+            null;
+
+        if (
+            selectedWorkstation
+        ) {
+            if (
+                data?.workstationId &&
+                String(
+                    data.workstationId
+                ) !==
+                String(
+                    selectedWorkstation._id
+                )
+            ) {
+                throw new AppError(
+                    `Employee ${employee.name} is already assigned to workstation ${selectedWorkstation.workstationId}. This employee cannot be assigned to another workstation.`,
+                    409
+                );
+            }
+        } else {
+            if (
+                !data?.workstationId
+            ) {
+                throw new AppError(
+                    `Employee ${employee.name} does not have a workstation assigned yet. Select an unassigned active workstation.`,
+                    400
+                );
+            }
+
+            selectedWorkstation =
+                await Workstation.findOne({
+                    _id:
+                        data.workstationId,
+
+                    workstationCenter:
+                        centerId,
+
+                    status:
+                        "ACTIVE"
+                });
+
+            if (
+                !selectedWorkstation
+            ) {
+                throw new AppError(
+                    "Selected workstation was not found or is not active in this workstation center",
+                    404
+                );
+            }
+
+            if (
+                selectedWorkstation.assignedEmployee &&
+                String(
+                    selectedWorkstation.assignedEmployee
+                ) !==
+                String(
+                    employee._id
+                )
+            ) {
+                throw new AppError(
+                    "Selected workstation is already assigned to another employee",
+                    409
+                );
+            }
+
+            selectedWorkstation.assignedEmployee =
+                employee._id;
+
+            await selectedWorkstation.save();
         }
 
         const previousStatus =
@@ -988,28 +1083,39 @@ const assignCase =
         await createAuditEvent({
             caseItem:
                 item,
+
             action:
                 "CASE_ASSIGNED",
+
             user,
+
             fromStatus:
                 previousStatus,
+
             toStatus:
                 "ASSIGNED",
+
             workstation:
                 selectedWorkstation,
+
             workstationId:
                 selectedWorkstation.workstationId,
+
             workstationName:
                 selectedWorkstation.name,
+
             note:
                 `Assigned to ${employee.name}`,
+
             metadata: {
                 employeeId:
                     String(
                         employee._id
                     ),
+
                 employeeName:
                     employee.name,
+
                 workstationId:
                     selectedWorkstation.workstationId
             }
@@ -1030,6 +1136,8 @@ const updateCaseStatus =
         user,
         workstationId = ""
     ) => {
+        await hydrateWorkstationHeadCenter(user);
+
         const allowed = [
             "ACQUIRING",
             "ANALYZING",
@@ -1200,26 +1308,36 @@ const updateCaseStatus =
         await createAuditEvent({
             caseItem:
                 item,
+
             action,
+
             user,
+
             fromStatus:
                 previousStatus,
+
             toStatus:
                 status,
+
             workstation,
+
             workstationId:
                 workstation?.workstationId ||
                 workstationId ||
                 "",
+
             workstationName:
                 workstation?.name ||
                 "",
+
             note:
                 note ||
                 "Status updated",
+
             metadata: {
                 progress:
                     item.progress,
+
                 failureReason:
                     item.failureReason ||
                     ""
@@ -1239,6 +1357,8 @@ const ingestResult =
         payload,
         user
     ) => {
+        await hydrateWorkstationHeadCenter(user);
+
         const item =
             await ForensicCase.findOne({
                 caseId
@@ -1275,7 +1395,27 @@ const ingestResult =
             );
         }
 
+        if (!payload.sourceType) {
+            throw new AppError(
+                "Source type is required for forensic result submission",
+                400
+            );
+        }
+
         if (
+            String(
+                payload.sourceType
+            ).trim().toUpperCase() !==
+            String(
+                item.sourceType
+            ).trim().toUpperCase()
+        ) {
+            throw new AppError(
+                "Source type does not match the forensic case",
+                400
+            );
+        }
+                if (
             user.role ===
             "WORKSTATION_EMPLOYEE" &&
             String(
@@ -1403,10 +1543,13 @@ const ingestResult =
             item.history.push({
                 status:
                     "ANALYZING",
+
                 changedBy:
                     user._id,
+
                 changedAt:
                     analysisStartedAt,
+
                 note:
                     "Forensic analysis started while processing submitted acquisition results"
             });
@@ -1416,21 +1559,29 @@ const ingestResult =
             await createAuditEvent({
                 caseItem:
                     item,
+
                 action:
                     "ANALYSIS_STARTED",
+
                 user,
+
                 fromStatus:
                     "ACQUIRING",
+
                 toStatus:
                     "ANALYZING",
+
                 workstation,
+
                 workstationId:
                     workstation?.workstationId ||
                     payload.workstationId ||
                     "",
+
                 workstationName:
                     workstation?.name ||
                     "",
+
                 note:
                     "Forensic analysis started while processing submitted acquisition results"
             });
@@ -1467,7 +1618,8 @@ const ingestResult =
                 payload.validatedArtifacts
             ) ||
             payload.artifacts.filter(
-                a => a.validated
+                a =>
+                    a.validated
             ).length;
 
         item.rejectedArtifacts =
@@ -1686,26 +1838,35 @@ const ingestResult =
         await createAuditEvent({
             caseItem:
                 item,
+
             action:
                 "EVIDENCE_SUBMITTED",
+
             user,
+
             fromStatus:
                 previousStatus,
+
             toStatus:
                 finalStatus,
+
             workstation,
+
             workstationId:
                 workstation?.workstationId ||
                 payload.workstationId ||
                 "",
+
             workstationName:
                 workstation?.name ||
                 "",
+
             note:
                 finalStatus ===
                     "FAILED"
                     ? item.failureReason
                     : "Forensic results submitted from workstation",
+
             metadata: {
                 bytesScanned:
                     item.bytesScanned,
@@ -1739,29 +1900,38 @@ const ingestResult =
         await createAuditEvent({
             caseItem:
                 item,
+
             action:
                 finalStatus ===
                     "COMPLETED"
                     ? "CASE_COMPLETED"
                     : "CASE_FAILED",
+
             user,
+
             fromStatus:
                 finalStatus,
+
             toStatus:
                 finalStatus,
+
             workstation,
+
             workstationId:
                 workstation?.workstationId ||
                 payload.workstationId ||
                 "",
+
             workstationName:
                 workstation?.name ||
                 "",
+
             note:
                 finalStatus ===
                     "COMPLETED"
                     ? "Forensic scan completed and results accepted"
                     : item.failureReason,
+
             metadata: {
                 artifactCount:
                     item.artifacts.length
@@ -1780,6 +1950,8 @@ const generateReport =
         caseId,
         user
     ) => {
+        await hydrateWorkstationHeadCenter(user);
+
         const item =
             await ForensicCase.findOne({
                 caseId
@@ -1882,8 +2054,7 @@ const generateReport =
                 recoveredBytes:
                     item.recoveredBytes
             },
-
-            artifacts:
+                        artifacts:
                 item.artifacts.map(
                     a => ({
                         artifactId:

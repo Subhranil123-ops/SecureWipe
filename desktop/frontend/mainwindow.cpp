@@ -687,6 +687,88 @@ MainWindow::MainWindow(
     connect(
         requestService_,
         &SanitizationRequestService::
+            workstationIdentityVerified,
+        this,
+        [this](
+            const QString &workstationId)
+        {
+            if (
+                workstationId.trimmed() !=
+                    selectedWorkstationId_.trimmed() &&
+                !selectedWorkstationId_.trimmed().isEmpty())
+            {
+                return;
+            }
+
+            verifiedWorkstationId_ =
+                workstationId.trimmed();
+            workstationIdentityVerified_ =
+                !verifiedWorkstationId_.isEmpty();
+
+            jobMessageLabel_->setText(
+                QStringLiteral(
+                    "Workstation identity verified for %1.")
+                    .arg(
+                        workstationId));
+
+            jobMessageLabel_->setStyleSheet(
+                "QLabel {"
+                "background:transparent;"
+                "border:none;"
+                "color:#027A48;"
+                "font-size:12px;"
+                "font-weight:600;"
+                "}");
+
+            setConnectionState(
+                true,
+                QStringLiteral(
+                    "Workstation verified"));
+
+            if (deviceController_->selectedTarget().has_value())
+            {
+                runTargetSafetyCheck();
+            }
+        });
+
+    connect(
+        requestService_,
+        &SanitizationRequestService::
+            workstationIdentityVerificationFailed,
+        this,
+        [this](const QString &message)
+        {
+            workstationIdentityVerified_ =
+                false;
+            verifiedWorkstationId_.clear();
+
+            jobMessageLabel_->setText(
+                QStringLiteral(
+                    "Workstation identity verification failed: %1")
+                    .arg(message));
+
+            jobMessageLabel_->setStyleSheet(
+                "QLabel {"
+                "background:transparent;"
+                "border:none;"
+                "color:#B42318;"
+                "font-size:12px;"
+                "font-weight:600;"
+                "}");
+
+            setConnectionState(
+                false,
+                QStringLiteral(
+                    "Workstation verification failed: %1")
+                    .arg(message));
+
+            startSanitizationButton_->setEnabled(
+                false);
+        });
+
+    connect(
+        requestService_,
+        &SanitizationRequestService::
             requestFetchFailed,
         this,
         [this](const QString &message)
@@ -2611,7 +2693,7 @@ void MainWindow::buildJobsPage()
          QStringLiteral(
              "Device Type"),
          QStringLiteral(
-             "Serial"),
+             "Method"),
          QStringLiteral(
              "Asset"),
          QStringLiteral(
@@ -2751,7 +2833,7 @@ void MainWindow::buildJobsPage()
     jobGrid->addWidget(
         makeCaption(
             QStringLiteral(
-                "Authorized serial number"),
+                "Assigned method"),
             detailCard),
         0,
         2);
@@ -4267,6 +4349,9 @@ void MainWindow::refreshAssignedRequests()
     if (token.isEmpty())
         return;
 
+    // Keep a successful workstation verification across an ordinary job refresh.
+    // The returned request list is reconciled in handleAssignedRequests().
+
     requestService_->fetchAssignedRequests(
         token);
 }
@@ -4314,6 +4399,12 @@ void MainWindow::handleAssignedRequests(
             request.value(
                        QStringLiteral(
                            "deviceType"))
+                .toString();
+
+        const QString method =
+            request.value(
+                       QStringLiteral(
+                           "sanitizationMethod"))
                 .toString();
 
         const QString serialNumber =
@@ -4396,10 +4487,10 @@ void MainWindow::handleAssignedRequests(
                 row,
                 2,
                 new QTableWidgetItem(
-                    serialNumber.isEmpty()
+                    method.isEmpty()
                         ? QStringLiteral(
                               "—")
-                        : serialNumber));
+                        : method));
 
             auto *statusItem =
                 new QTableWidgetItem(
@@ -4444,10 +4535,10 @@ void MainWindow::handleAssignedRequests(
             row,
             2,
             new QTableWidgetItem(
-                serialNumber.isEmpty()
+                method.isEmpty()
                     ? QStringLiteral(
                           "—")
-                    : serialNumber));
+                    : method));
 
         assignedJobsTable_->setItem(
             row,
@@ -4466,14 +4557,14 @@ void MainWindow::handleAssignedRequests(
 
         const QString display =
             QStringLiteral(
-                "%1  •  %2  •  SN: %3")
+                "%1  •  %2  •  %3")
                 .arg(
                     requestId,
                     deviceType,
-                    serialNumber.isEmpty()
+                    method.isEmpty()
                         ? QStringLiteral(
-                              "Serial not specified")
-                        : serialNumber);
+                              "Method not specified")
+                        : method);
 
         const int index =
             jobComboBox_->count();
@@ -4493,13 +4584,8 @@ void MainWindow::handleAssignedRequests(
 
         jobComboBox_->setItemData(
             index,
-            QString(),
+            method,
             Qt::UserRole + 2);
-
-        jobComboBox_->setItemData(
-            index,
-            serialNumber,
-            Qt::UserRole + 4);
 
         const QJsonValue workstationValue =
             request.value(
@@ -4519,6 +4605,11 @@ void MainWindow::handleAssignedRequests(
             index,
             workstationId,
             Qt::UserRole + 3);
+
+        jobComboBox_->setItemData(
+            index,
+            serialNumber,
+            Qt::UserRole + 4);
 
         if (!selectedRequestId_.isEmpty() &&
             requestId ==
@@ -4553,6 +4644,145 @@ void MainWindow::handleAssignedRequests(
     {
         jobComboBox_->setCurrentIndex(
             0);
+    }
+
+    /*
+     * IMPORTANT: currentIndexChanged() is suppressed while the job list
+     * is rebuilt. Synchronize the selected request state explicitly from
+     * the current combo-box item before performing workstation identity
+     * verification.
+     */
+    const int currentJobIndex =
+        jobComboBox_->currentIndex();
+
+    if (currentJobIndex >= 0)
+    {
+        selectedRequestId_ =
+            jobComboBox_->itemData(
+                currentJobIndex,
+                Qt::UserRole)
+                .toString()
+                .trimmed();
+
+        selectedRequestDeviceType_ =
+            jobComboBox_->itemData(
+                currentJobIndex,
+                Qt::UserRole + 1)
+                .toString()
+                .trimmed();
+
+        selectedRequestMethod_ =
+            jobComboBox_->itemData(
+                currentJobIndex,
+                Qt::UserRole + 2)
+                .toString()
+                .trimmed();
+
+        selectedWorkstationId_ =
+            jobComboBox_->itemData(
+                currentJobIndex,
+                Qt::UserRole + 3)
+                .toString()
+                .trimmed();
+
+        selectedRequestSerialNumber_ =
+            jobComboBox_->itemData(
+                currentJobIndex,
+                Qt::UserRole + 4)
+                .toString()
+                .trimmed();
+    }
+
+    /*
+     * The employee/workstation assignment is server-authoritative.
+     * Verify this physical desktop installation against that
+     * assigned workstation before enabling destructive execution.
+     *
+     * Do not clear a previously successful verification merely because
+     * the assigned-job list was refreshed. The verification remains valid
+     * only for the exact workstation ID that was successfully verified.
+     */
+    QString identityWorkstationId;
+
+    for (const QJsonValue &value :
+         requests)
+    {
+        if (!value.isObject())
+            continue;
+
+        const QJsonObject request =
+            value.toObject();
+
+        const QJsonValue workstationValue =
+            request.value(
+                QStringLiteral(
+                    "assignedWorkstation"));
+
+        if (!workstationValue.isObject())
+            continue;
+
+        const QString workstationId =
+            workstationValue
+                .toObject()
+                .value(
+                    QStringLiteral(
+                        "workstationId"))
+                .toString()
+                .trimmed();
+
+        if (workstationId.isEmpty())
+            continue;
+
+        if (identityWorkstationId.isEmpty())
+        {
+            identityWorkstationId =
+                workstationId;
+        }
+        else if (
+            identityWorkstationId !=
+            workstationId)
+        {
+            jobMessageLabel_->setText(
+                QStringLiteral(
+                    "Security check blocked: the account has requests assigned to multiple workstations."));
+            jobMessageLabel_->setStyleSheet(
+                "QLabel {"
+                "background:transparent;"
+                "border:none;"
+                "color:#B42318;"
+                "font-size:12px;"
+                "font-weight:700;"
+                "}");
+            populateJobDetails();
+            populateDeviceTable();
+            return;
+        }
+    }
+
+    // Reconcile the local verified state with the server-authoritative
+    // workstation assignment. A verification is valid only when the
+    // verified workstation ID exactly matches the current assignment.
+    if (!identityWorkstationId.isEmpty() &&
+        verifiedWorkstationId_ == identityWorkstationId)
+    {
+        workstationIdentityVerified_ = true;
+    }
+    else
+    {
+        workstationIdentityVerified_ = false;
+        verifiedWorkstationId_.clear();
+    }
+
+    if (
+        authManager_ &&
+        authManager_->role() ==
+            QStringLiteral(
+                "WORKSTATION_EMPLOYEE") &&
+        !identityWorkstationId.isEmpty())
+    {
+        requestService_->bindWorkstationIdentity(
+            authManager_->token(),
+            identityWorkstationId);
     }
 
     populateJobDetails();
@@ -4590,6 +4820,7 @@ void MainWindow::selectRequestFromJobs(
     selectedRequestDeviceType_.clear();
     selectedRequestMethod_.clear();
     selectedRequestSerialNumber_.clear();
+
     selectedWorkstationId_.clear();
 
     if (index < 0)
@@ -4611,7 +4842,11 @@ void MainWindow::selectRequestFromJobs(
                         Qt::UserRole + 1)
             .toString();
 
-    selectedRequestMethod_.clear();
+    selectedRequestMethod_ =
+        jobComboBox_->itemData(
+                        index,
+                        Qt::UserRole + 2)
+            .toString();
 
     selectedRequestSerialNumber_ =
         jobComboBox_->itemData(
@@ -4656,7 +4891,7 @@ void MainWindow::populateJobDetails()
     jobRequestedMethodValue_->setText(
         request.value(
                    QStringLiteral(
-                       "serialNumber"))
+                       "sanitizationMethod"))
             .toString(
                 QStringLiteral(
                     "—")));
@@ -4895,17 +5130,18 @@ void MainWindow::populateDeviceTable()
         const StorageDevice &device =
             devices[static_cast<std::size_t>(i)];
 
-        if (selectedRequestSerialNumber_.trimmed().isEmpty() ||
-            device.getSerialNumber() !=
-                selectedRequestSerialNumber_.toStdString())
-        {
-            continue;
-        }
-
         if (!selectedRequestDeviceType_.isEmpty() &&
             !requestMatchesDevice(
                 selectedRequestDeviceType_,
                 device))
+        {
+            continue;
+        }
+
+        if (selectedRequestSerialNumber_.trimmed().isEmpty() ||
+            QString::fromStdString(
+                device.getSerialNumber()).trimmed() !=
+                selectedRequestSerialNumber_.trimmed())
         {
             continue;
         }
@@ -5025,22 +5261,8 @@ void MainWindow::selectTargetDevice(
     if (!ok)
         return;
 
-    if (selectedRequestSerialNumber_.trimmed().isEmpty())
-    {
-        targetSafetyText_->setText(
-            QStringLiteral(
-                "The assigned request has no authorized serial number. Device selection is blocked."));
-        targetSafetyBadge_->setText(
-            QStringLiteral("BLOCKED"));
-        targetSafetyBadge_->setStyleSheet(
-            badgeStyle("BLOCKED"));
-        startSanitizationButton_->setEnabled(false);
-        return;
-    }
-
     if (!deviceController_->selectTarget(
-            deviceIndex,
-            selectedRequestSerialNumber_.toStdString()))
+            deviceIndex))
     {
         targetSafetyText_->setText(
             QStringLiteral(
@@ -5081,7 +5303,7 @@ void MainWindow::selectTargetDevice(
 
     targetSafetyText_->setText(
         QStringLiteral(
-            "Exact serial-matched target selected. Run a fresh safety check before sanitization."));
+            "Exact target selected. Run a fresh safety check before sanitization."));
 
     validateTargetButton_->setEnabled(
         !selectedRequestId_.isEmpty());
@@ -5229,6 +5451,46 @@ void MainWindow::runTargetSafetyCheck()
         return;
     }
 
+    const QString validatedSerial =
+        QString::fromStdString(
+            validatedTarget->getSerialNumber())
+            .trimmed();
+
+    if (selectedRequestSerialNumber_.trimmed().isEmpty())
+    {
+        targetSafetyBadge_->setText(QStringLiteral("BLOCKED"));
+        targetSafetyBadge_->setStyleSheet(badgeStyle("BLOCKED"));
+        targetSafetyText_->setText(
+            QStringLiteral(
+                "The assigned sanitization request does not contain an authorized physical device serial number."));
+        validateTargetButton_->setEnabled(true);
+        startSanitizationButton_->setEnabled(false);
+        jobMessageLabel_->setText(
+            QStringLiteral(
+                "Sanitization blocked: the request has no authorized serial number."));
+        jobMessageLabel_->setStyleSheet(
+            "QLabel { background:transparent; border:none; color:#B42318; font-size:12px; font-weight:700; }");
+        return;
+    }
+
+    if (validatedSerial != selectedRequestSerialNumber_.trimmed())
+    {
+        targetSafetyBadge_->setText(QStringLiteral("SERIAL MISMATCH"));
+        targetSafetyBadge_->setStyleSheet(badgeStyle("BLOCKED"));
+        targetSafetyText_->setText(
+            QStringLiteral(
+                "The discovered physical target serial number (%1) does not match the serial number authorized by the request (%2).")
+                .arg(validatedSerial, selectedRequestSerialNumber_.trimmed()));
+        validateTargetButton_->setEnabled(true);
+        startSanitizationButton_->setEnabled(false);
+        jobMessageLabel_->setText(
+            QStringLiteral(
+                "Sanitization blocked: physical device serial does not match the authorized request."));
+        jobMessageLabel_->setStyleSheet(
+            "QLabel { background:transparent; border:none; color:#B42318; font-size:12px; font-weight:700; }");
+        return;
+    }
+
     updateTargetPanelFromDevice(*validatedTarget);
 
     if (!deviceController_->evaluateSelectedTarget())
@@ -5330,6 +5592,29 @@ void MainWindow::runTargetSafetyCheck()
         break;
     }
 
+    QString assignedMethod = selectedRequestMethod_.trimmed().toUpper();
+    assignedMethod.replace(QStringLiteral(" "), QStringLiteral("_"));
+    assignedMethod.replace(QStringLiteral("-"), QStringLiteral("_"));
+
+    if (assignedMethod == QStringLiteral("NVME"))
+        assignedMethod = QStringLiteral("NVME_SANITIZE");
+    if (assignedMethod == QStringLiteral("ATA"))
+        assignedMethod = QStringLiteral("ATA_SANITIZE");
+
+    if (!assignedMethod.isEmpty() &&
+        assignedMethod != QStringLiteral("UNSUPPORTED") &&
+        assignedMethod != detectedMethod)
+    {
+        targetSafetyBadge_->setText(QStringLiteral("METHOD MISMATCH"));
+        targetSafetyBadge_->setStyleSheet(badgeStyle("BLOCKED"));
+        targetSafetyText_->setText(
+            QStringLiteral("The assigned request method (%1) does not match the method selected by the sanitization core (%2).")
+                .arg(assignedMethod, detectedMethod));
+        validateTargetButton_->setEnabled(true);
+        startSanitizationButton_->setEnabled(false);
+        return;
+    }
+
     const SafetyResult &result = deviceController_->lastSafetyResult();
 
     targetSafetyBadge_->setText(QStringLiteral("SAFE"));
@@ -5363,9 +5648,15 @@ void MainWindow::runTargetSafetyCheck()
     const QString status = request.value(QStringLiteral("status")).toString();
     const bool requestReady = status == QStringLiteral("ASSIGNED");
 
+    const bool workstationReady =
+        workstationIdentityVerified_ &&
+        !verifiedWorkstationId_.isEmpty() &&
+        verifiedWorkstationId_ == selectedWorkstationId_.trimmed();
+
     startSanitizationButton_->setEnabled(
         requestReady &&
-        result.isOverallSafe);
+        result.isOverallSafe &&
+        workstationReady);
     validateTargetButton_->setEnabled(true);
 
     if (requestReady)
@@ -5413,6 +5704,22 @@ void MainWindow::startSanitization()
         return;
     }
 
+    const bool workstationReady =
+        workstationIdentityVerified_ &&
+        !verifiedWorkstationId_.isEmpty() &&
+        verifiedWorkstationId_ == selectedWorkstationId_.trimmed();
+
+    if (!workstationReady)
+    {
+        QMessageBox::warning(
+            this,
+            QStringLiteral("Workstation not verified"),
+            QStringLiteral(
+                "This SecureWipe desktop has not been verified as the assigned physical workstation. "
+                "Refresh the assigned jobs and complete workstation verification before starting sanitization."));
+        return;
+    }
+
     if (request.value(
                    QStringLiteral(
                        "status"))
@@ -5430,6 +5737,16 @@ void MainWindow::startSanitization()
         return;
     }
 
+    if (selectedRequestSerialNumber_.trimmed().isEmpty())
+    {
+        QMessageBox::critical(
+            this,
+            QStringLiteral("Request serial missing"),
+            QStringLiteral(
+                "This sanitization request does not contain an authorized physical device serial number. Sanitization is blocked."));
+        return;
+    }
+
     auto target =
         deviceController_->selectedTarget();
 
@@ -5440,20 +5757,8 @@ void MainWindow::startSanitization()
             QStringLiteral(
                 "No target"),
             QStringLiteral(
-                "Select the physical device whose serial number matches the authorized request."));
+                "Select a physical target device."));
 
-        return;
-    }
-
-    if (selectedRequestSerialNumber_.trimmed().isEmpty() ||
-        target->getSerialNumber() !=
-            selectedRequestSerialNumber_.toStdString())
-    {
-        QMessageBox::critical(
-            this,
-            QStringLiteral("Serial number mismatch"),
-            QStringLiteral(
-                "The selected physical device does not match the serial number authorized by the sanitization request. Sanitization is blocked."));
         return;
     }
 
@@ -5479,15 +5784,22 @@ void MainWindow::startSanitization()
 
     target = validatedTarget;
 
-    if (selectedRequestSerialNumber_.trimmed().isEmpty() ||
-        target->getSerialNumber() !=
-            selectedRequestSerialNumber_.toStdString())
+    const QString validatedTargetSerial =
+        QString::fromStdString(
+            target->getSerialNumber())
+            .trimmed();
+
+    if (validatedTargetSerial !=
+        selectedRequestSerialNumber_.trimmed())
     {
         QMessageBox::critical(
             this,
             QStringLiteral("Serial number mismatch"),
             QStringLiteral(
-                "The physical device changed or no longer matches the authorized request serial number. Sanitization was blocked."));
+                "The selected physical device serial number (%1) does not match the serial number authorized by the request (%2). Sanitization is blocked.")
+                .arg(
+                    validatedTargetSerial,
+                    selectedRequestSerialNumber_.trimmed()));
         return;
     }
 
@@ -5546,7 +5858,7 @@ void MainWindow::startSanitization()
                 "Serial: %4\n"
                 "Capacity: %5\n"
                 "Physical device: %6\n"
-                "Detected method: %7\n\n"
+                "Method: %7\n\n"
                 "This operation is destructive and cannot be undone.\n"
                 "Continue only when this exact physical target is intentionally authorized.")
                 .arg(
@@ -5626,21 +5938,6 @@ void MainWindow::startSanitization()
         return;
     }
 
-    const QString serialNumber =
-        selectedRequestSerialNumber_.trimmed();
-
-    if (serialNumber.isEmpty())
-    {
-        QMessageBox::critical(
-            this,
-            QStringLiteral(
-                "Serial number"),
-            QStringLiteral(
-                "The assigned request does not contain a physical device serial number. The sanitization operation cannot start."));
-
-        return;
-    }
-
     const StorageDevice targetCopy =
         *target;
 
@@ -5701,7 +5998,7 @@ void MainWindow::startSanitization()
         &SanitizationRequestService::
             requestStatusUpdated,
         this,
-        [this, targetCopy, actorId, workstationId, serialNumber](
+        [this, targetCopy, actorId, workstationId](
             const QString &requestId,
             const QString &status)
         {
@@ -5750,7 +6047,7 @@ void MainWindow::startSanitization()
 
             watcher->setFuture(
                 QtConcurrent::run(
-                    [targetCopy, requestId, actorId, workstationId, serialNumber]()
+                    [targetCopy, requestId, actorId, workstationId]()
                         -> SecureWipe::SanitizationPipelineResult
                     {
                         try
@@ -5761,8 +6058,7 @@ void MainWindow::startSanitization()
                                 targetCopy,
                                 requestId.toStdString(),
                                 actorId.toStdString(),
-                                workstationId.toStdString(),
-                                serialNumber.toStdString());
+                                workstationId.toStdString());
                         }
                         catch (
                             const std::exception &exception)
@@ -6314,6 +6610,9 @@ void MainWindow::logout()
     selectedRequestMethod_.clear();
     selectedRequestSerialNumber_.clear();
     selectedWorkstationId_.clear();
+    workstationIdentityVerified_ =
+        false;
+    verifiedWorkstationId_.clear();
 
     assignedRequests_ =
         QJsonArray();

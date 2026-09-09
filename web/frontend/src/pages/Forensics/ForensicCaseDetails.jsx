@@ -38,6 +38,60 @@ function ForensicCaseDetails() {
     const [employeeId, setEmployeeId] = useState("");
     const [workstationId, setWorkstationId] = useState("");
 
+    const selectedEmployee = useMemo(
+        () =>
+            (center?.employees || []).find(
+                employee => String(employee._id) === String(employeeId)
+            ) || null,
+        [center, employeeId]
+    );
+
+    const employeeAssignedWorkstations = useMemo(
+        () =>
+            (center?.workstations || []).filter(
+                workstation =>
+                    workstation.status === "ACTIVE" &&
+                    workstation.assignedEmployee &&
+                    String(
+                        workstation.assignedEmployee?._id ||
+                        workstation.assignedEmployee
+                    ) === String(employeeId)
+            ),
+        [center, employeeId]
+    );
+
+    const employeeHasSingleWorkstation =
+        employeeAssignedWorkstations.length === 1;
+
+    const employeeHasMultipleWorkstations =
+        employeeAssignedWorkstations.length > 1;
+
+    useEffect(() => {
+        if (!employeeId) {
+            setWorkstationId("");
+            return;
+        }
+
+        if (employeeHasSingleWorkstation) {
+            setWorkstationId(
+                employeeAssignedWorkstations[0]._id
+            );
+            return;
+        }
+
+        if (employeeHasMultipleWorkstations) {
+            setWorkstationId("");
+            return;
+        }
+
+        setWorkstationId("");
+    }, [
+        employeeId,
+        employeeAssignedWorkstations,
+        employeeHasSingleWorkstation,
+        employeeHasMultipleWorkstations
+    ]);
+
     const [activeTab, setActiveTab] = useState("overview");
 
     useEffect(() => {
@@ -245,7 +299,7 @@ function ForensicCaseDetails() {
 
             await loadAuditTrail();
 
-            setActiveTab("audit");
+            setActiveTab("report");
 
             toast.success(
                 "Forensic report generated"
@@ -820,6 +874,10 @@ function ForensicCaseDetails() {
                                     value={
                                         workstationId
                                     }
+                                    disabled={
+                                        employeeHasSingleWorkstation ||
+                                        employeeHasMultipleWorkstations
+                                    }
                                     onChange={event =>
                                         setWorkstationId(
                                             event
@@ -827,40 +885,78 @@ function ForensicCaseDetails() {
                                                 .value
                                         )
                                     }
-                                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-700"
                                 >
-                                    <option value="">
-                                        Select workstation
-                                    </option>
+                                    {!employeeHasSingleWorkstation && (
+                                        <option value="">
+                                            {employeeHasMultipleWorkstations
+                                                ? "Resolve employee workstation conflict"
+                                                : "Select workstation"}
+                                        </option>
+                                    )}
 
-                                    {(
-                                        center.workstations ||
-                                        []
-                                    )
-                                        .filter(
-                                            workstation =>
-                                                workstation.status ===
-                                                "ACTIVE"
+                                    {employeeHasSingleWorkstation
+                                        ? (
+                                            <option
+                                                value={
+                                                    employeeAssignedWorkstations[0]._id
+                                                }
+                                            >
+                                                {employeeAssignedWorkstations[0].name ||
+                                                    "Unnamed workstation"}
+                                                {employeeAssignedWorkstations[0].workstationId
+                                                    ? ` — ${employeeAssignedWorkstations[0].workstationId}`
+                                                    : ""}
+                                            </option>
                                         )
-                                        .map(
-                                            workstation => (
-                                                <option
-                                                    key={
-                                                        workstation._id
-                                                    }
-                                                    value={
-                                                        workstation._id
-                                                    }
-                                                >
-                                                    {workstation.name ||
-                                                        "Unnamed workstation"}
-                                                    {workstation.workstationId
-                                                        ? ` — ${workstation.workstationId}`
-                                                        : ""}
-                                                </option>
+                                        : (center.workstations || [])
+                                            .filter(
+                                                workstation =>
+                                                    workstation.status ===
+                                                        "ACTIVE" &&
+                                                    !workstation.assignedEmployee
                                             )
-                                        )}
+                                            .map(
+                                                workstation => (
+                                                    <option
+                                                        key={
+                                                            workstation._id
+                                                        }
+                                                        value={
+                                                            workstation._id
+                                                        }
+                                                    >
+                                                        {workstation.name ||
+                                                            "Unnamed workstation"}
+                                                        {workstation.workstationId
+                                                            ? ` — ${workstation.workstationId}`
+                                                            : ""}
+                                                    </option>
+                                                )
+                                            )}
                                 </select>
+
+                                {employeeHasSingleWorkstation && (
+                                    <p className="mt-2 text-xs font-medium text-emerald-700">
+                                        {selectedEmployee?.name ||
+                                            "This employee"}
+                                        {" is already bound to this workstation. It has been selected automatically."}
+                                    </p>
+                                )}
+
+                                {employeeHasMultipleWorkstations && (
+                                    <p className="mt-2 text-xs font-medium text-red-600">
+                                        This employee is linked to multiple workstations. Resolve that assignment before assigning the forensic case.
+                                    </p>
+                                )}
+
+                                {employeeId &&
+                                    !employeeHasSingleWorkstation &&
+                                    !employeeHasMultipleWorkstations && (
+                                        <p className="mt-2 text-xs text-slate-500">
+                                            This employee has no workstation yet. Select an unassigned active workstation to create the binding.
+                                        </p>
+                                    )}
                             </div>
 
                             <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
@@ -892,7 +988,8 @@ function ForensicCaseDetails() {
                                 <button
                                     type="button"
                                     disabled={
-                                        actionLoading
+                                        actionLoading ||
+                                        employeeHasMultipleWorkstations
                                     }
                                     onClick={
                                         assignCase
