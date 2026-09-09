@@ -33,6 +33,7 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QScrollArea>
+#include <QStringList>
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QVBoxLayout>
@@ -729,15 +730,6 @@ MainWindow::MainWindow(
             {
                 runTargetSafetyCheck();
             }
-            else
-            {
-                // No physical target is selected yet, so there is nothing
-                // to (re)validate. Still recompute button readiness so that
-                // a previously-completed, still-valid safety check (cached
-                // in lastSafetyCheckPassed_) is reflected immediately
-                // instead of waiting on an unrelated future trigger.
-                updateStartSanitizationReadiness();
-            }
         });
 
     connect(
@@ -771,10 +763,8 @@ MainWindow::MainWindow(
                     "Workstation verification failed: %1")
                     .arg(message));
 
-            // workstationIdentityVerified_ is now false, so this will
-            // correctly disable the Start button through the same formula
-            // used everywhere else (single source of truth).
-            updateStartSanitizationReadiness();
+            startSanitizationButton_->setEnabled(
+                false);
         });
 
     connect(
@@ -4764,15 +4754,6 @@ void MainWindow::handleAssignedRequests(
                 "font-size:12px;"
                 "font-weight:700;"
                 "}");
-
-            // The server-authoritative workstation assignment is
-            // ambiguous, so any previously cached verification can no
-            // longer be trusted for this job list. Invalidate it and make
-            // sure the Start button reflects that immediately.
-            workstationIdentityVerified_ = false;
-            verifiedWorkstationId_.clear();
-            updateStartSanitizationReadiness();
-
             populateJobDetails();
             populateDeviceTable();
             return;
@@ -4804,13 +4785,6 @@ void MainWindow::handleAssignedRequests(
             authManager_->token(),
             identityWorkstationId);
     }
-
-    // The reconciliation above can change workstationIdentityVerified_ /
-    // verifiedWorkstationId_ (in either direction) purely as a result of
-    // refreshing the assigned-job list, independent of any safety check.
-    // Recompute Start-button readiness now so it never sits stale showing
-    // an outcome that no longer matches the current verification state.
-    updateStartSanitizationReadiness();
 
     populateJobDetails();
     populateDeviceTable();
@@ -5332,11 +5306,6 @@ void MainWindow::selectTargetDevice(
         QStringLiteral(
             "Exact target selected. Run a fresh safety check before sanitization."));
 
-    // A newly selected target has not been through fresh validation /
-    // the core SafetyEngine yet, so any earlier cached SAFE result no
-    // longer applies.
-    lastSafetyCheckPassed_ = false;
-
     validateTargetButton_->setEnabled(
         !selectedRequestId_.isEmpty());
 
@@ -5346,12 +5315,6 @@ void MainWindow::selectTargetDevice(
 
 void MainWindow::resetTargetPanel()
 {
-    // Any previously-cached safety pass no longer applies once the target
-    // panel is reset (new request selected, target deselected, logout,
-    // etc.) — a fresh runTargetSafetyCheck() must be run again before the
-    // Start button can become enabled.
-    lastSafetyCheckPassed_ = false;
-
     if (deviceTable_)
     {
         deviceTable_->clearSelection();
@@ -5434,35 +5397,6 @@ void MainWindow::resetTargetPanel()
         false);
 }
 
-void MainWindow::updateStartSanitizationReadiness()
-{
-    // Pure, side-effect-free (no hardware access) readout of the three
-    // independent conditions the Start button has always required. This
-    // is the single place that decides button enablement, so it can be
-    // safely called from every site where any one of the three inputs can
-    // change, instead of only recomputing enablement inline at the end of
-    // a full runTargetSafetyCheck() pass.
-    if (operationRunning_)
-    {
-        startSanitizationButton_->setEnabled(false);
-        return;
-    }
-
-    const QJsonObject request = selectedRequestObject();
-    const QString status = request.value(QStringLiteral("status")).toString();
-    const bool requestReady = status == QStringLiteral("ASSIGNED");
-
-    const bool workstationReady =
-        workstationIdentityVerified_ &&
-        !verifiedWorkstationId_.isEmpty() &&
-        verifiedWorkstationId_ == selectedWorkstationId_.trimmed();
-
-    startSanitizationButton_->setEnabled(
-        requestReady &&
-        lastSafetyCheckPassed_ &&
-        workstationReady);
-}
-
 void MainWindow::runTargetSafetyCheck()
 {
     if (operationRunning_)
@@ -5474,12 +5408,10 @@ void MainWindow::runTargetSafetyCheck()
         targetSafetyBadge_->setStyleSheet(badgeStyle("BLOCKED"));
         targetSafetyText_->setText(
             QStringLiteral("Select an exact physical target before running the safety gate."));
-        lastSafetyCheckPassed_ = false;
-        updateStartSanitizationReadiness();
+        startSanitizationButton_->setEnabled(false);
         return;
     }
 
-    lastSafetyCheckPassed_ = false;
     validateTargetButton_->setEnabled(false);
     startSanitizationButton_->setEnabled(false);
 
@@ -5503,8 +5435,6 @@ void MainWindow::runTargetSafetyCheck()
         targetSafetyBadge_->setStyleSheet(badgeStyle("BLOCKED"));
         targetSafetyText_->setText(message);
         validateTargetButton_->setEnabled(true);
-        lastSafetyCheckPassed_ = false;
-        updateStartSanitizationReadiness();
 
         jobMessageLabel_->setText(QStringLiteral("Safety gate blocked the operation: %1").arg(message));
         jobMessageLabel_->setStyleSheet(
@@ -5519,8 +5449,6 @@ void MainWindow::runTargetSafetyCheck()
         targetSafetyBadge_->setStyleSheet(badgeStyle("BLOCKED"));
         targetSafetyText_->setText(QStringLiteral("Validation completed without a trusted target. Operation blocked."));
         validateTargetButton_->setEnabled(true);
-        lastSafetyCheckPassed_ = false;
-        updateStartSanitizationReadiness();
         return;
     }
 
@@ -5537,8 +5465,7 @@ void MainWindow::runTargetSafetyCheck()
             QStringLiteral(
                 "The assigned sanitization request does not contain an authorized physical device serial number."));
         validateTargetButton_->setEnabled(true);
-        lastSafetyCheckPassed_ = false;
-        updateStartSanitizationReadiness();
+        startSanitizationButton_->setEnabled(false);
         jobMessageLabel_->setText(
             QStringLiteral(
                 "Sanitization blocked: the request has no authorized serial number."));
@@ -5556,8 +5483,7 @@ void MainWindow::runTargetSafetyCheck()
                 "The discovered physical target serial number (%1) does not match the serial number authorized by the request (%2).")
                 .arg(validatedSerial, selectedRequestSerialNumber_.trimmed()));
         validateTargetButton_->setEnabled(true);
-        lastSafetyCheckPassed_ = false;
-        updateStartSanitizationReadiness();
+        startSanitizationButton_->setEnabled(false);
         jobMessageLabel_->setText(
             QStringLiteral(
                 "Sanitization blocked: physical device serial does not match the authorized request."));
@@ -5597,8 +5523,6 @@ void MainWindow::runTargetSafetyCheck()
 
         targetSafetyText_->setText(details);
         validateTargetButton_->setEnabled(true);
-        lastSafetyCheckPassed_ = false;
-        updateStartSanitizationReadiness();
 
         jobMessageLabel_->setText(QStringLiteral("Sanitization blocked by the core safety gate."));
         jobMessageLabel_->setStyleSheet(
@@ -5613,8 +5537,6 @@ void MainWindow::runTargetSafetyCheck()
         targetSafetyBadge_->setStyleSheet(badgeStyle("BLOCKED"));
         targetSafetyText_->setText(QStringLiteral("The safety check completed without a trusted target."));
         validateTargetButton_->setEnabled(true);
-        lastSafetyCheckPassed_ = false;
-        updateStartSanitizationReadiness();
         return;
     }
 
@@ -5645,8 +5567,7 @@ void MainWindow::runTargetSafetyCheck()
         targetSafetyText_->setText(
             QStringLiteral("Safety checks passed, but the core could not select a supported sanitization method."));
         validateTargetButton_->setEnabled(true);
-        lastSafetyCheckPassed_ = false;
-        updateStartSanitizationReadiness();
+        startSanitizationButton_->setEnabled(false);
 
         jobMessageLabel_->setText(
             QStringLiteral("Target is safe, but no supported sanitization method is available."));
@@ -5691,8 +5612,7 @@ void MainWindow::runTargetSafetyCheck()
             QStringLiteral("The assigned request method (%1) does not match the method selected by the sanitization core (%2).")
                 .arg(assignedMethod, detectedMethod));
         validateTargetButton_->setEnabled(true);
-        lastSafetyCheckPassed_ = false;
-        updateStartSanitizationReadiness();
+        startSanitizationButton_->setEnabled(false);
         return;
     }
 
@@ -5729,34 +5649,68 @@ void MainWindow::runTargetSafetyCheck()
     const QString status = request.value(QStringLiteral("status")).toString();
     const bool requestReady = status == QStringLiteral("ASSIGNED");
 
-    // Cache that a full, fresh safety pass (serial match, device-type
-    // match, capability/method detection, core SafetyEngine) has just
-    // completed successfully. updateStartSanitizationReadiness() combines
-    // this with the *current* request status and workstation-verification
-    // state, so if either of those two changes later on (e.g. a delayed
-    // workstation-identity verification response arrives, or an assigned-
-    // jobs refresh updates the request status) the Start button is
-    // re-evaluated correctly from this cached result instead of staying
-    // stuck showing SAFE while silently disabled.
-    lastSafetyCheckPassed_ = result.isOverallSafe;
+    const bool workstationReady =
+        workstationIdentityVerified_ &&
+        !verifiedWorkstationId_.isEmpty() &&
+        verifiedWorkstationId_ == selectedWorkstationId_.trimmed();
 
-    updateStartSanitizationReadiness();
+    const bool canStart =
+        requestReady &&
+        result.isOverallSafe &&
+        workstationReady;
+
+    startSanitizationButton_->setEnabled(canStart);
     validateTargetButton_->setEnabled(true);
 
-    if (requestReady)
+    if (canStart)
     {
         jobMessageLabel_->setText(
             QStringLiteral("Safety gate passed. Final target confirmation is available."));
         jobMessageLabel_->setStyleSheet(
             "QLabel { background:transparent; border:none; color:#027A48; font-size:12px; font-weight:700; }");
+        return;
     }
-    else
+
+    /*
+     * Every prerequisite panel (device, capability, safety badge) can be
+     * green while the button stays disabled because requestReady and
+     * workstationReady are independent gates. Report every gate that is
+     * actually failing instead of only checking requestReady, so a stuck
+     * request status or a stale workstation binding is visible instead of
+     * silently leaving the operator with no explanation.
+     */
+    QStringList blockingReasons;
+
+    if (!requestReady)
     {
-        jobMessageLabel_->setText(
-            QStringLiteral("Safety gate passed, but the selected request is not ASSIGNED. Destructive execution remains disabled."));
-        jobMessageLabel_->setStyleSheet(
-            "QLabel { background:transparent; border:none; color:#B54708; font-size:12px; font-weight:700; }");
+        blockingReasons << QStringLiteral(
+            "the selected request status is \"%1\" (must be ASSIGNED)")
+            .arg(status.isEmpty() ? QStringLiteral("UNKNOWN") : status);
     }
+
+    if (!workstationReady)
+    {
+        blockingReasons << QStringLiteral(
+            "workstation identity is not verified for this exact assignment (verified=\"%1\", assigned=\"%2\")")
+            .arg(verifiedWorkstationId_.isEmpty() ? QStringLiteral("none") : verifiedWorkstationId_,
+                 selectedWorkstationId_.trimmed().isEmpty() ? QStringLiteral("none") : selectedWorkstationId_.trimmed());
+    }
+
+    if (!result.isOverallSafe)
+    {
+        blockingReasons << QStringLiteral("the core safety gate did not report an overall-safe result");
+    }
+
+    const QString reasonText = blockingReasons.join(QStringLiteral("; "));
+
+    jobMessageLabel_->setText(
+        QStringLiteral("Safety gate passed, but sanitization remains blocked: %1.").arg(reasonText));
+    jobMessageLabel_->setStyleSheet(
+        "QLabel { background:transparent; border:none; color:#B54708; font-size:12px; font-weight:700; }");
+
+    targetSafetyText_->setText(
+        targetSafetyText_->text() +
+        QStringLiteral("\n\nStart sanitization is disabled because: %1.").arg(reasonText));
 }
 
 void MainWindow::startSanitization()
