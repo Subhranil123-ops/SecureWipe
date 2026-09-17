@@ -1,13 +1,17 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "description": "",
+  "description": "ForenWipe Secure Data Sanitization Backend",
   "main": "index.js",
-   "jest": {
-        "setupFilesAfterEnv": [
-            "<rootDir>/tests/setup.js"
-        ]
-    },
+  "private": true,
+  "engines": {
+    "node": "22.x"
+  },
+  "jest": {
+    "setupFilesAfterEnv": [
+      "<rootDir>/tests/setup.js"
+    ]
+  },
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
