@@ -11,6 +11,27 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(GNUInstallDirs)
 
+# ============================================================
+# BACKEND API URL
+#
+# Development:
+#   http://localhost:5000
+#
+# Production:
+#   -DSECUREWIPE_API_BASE_URL="https://securewipe-kuo0.onrender.com"
+# ============================================================
+
+set(
+    SECUREWIPE_API_BASE_URL
+    "http://localhost:5000"
+    CACHE STRING
+    "SecureWipe backend API base URL"
+)
+
+# ============================================================
+# QT
+# ============================================================
+
 find_package(Qt6 6.5 REQUIRED COMPONENTS
     Core
     Widgets
@@ -20,7 +41,15 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS
 
 qt_standard_project_setup()
 
+# ============================================================
+# BACKEND LIBRARY
+# ============================================================
+
 add_subdirectory(backend)
+
+# ============================================================
+# DESKTOP APPLICATION
+# ============================================================
 
 qt_add_executable(SecureWipe
     WIN32
@@ -30,6 +59,8 @@ qt_add_executable(SecureWipe
 
     frontend/mainwindow.cpp
     frontend/mainwindow.h
+
+    frontend/AppConfig.h
 
     frontend/AuthManager.cpp
     frontend/AuthManager.h
@@ -73,7 +104,12 @@ qt_add_executable(SecureWipe
     frontend/resources/resources.qrc
 )
 
-target_include_directories(SecureWipe
+# ============================================================
+# INCLUDE DIRECTORIES
+# ============================================================
+
+target_include_directories(
+    SecureWipe
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/frontend
         ${CMAKE_CURRENT_SOURCE_DIR}/frontend/controllers
@@ -83,7 +119,22 @@ target_include_directories(SecureWipe
         ${CMAKE_CURRENT_SOURCE_DIR}/frontend/pages
 )
 
-target_link_libraries(SecureWipe
+# ============================================================
+# PRODUCTION / DEVELOPMENT API URL
+# ============================================================
+
+target_compile_definitions(
+    SecureWipe
+    PRIVATE
+        SECUREWIPE_API_BASE_URL="${SECUREWIPE_API_BASE_URL}"
+)
+
+# ============================================================
+# LINK LIBRARIES
+# ============================================================
+
+target_link_libraries(
+    SecureWipe
     PRIVATE
         Qt6::Core
         Qt6::Widgets
@@ -92,12 +143,20 @@ target_link_libraries(SecureWipe
         SecureWipeStorage
 )
 
+# ============================================================
+# INSTALL APPLICATION
+# ============================================================
+
 install(
     TARGETS SecureWipe
     BUNDLE DESTINATION .
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
+
+# ============================================================
+# THIRD-PARTY RUNTIME DEPENDENCY
+# ============================================================
 
 if(WIN32)
     install(
@@ -110,6 +169,10 @@ if(WIN32)
     )
 endif()
 
+# ============================================================
+# QT WINDOWS DEPLOYMENT
+# ============================================================
+
 qt_generate_deploy_app_script(
     TARGET SecureWipe
     OUTPUT_SCRIPT deploy_script
@@ -120,10 +183,33 @@ install(
     SCRIPT ${deploy_script}
 )
 
-set(CPACK_PACKAGE_NAME "SecureWipe")
-set(CPACK_PACKAGE_VENDOR "ForenWipe")
-set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
-set(CPACK_PACKAGE_FILE_NAME "SecureWipe-${PROJECT_VERSION}-Windows-x64")
-set(CPACK_GENERATOR "ZIP")
+# ============================================================
+# CPACK - ZIP PACKAGE
+# ============================================================
+
+set(
+    CPACK_PACKAGE_NAME
+    "SecureWipe"
+)
+
+set(
+    CPACK_PACKAGE_VENDOR
+    "ForenWipe"
+)
+
+set(
+    CPACK_PACKAGE_VERSION
+    ${PROJECT_VERSION}
+)
+
+set(
+    CPACK_PACKAGE_FILE_NAME
+    "SecureWipe-${PROJECT_VERSION}-Windows-x64"
+)
+
+set(
+    CPACK_GENERATOR
+    "ZIP"
+)
 
 include(CPack)

@@ -1,20 +1,16 @@
 #include "SanitizationRequestService.h"
+#include "../AppConfig.h"
 
+#include <QCryptographicHash>
+#include <QHostInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
-#include <QCryptographicHash>
-#include <QHostInfo>
-#include <QSettings>
-#include <QSysInfo>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QSettings>
+#include <QSysInfo>
 #include <QUrl>
-
-namespace
-{
-constexpr const char *kApiBaseUrl = "http://localhost:5000";
-}
 
 SanitizationRequestService::SanitizationRequestService(
     QObject *parent)
@@ -34,12 +30,10 @@ void SanitizationRequestService::fetchAssignedRequests(
         return;
     }
 
-    const QUrl url(
-        QStringLiteral(
-            "%1/api/sanitization-requests/employee")
-            .arg(
-                QString::fromLatin1(
-                    kApiBaseUrl)));
+    const QUrl url =
+        SecureWipe::AppConfig::apiUrl(
+            QStringLiteral(
+                "/api/sanitization-requests/employee"));
 
     QNetworkRequest request(url);
 
@@ -182,14 +176,11 @@ void SanitizationRequestService::updateRequestStatus(
         return;
     }
 
-    const QUrl url(
-        QStringLiteral(
-            "%1/api/sanitization-requests/%2/employee-status")
-            .arg(
-                QString::fromLatin1(
-                    kApiBaseUrl))
-            .arg(
-                requestId));
+    const QUrl url =
+        SecureWipe::AppConfig::apiUrl(
+            QStringLiteral(
+                "/api/sanitization-requests/%1/employee-status")
+            .arg(requestId));
 
     QNetworkRequest request(url);
 
@@ -307,6 +298,7 @@ void SanitizationRequestService::updateRequestStatus(
             reply->deleteLater();
         });
 }
+
 void SanitizationRequestService::bindWorkstationIdentity(
     const QString &token,
     const QString &workstationId)
@@ -379,22 +371,23 @@ void SanitizationRequestService::bindWorkstationIdentity(
         QHostInfo::localHostName().trimmed();
 
     QJsonObject operatingSystem;
+
     operatingSystem.insert(
         QStringLiteral("name"),
         QSysInfo::prettyProductName());
+
     operatingSystem.insert(
         QStringLiteral("version"),
         QSysInfo::kernelVersion());
+
     operatingSystem.insert(
         QStringLiteral("architecture"),
         QSysInfo::currentCpuArchitecture());
 
-    const QUrl url(
-        QStringLiteral(
-            "%1/api/workstations/identity")
-            .arg(
-                QString::fromLatin1(
-                    kApiBaseUrl)));
+    const QUrl url =
+        SecureWipe::AppConfig::apiUrl(
+            QStringLiteral(
+                "/api/workstations/identity"));
 
     QNetworkRequest request(url);
 
@@ -421,6 +414,7 @@ void SanitizationRequestService::bindWorkstationIdentity(
     body.insert(
         QStringLiteral("machineFingerprint"),
         machineFingerprint);
+
     body.insert(
         QStringLiteral("legacyMachineFingerprint"),
         legacyMachineFingerprint);

@@ -1,4 +1,5 @@
 #include "SanitizationResultService.h"
+#include "../AppConfig.h"
 
 #include "../../backend/sanitization/include/SanitizationCertificate.h"
 #include "../../backend/sanitization/include/SanitizationPipeline.h"
@@ -12,7 +13,6 @@
 
 namespace
 {
-constexpr const char *kApiBaseUrl = "http://localhost:5000";
 
 QString sanitizationStatusToString(
     SecureWipe::SanitizationStatus status)
@@ -121,10 +121,10 @@ bool parseApiResponse(
         errorMessage =
             QStringLiteral(
                 "Request failed (HTTP %1): %2")
-                .arg(
-                    statusCode)
-                .arg(
-                    reply->errorString());
+            .arg(
+                statusCode)
+            .arg(
+                reply->errorString());
 
         return false;
     }
@@ -142,8 +142,8 @@ bool parseApiResponse(
         errorMessage =
             QStringLiteral(
                 "Server returned invalid JSON: %1")
-                .arg(
-                    parseError.errorString());
+            .arg(
+                parseError.errorString());
 
         return false;
     }
@@ -176,6 +176,7 @@ bool parseApiResponse(
 
     return true;
 }
+
 }
 
 SanitizationResultService::SanitizationResultService(
@@ -217,13 +218,11 @@ void SanitizationResultService::submitResult(
         return;
     }
 
-    const QUrl url(
-        QStringLiteral(
-            "%1/api/sanitization-results/%2")
-            .arg(
-                QString::fromLatin1(
-                    kApiBaseUrl),
-                requestId));
+    const QUrl url =
+        SecureWipe::AppConfig::apiUrl(
+            QStringLiteral(
+                "/api/sanitization-results/%1")
+            .arg(requestId));
 
     const QNetworkRequest request =
         makeApiRequest(
@@ -252,7 +251,12 @@ void SanitizationResultService::submitResult(
         reply,
         &QNetworkReply::finished,
         this,
-        [this, reply, requestId, workstationId, token, pipelineResult]()
+        [this,
+         reply,
+         requestId,
+         workstationId,
+         token,
+         pipelineResult]()
         {
             QJsonObject response;
             QString errorMessage;
@@ -265,9 +269,9 @@ void SanitizationResultService::submitResult(
                 emit resultSubmissionFailed(
                     QStringLiteral(
                         "Failed to submit sanitization result for %1: %2")
-                        .arg(
-                            requestId,
-                            errorMessage));
+                    .arg(
+                        requestId,
+                        errorMessage));
 
                 reply->deleteLater();
                 return;
@@ -348,13 +352,11 @@ void SanitizationResultService::submitCertificate(
         return;
     }
 
-    const QUrl url(
-        QStringLiteral(
-            "%1/api/sanitization-certificates/%2")
-            .arg(
-                QString::fromLatin1(
-                    kApiBaseUrl),
-                requestId));
+    const QUrl url =
+        SecureWipe::AppConfig::apiUrl(
+            QStringLiteral(
+                "/api/sanitization-certificates/%1")
+            .arg(requestId));
 
     const QNetworkRequest request =
         makeApiRequest(
@@ -379,7 +381,10 @@ void SanitizationResultService::submitCertificate(
         reply,
         &QNetworkReply::finished,
         this,
-        [this, reply, requestId, pipelineResult]()
+        [this,
+         reply,
+         requestId,
+         pipelineResult]()
         {
             QJsonObject response;
             QString errorMessage;
@@ -392,9 +397,9 @@ void SanitizationResultService::submitCertificate(
                 emit certificateSubmissionFailed(
                     QStringLiteral(
                         "Failed to submit certificate for %1: %2")
-                        .arg(
-                            requestId,
-                            errorMessage));
+                    .arg(
+                        requestId,
+                        errorMessage));
 
                 reply->deleteLater();
                 return;

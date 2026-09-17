@@ -1,5 +1,5 @@
 #include "AuthManager.h"
-
+#include "AppConfig.h"
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkReply>
@@ -17,8 +17,9 @@ void AuthManager::login(
     const QString &email,
     const QString &password)
 {
-    const QUrl url(
-        QStringLiteral("http://localhost:5000/api/auth/login"));
+    const QUrl url =
+    SecureWipe::AppConfig::apiUrl(
+        QStringLiteral("/api/auth/login"));
 
     QNetworkRequest request(url);
 

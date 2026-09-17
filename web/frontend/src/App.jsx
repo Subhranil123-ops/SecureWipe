@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import Login from "./pages/Login/Login";
 import Register from "./pages/Register/Register";
 import AccessDenied from "./pages/AccessDenied/AccessDenied";
+import Download from "./pages/Download/Download";
 
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import RoleRoute from "./components/auth/RoleRoute";
@@ -37,47 +38,129 @@ function App() {
     return (
         <BrowserRouter>
             <Routes>
+                {/* Public Routes */}
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
                 <Route path="/access-denied" element={<AccessDenied />} />
+                <Route path="/downloads" element={<Download />} />
 
+                {/* Protected Routes */}
                 <Route element={<ProtectedRoute />}>
 
+                    {/* ADMIN */}
                     <Route element={<RoleRoute allowedRoles={["ADMIN"]} />}>
                         <Route path="/admin" element={<DashboardLayout />}>
-                            <Route path="dashboard" element={<AdminDashboard />} />
-                            <Route path="users" element={<AdminUsers />} />
-                            <Route path="workstation-centers" element={<AdminWorkstationCenters />} />
-                            <Route path="workstations" element={<AdminWorkstations />} />
+                            <Route
+                                path="dashboard"
+                                element={<AdminDashboard />}
+                            />
+                            <Route
+                                path="users"
+                                element={<AdminUsers />}
+                            />
+                            <Route
+                                path="workstation-centers"
+                                element={<AdminWorkstationCenters />}
+                            />
+                            <Route
+                                path="workstations"
+                                element={<AdminWorkstations />}
+                            />
                         </Route>
                     </Route>
 
-                    <Route element={<RoleRoute allowedRoles={["WORKSTATION_HEAD"]} />}>
-                        <Route path="/workstation-head" element={<DashboardLayout />}>
-                            <Route path="dashboard" element={<WorkstationHeadDashboard />} />
-                            <Route path="sanitization-requests" element={<WorkstationHeadSanitizationRequests />} />
-                            <Route path="workstations" element={<WorkstationHeadWorkstations />} />
-                            <Route path="center/:centerId" element={<WorkstationCenter />} />
+                    {/* WORKSTATION HEAD */}
+                    <Route
+                        element={
+                            <RoleRoute
+                                allowedRoles={["WORKSTATION_HEAD"]}
+                            />
+                        }
+                    >
+                        <Route
+                            path="/workstation-head"
+                            element={<DashboardLayout />}
+                        >
+                            <Route
+                                path="dashboard"
+                                element={<WorkstationHeadDashboard />}
+                            />
+                            <Route
+                                path="sanitization-requests"
+                                element={
+                                    <WorkstationHeadSanitizationRequests />
+                                }
+                            />
+                            <Route
+                                path="workstations"
+                                element={<WorkstationHeadWorkstations />}
+                            />
+                            <Route
+                                path="center/:centerId"
+                                element={<WorkstationCenter />}
+                            />
                         </Route>
                     </Route>
 
-                    <Route element={<RoleRoute allowedRoles={["WORKSTATION_EMPLOYEE"]} />}>
-                        <Route path="/workstation-employee" element={<DashboardLayout />}>
-                            <Route path="dashboard" element={<WorkstationEmployeeDashboard />} />
-                            <Route path="sanitization/history" element={<SanitizationHistory />} />
-                            <Route path="sanitization/:requestId" element={<SanitizationExecution />} />
-                            <Route path="sanitization/certificate/:certificateId" element={<SanitizationCertificate />} />
+                    {/* WORKSTATION EMPLOYEE */}
+                    <Route
+                        element={
+                            <RoleRoute
+                                allowedRoles={["WORKSTATION_EMPLOYEE"]}
+                            />
+                        }
+                    >
+                        <Route
+                            path="/workstation-employee"
+                            element={<DashboardLayout />}
+                        >
+                            <Route
+                                path="dashboard"
+                                element={<WorkstationEmployeeDashboard />}
+                            />
+                            <Route
+                                path="sanitization/history"
+                                element={<SanitizationHistory />}
+                            />
+                            <Route
+                                path="sanitization/:requestId"
+                                element={<SanitizationExecution />}
+                            />
+                            <Route
+                                path="sanitization/certificate/:certificateId"
+                                element={<SanitizationCertificate />}
+                            />
                         </Route>
                     </Route>
 
-                    <Route element={<RoleRoute allowedRoles={["CUSTOMER"]} />}>
-                        <Route path="/customer" element={<DashboardLayout />}>
-                            <Route path="dashboard" element={<CustomerDashboard />} />
-                            <Route path="sanitization-request" element={<CustomerSanitizationRequest />} />
-                            <Route path="forensics/new" element={<ForensicNewCase />} />
+                    {/* CUSTOMER */}
+                    <Route
+                        element={
+                            <RoleRoute
+                                allowedRoles={["CUSTOMER"]}
+                            />
+                        }
+                    >
+                        <Route
+                            path="/customer"
+                            element={<DashboardLayout />}
+                        >
+                            <Route
+                                path="dashboard"
+                                element={<CustomerDashboard />}
+                            />
+                            <Route
+                                path="sanitization-request"
+                                element={<CustomerSanitizationRequest />}
+                            />
+                            <Route
+                                path="forensics/new"
+                                element={<ForensicNewCase />}
+                            />
                         </Route>
                     </Route>
 
+                    {/* FORENSICS */}
                     <Route
                         element={
                             <RoleRoute
@@ -85,24 +168,50 @@ function App() {
                                     "ADMIN",
                                     "CUSTOMER",
                                     "WORKSTATION_HEAD",
-                                    "WORKSTATION_EMPLOYEE"
+                                    "WORKSTATION_EMPLOYEE",
                                 ]}
                             />
                         }
                     >
-                        <Route path="/forensics" element={<DashboardLayout />}>
-                            <Route index element={<ForensicDashboard />} />
-                            <Route path="cases" element={<ForensicCases />} />
-                            <Route path="cases/:caseId" element={<ForensicCaseDetails />} />
-                            <Route path="evidence" element={<ForensicEvidence />} />
-                            <Route path="reports" element={<ForensicReports />} />
+                        <Route
+                            path="/forensics"
+                            element={<DashboardLayout />}
+                        >
+                            <Route
+                                index
+                                element={<ForensicDashboard />}
+                            />
+                            <Route
+                                path="cases"
+                                element={<ForensicCases />}
+                            />
+                            <Route
+                                path="cases/:caseId"
+                                element={<ForensicCaseDetails />}
+                            />
+                            <Route
+                                path="evidence"
+                                element={<ForensicEvidence />}
+                            />
+                            <Route
+                                path="reports"
+                                element={<ForensicReports />}
+                            />
                         </Route>
                     </Route>
 
                 </Route>
 
-                <Route path="/" element={<Navigate to="/login" replace />} />
-                <Route path="*" element={<Navigate to="/login" replace />} />
+                {/* Default Routes */}
+                <Route
+                    path="/"
+                    element={<Navigate to="/login" replace />}
+                />
+
+                <Route
+                    path="*"
+                    element={<Navigate to="/login" replace />}
+                />
             </Routes>
         </BrowserRouter>
     );

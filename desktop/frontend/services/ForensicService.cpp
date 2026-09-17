@@ -1,4 +1,5 @@
 #include "ForensicService.h"
+#include "../AppConfig.h"
 
 #include <QFile>
 #include <QJsonArray>
@@ -226,9 +227,10 @@ void ForensicService::loadAssignedCases()
         return;
     }
 
-    const QUrl url(
-        QStringLiteral(
-            "http://localhost:5000/api/forensics"));
+    const QUrl url =
+        SecureWipe::AppConfig::apiUrl(
+            QStringLiteral(
+                "/api/forensics"));
 
     QNetworkRequest request =
         createAuthenticatedRequest(url);
@@ -353,13 +355,14 @@ void ForensicService::loadCase(
         return;
     }
 
-    const QUrl url(
-        QStringLiteral(
-            "http://localhost:5000/api/forensics/%1")
-            .arg(
-                QString::fromUtf8(
-                    QUrl::toPercentEncoding(
-                        cleanedCaseId))));
+    const QUrl url =
+        SecureWipe::AppConfig::apiUrl(
+            QStringLiteral(
+                "/api/forensics/%1")
+                .arg(
+                    QString::fromUtf8(
+                        QUrl::toPercentEncoding(
+                            cleanedCaseId))));
 
     QNetworkRequest request =
         createAuthenticatedRequest(url);
@@ -674,9 +677,10 @@ void ForensicService::updateCaseStatus(
     const QString &note,
     const QString &workstationId)
 {
-    const QUrl url(
-        QStringLiteral(
-            "http://localhost:5000/api/forensics/%1/status")
+    const QUrl url =
+        SecureWipe::AppConfig::apiUrl(
+            QStringLiteral(
+                "/api/forensics/%1/status")
             .arg(
                 QString::fromUtf8(
                     QUrl::toPercentEncoding(
@@ -936,9 +940,10 @@ void ForensicService::submitResults(
         return;
     }
 
-    const QUrl url(
-        QStringLiteral(
-            "http://localhost:5000/api/forensics/%1/results")
+    const QUrl url =
+        SecureWipe::AppConfig::apiUrl(
+            QStringLiteral(
+                "/api/forensics/%1/results")
             .arg(
                 QString::fromUtf8(
                     QUrl::toPercentEncoding(
