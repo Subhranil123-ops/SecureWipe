@@ -5,12 +5,42 @@ const cors = require("cors");
 
 const app = express();
 
-app.use(cors({
-    origin: "http://localhost:5173",
-    credentials: true
-}));
+const allowedOrigins = (
+    process.env.CORS_ORIGINS ||
+    "http://localhost:5173"
+)
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+app.use(
+    cors({
+        origin(origin, callback) {
+            if (!origin) {
+                return callback(null, true);
+            }
+
+            if (allowedOrigins.includes(origin)) {
+                return callback(null, true);
+            }
+
+            return callback(
+                new Error("Origin not allowed by CORS")
+            );
+        },
+        credentials: false
+    })
+);
 
 app.use(express.json());
+
+app.get("/health", (req, res) => {
+    res.status(200).json({
+        success: true,
+        status: "ok",
+        service: "securewipe-api"
+    });
+});
 
 // Routes
 const authRoute = require("./Routes/auth.routes");
@@ -32,9 +62,20 @@ app.use("/api/workstation-centers", workstationRoute);
 app.use("/api/users", userRoute);
 app.use("/api/workstations", workstationManagementRoute);
 
-app.use("/api/sanitization-requests", sanitizationRequestRoute);
-app.use("/api/sanitization-results", sanitizationResultRoute);
-app.use("/api/sanitization-certificates", sanitizationCertificateRoute);
+app.use(
+    "/api/sanitization-requests",
+    sanitizationRequestRoute
+);
+
+app.use(
+    "/api/sanitization-results",
+    sanitizationResultRoute
+);
+
+app.use(
+    "/api/sanitization-certificates",
+    sanitizationCertificateRoute
+);
 
 app.use("/api/forensics", forensicCaseRoute);
 
