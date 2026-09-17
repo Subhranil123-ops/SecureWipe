@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "AppConfig.h"
 
 #include "AuthManager.h"
 #include "controllers/DeviceController.h"
@@ -4003,8 +4004,7 @@ void MainWindow::buildSettingsPage()
 
     apiLayout->addWidget(
         makeValue(
-            QStringLiteral(
-                "http://localhost:5000"),
+            SecureWipe::AppConfig::apiBaseUrl(),
             apiCard));
 
     root->addWidget(
