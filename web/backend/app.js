@@ -7,7 +7,8 @@ const app = express();
 
 const allowedOrigins = (
     process.env.CORS_ORIGINS ||
-    "http://localhost:5173"
+    "http://localhost:5173",
+    "https://securewipe-web.onrender.com"
 )
     .split(",")
     .map((origin) => origin.trim())
