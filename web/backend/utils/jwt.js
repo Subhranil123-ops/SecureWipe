@@ -2,14 +2,40 @@ const jwt = require("jsonwebtoken");
 const fs = require("fs");
 const path = require("path");
 
-const privateKey = fs.readFileSync(
-    path.join(__dirname, "../secrets/private.pem"),
-    "utf8"
+const readKey = (
+    envName,
+    renderPath,
+    localPath
+) => {
+    const envValue = process.env[envName];
+
+    if (envValue) {
+        return envValue.replace(/\\n/g, "\n");
+    }
+
+    if (fs.existsSync(renderPath)) {
+        return fs.readFileSync(
+            renderPath,
+            "utf8"
+        );
+    }
+
+    return fs.readFileSync(
+        localPath,
+        "utf8"
+    );
+};
+
+const privateKey = readKey(
+    "JWT_PRIVATE_KEY",
+    "/etc/secrets/private.pem",
+    path.join(__dirname, "../secrets/private.pem")
 );
 
-const publicKey = fs.readFileSync(
-    path.join(__dirname, "../secrets/public.pem"),
-    "utf8"
+const publicKey = readKey(
+    "JWT_PUBLIC_KEY",
+    "/etc/secrets/public.pem",
+    path.join(__dirname, "../secrets/public.pem")
 );
 
 const generateToken = (user) => {

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(SecureWipe
-    VERSION 1.0
+    VERSION 1.0.0
     LANGUAGES CXX
 )
 
@@ -92,11 +92,23 @@ target_link_libraries(SecureWipe
         SecureWipeStorage
 )
 
-install(TARGETS SecureWipe
+install(
+    TARGETS SecureWipe
     BUNDLE DESTINATION .
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
+
+if(WIN32)
+    install(
+        FILES
+            "$<TARGET_FILE_DIR:SecureWipe>/jpeg62.dll"
+        DESTINATION
+            ${CMAKE_INSTALL_BINDIR}
+        CONFIGURATIONS
+            Release
+    )
+endif()
 
 qt_generate_deploy_app_script(
     TARGET SecureWipe
@@ -104,4 +116,14 @@ qt_generate_deploy_app_script(
     NO_UNSUPPORTED_PLATFORM_ERROR
 )
 
-install(SCRIPT ${deploy_script})
+install(
+    SCRIPT ${deploy_script}
+)
+
+set(CPACK_PACKAGE_NAME "SecureWipe")
+set(CPACK_PACKAGE_VENDOR "ForenWipe")
+set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+set(CPACK_PACKAGE_FILE_NAME "SecureWipe-${PROJECT_VERSION}-Windows-x64")
+set(CPACK_GENERATOR "ZIP")
+
+include(CPack)

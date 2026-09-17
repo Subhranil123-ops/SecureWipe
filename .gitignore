@@ -10,3 +10,8 @@ web/frontend/dist/
 **/CMakeCache.txt
 **/cmake_install.cmake
 **/Makefile
+node_modules/
+.env
+secrets/private.pem
+secrets/public.pem
+.idea
