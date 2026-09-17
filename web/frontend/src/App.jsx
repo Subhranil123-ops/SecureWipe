@@ -1,4 +1,13 @@
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import {
+    BrowserRouter,
+    Navigate,
+    Route,
+    Routes,
+    useLocation,
+    Link,
+} from "react-router-dom";
+
+import { Download as DownloadIcon } from "lucide-react";
 
 import Login from "./pages/Login/Login";
 import Register from "./pages/Register/Register";
@@ -34,34 +43,109 @@ import ForensicEvidence from "./pages/Forensics/ForensicEvidence";
 import ForensicNewCase from "./pages/Forensics/ForensicNewCase";
 import ForensicReports from "./pages/Forensics/ForensicReports";
 
-function App() {
+function FloatingDownloadButton() {
+    const location = useLocation();
+
+    if (
+        location.pathname === "/downloads" ||
+        location.pathname === "/login" ||
+        location.pathname === "/register"
+    ) {
+        return null;
+    }
+
     return (
-        <BrowserRouter>
+        <Link
+            to="/downloads"
+            className="
+                fixed
+                bottom-6
+                right-6
+                z-[100]
+                inline-flex
+                items-center
+                gap-2
+                rounded-xl
+                bg-blue-600
+                px-4
+                py-3
+                text-sm
+                font-semibold
+                text-white
+                shadow-lg
+                shadow-blue-600/20
+                transition
+                hover:bg-blue-700
+                hover:-translate-y-0.5
+                focus:outline-none
+                focus:ring-2
+                focus:ring-blue-500
+                focus:ring-offset-2
+            "
+        >
+            <DownloadIcon className="h-4 w-4" />
+            Download App
+        </Link>
+    );
+}
+
+function AppContent() {
+    return (
+        <>
             <Routes>
                 {/* Public Routes */}
-                <Route path="/login" element={<Login />} />
-                <Route path="/register" element={<Register />} />
-                <Route path="/access-denied" element={<AccessDenied />} />
-                <Route path="/downloads" element={<Download />} />
+                <Route
+                    path="/login"
+                    element={<Login />}
+                />
+
+                <Route
+                    path="/register"
+                    element={<Register />}
+                />
+
+                <Route
+                    path="/access-denied"
+                    element={<AccessDenied />}
+                />
+
+                <Route
+                    path="/downloads"
+                    element={<Download />}
+                />
 
                 {/* Protected Routes */}
                 <Route element={<ProtectedRoute />}>
 
                     {/* ADMIN */}
-                    <Route element={<RoleRoute allowedRoles={["ADMIN"]} />}>
-                        <Route path="/admin" element={<DashboardLayout />}>
+                    <Route
+                        element={
+                            <RoleRoute
+                                allowedRoles={["ADMIN"]}
+                            />
+                        }
+                    >
+                        <Route
+                            path="/admin"
+                            element={<DashboardLayout />}
+                        >
                             <Route
                                 path="dashboard"
                                 element={<AdminDashboard />}
                             />
+
                             <Route
                                 path="users"
                                 element={<AdminUsers />}
                             />
+
                             <Route
                                 path="workstation-centers"
-                                element={<AdminWorkstationCenters />}
+                                element={
+                                    <AdminWorkstationCenters />
+                                }
                             />
+
                             <Route
                                 path="workstations"
                                 element={<AdminWorkstations />}
@@ -73,7 +157,9 @@ function App() {
                     <Route
                         element={
                             <RoleRoute
-                                allowedRoles={["WORKSTATION_HEAD"]}
+                                allowedRoles={[
+                                    "WORKSTATION_HEAD",
+                                ]}
                             />
                         }
                     >
@@ -83,21 +169,30 @@ function App() {
                         >
                             <Route
                                 path="dashboard"
-                                element={<WorkstationHeadDashboard />}
+                                element={
+                                    <WorkstationHeadDashboard />
+                                }
                             />
+
                             <Route
                                 path="sanitization-requests"
                                 element={
                                     <WorkstationHeadSanitizationRequests />
                                 }
                             />
+
                             <Route
                                 path="workstations"
-                                element={<WorkstationHeadWorkstations />}
+                                element={
+                                    <WorkstationHeadWorkstations />
+                                }
                             />
+
                             <Route
                                 path="center/:centerId"
-                                element={<WorkstationCenter />}
+                                element={
+                                    <WorkstationCenter />
+                                }
                             />
                         </Route>
                     </Route>
@@ -106,7 +201,9 @@ function App() {
                     <Route
                         element={
                             <RoleRoute
-                                allowedRoles={["WORKSTATION_EMPLOYEE"]}
+                                allowedRoles={[
+                                    "WORKSTATION_EMPLOYEE",
+                                ]}
                             />
                         }
                     >
@@ -116,19 +213,30 @@ function App() {
                         >
                             <Route
                                 path="dashboard"
-                                element={<WorkstationEmployeeDashboard />}
+                                element={
+                                    <WorkstationEmployeeDashboard />
+                                }
                             />
+
                             <Route
                                 path="sanitization/history"
-                                element={<SanitizationHistory />}
+                                element={
+                                    <SanitizationHistory />
+                                }
                             />
+
                             <Route
                                 path="sanitization/:requestId"
-                                element={<SanitizationExecution />}
+                                element={
+                                    <SanitizationExecution />
+                                }
                             />
+
                             <Route
                                 path="sanitization/certificate/:certificateId"
-                                element={<SanitizationCertificate />}
+                                element={
+                                    <SanitizationCertificate />
+                                }
                             />
                         </Route>
                     </Route>
@@ -137,7 +245,9 @@ function App() {
                     <Route
                         element={
                             <RoleRoute
-                                allowedRoles={["CUSTOMER"]}
+                                allowedRoles={[
+                                    "CUSTOMER",
+                                ]}
                             />
                         }
                     >
@@ -147,15 +257,23 @@ function App() {
                         >
                             <Route
                                 path="dashboard"
-                                element={<CustomerDashboard />}
+                                element={
+                                    <CustomerDashboard />
+                                }
                             />
+
                             <Route
                                 path="sanitization-request"
-                                element={<CustomerSanitizationRequest />}
+                                element={
+                                    <CustomerSanitizationRequest />
+                                }
                             />
+
                             <Route
                                 path="forensics/new"
-                                element={<ForensicNewCase />}
+                                element={
+                                    <ForensicNewCase />
+                                }
                             />
                         </Route>
                     </Route>
@@ -179,23 +297,35 @@ function App() {
                         >
                             <Route
                                 index
-                                element={<ForensicDashboard />}
+                                element={
+                                    <ForensicDashboard />
+                                }
                             />
+
                             <Route
                                 path="cases"
                                 element={<ForensicCases />}
                             />
+
                             <Route
                                 path="cases/:caseId"
-                                element={<ForensicCaseDetails />}
+                                element={
+                                    <ForensicCaseDetails />
+                                }
                             />
+
                             <Route
                                 path="evidence"
-                                element={<ForensicEvidence />}
+                                element={
+                                    <ForensicEvidence />
+                                }
                             />
+
                             <Route
                                 path="reports"
-                                element={<ForensicReports />}
+                                element={
+                                    <ForensicReports />
+                                }
                             />
                         </Route>
                     </Route>
@@ -205,14 +335,34 @@ function App() {
                 {/* Default Routes */}
                 <Route
                     path="/"
-                    element={<Navigate to="/login" replace />}
+                    element={
+                        <Navigate
+                            to="/login"
+                            replace
+                        />
+                    }
                 />
 
                 <Route
                     path="*"
-                    element={<Navigate to="/login" replace />}
+                    element={
+                        <Navigate
+                            to="/login"
+                            replace
+                        />
+                    }
                 />
             </Routes>
+
+            <FloatingDownloadButton />
+        </>
+    );
+}
+
+function App() {
+    return (
+        <BrowserRouter>
+            <AppContent />
         </BrowserRouter>
     );
 }
