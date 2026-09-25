@@ -612,6 +612,7 @@ bool SanitizationPipeline::persistCertificate(
         output << "  \"certificateId\": \"" << escapeJson(certificate.certificateId) << "\",\n";
         output << "  \"operationId\": \"" << escapeJson(certificate.operationId) << "\",\n";
         output << "  \"requestId\": \"" << escapeJson(certificate.requestId) << "\",\n";
+        output << "  \"workstationId\": \"" << escapeJson(certificate.workstationId) << "\",\n";
         output << "  \"deviceId\": \"" << escapeJson(certificate.deviceId) << "\",\n";
         output << "  \"model\": \"" << escapeJson(certificate.model) << "\",\n";
         output << "  \"serialNumber\": \"" << escapeJson(certificate.serialNumber) << "\",\n";

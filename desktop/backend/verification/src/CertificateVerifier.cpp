@@ -592,6 +592,7 @@ namespace
         std::string certificateId;
         std::string operationId;
         std::string requestId;
+        std::string workstationId;
         std::string deviceId;
         std::string model;
         std::string serialNumber;
@@ -628,6 +629,11 @@ namespace
                 object,
                 "requestId",
                 requestId,
+                error) ||
+            !getString(
+                object,
+                "workstationId",
+                workstationId,
                 error) ||
             !getString(
                 object,
@@ -753,6 +759,11 @@ namespace
         canonical
             << "requestId="
             << requestId
+            << '\n';
+
+        canonical
+            << "workstationId="
+            << workstationId
             << '\n';
 
         canonical

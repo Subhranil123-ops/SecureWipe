@@ -4,6 +4,8 @@ import { Link, useParams } from "react-router-dom";
 import {
     getSanitizationCertificate,
     verifySanitizationCertificate,
+    getSanitizationAuditChain,
+    verifySanitizationAuditChain,
 } from "../../../services/sanitizationCertificateService";
 
 function SanitizationCertificate() {
@@ -11,21 +13,68 @@ function SanitizationCertificate() {
 
     const [certificate, setCertificate] = useState(null);
     const [verification, setVerification] = useState(null);
+    const [auditChain, setAuditChain] = useState(null);
+    const [auditVerification, setAuditVerification] =
+        useState(null);
+
     const [loading, setLoading] = useState(true);
-    const [verifyLoading, setVerifyLoading] = useState(false);
-    const [copyLabel, setCopyLabel] = useState("Copy ID");
+    const [verifyLoading, setVerifyLoading] =
+        useState(false);
+    const [auditLoading, setAuditLoading] =
+        useState(false);
+    const [auditVerifyLoading, setAuditVerifyLoading] =
+        useState(false);
+
+    const [copyLabel, setCopyLabel] =
+        useState("Copy ID");
+
     const [error, setError] = useState("");
+    const [auditError, setAuditError] =
+        useState("");
 
     const loadCertificate = async () => {
         try {
             setLoading(true);
             setError("");
 
-            const data = await getSanitizationCertificate(
-                certificateId
-            );
+            const data =
+                await getSanitizationCertificate(
+                    certificateId
+                );
 
             setCertificate(data);
+
+            /*
+             * The audit chain belongs to the
+             * certificate through requestId.
+             */
+            if (data?.requestId) {
+                setAuditLoading(true);
+                setAuditError("");
+
+                try {
+                    const auditData =
+                        await getSanitizationAuditChain(
+                            data.requestId
+                        );
+
+                    setAuditChain(auditData);
+                } catch (auditErr) {
+                    console.error(
+                        "Failed to load audit chain:",
+                        auditErr
+                    );
+
+                    setAuditChain(null);
+
+                    setAuditError(
+                        auditErr.message ||
+                            "Audit chain has not been uploaded yet."
+                    );
+                } finally {
+                    setAuditLoading(false);
+                }
+            }
         } catch (err) {
             console.error(
                 "Failed to load certificate:",
@@ -71,6 +120,40 @@ function SanitizationCertificate() {
         }
     };
 
+    const handleVerifyAuditChain = async () => {
+        if (!certificate?.requestId) {
+            setAuditError(
+                "Certificate request ID is missing."
+            );
+
+            return;
+        }
+
+        try {
+            setAuditVerifyLoading(true);
+            setAuditError("");
+
+            const data =
+                await verifySanitizationAuditChain(
+                    certificate.requestId
+                );
+
+            setAuditVerification(data);
+        } catch (err) {
+            console.error(
+                "Audit chain verification failed:",
+                err
+            );
+
+            setAuditError(
+                err.message ||
+                    "Audit chain verification failed."
+            );
+        } finally {
+            setAuditVerifyLoading(false);
+        }
+    };
+
     const handleCopyCertificateId = async () => {
         if (!certificate?.certificateId) {
             return;
@@ -99,6 +182,16 @@ function SanitizationCertificate() {
         verification?.integrityVerified ??
         false;
 
+    const auditIntegrityPassed =
+        auditVerification?.valid === true;
+
+    const auditEvents =
+        Array.isArray(
+            auditChain?.events
+        )
+            ? auditChain.events
+            : [];
+
     if (loading) {
         return (
             <div className="flex min-h-[420px] items-center justify-center">
@@ -112,8 +205,8 @@ function SanitizationCertificate() {
                     </h2>
 
                     <p className="mt-2 text-sm leading-6 text-slate-500">
-                        Retrieving the sanitization certificate and
-                        associated evidence.
+                        Retrieving the sanitization certificate
+                        and associated evidence.
                     </p>
                 </div>
             </div>
@@ -153,6 +246,11 @@ function SanitizationCertificate() {
 
     return (
         <div className="space-y-6">
+
+            {/* ------------------------------------------------
+                PAGE HEADER
+            ------------------------------------------------ */}
+
             <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div>
                     <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-indigo-600">
@@ -171,7 +269,9 @@ function SanitizationCertificate() {
 
                         <button
                             type="button"
-                            onClick={handleCopyCertificateId}
+                            onClick={
+                                handleCopyCertificateId
+                            }
                             className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 transition hover:bg-slate-50"
                         >
                             {copyLabel}
@@ -195,6 +295,10 @@ function SanitizationCertificate() {
                 </div>
             )}
 
+            {/* ------------------------------------------------
+                CERTIFICATE STATUS
+            ------------------------------------------------ */}
+
             <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <div className="border-b border-slate-200 p-5">
                     <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
@@ -209,7 +313,8 @@ function SanitizationCertificate() {
                                 </p>
 
                                 <h2 className="mt-1 text-lg font-semibold text-slate-900">
-                                    {certificate.status === "COMPLETED"
+                                    {certificate.status ===
+                                    "COMPLETED"
                                         ? "Sanitization Completed"
                                         : certificate.status ||
                                           "Certificate Recorded"}
@@ -229,7 +334,8 @@ function SanitizationCertificate() {
                                     "UNKNOWN"
                                 }
                                 tone={
-                                    certificate.status === "COMPLETED"
+                                    certificate.status ===
+                                    "COMPLETED"
                                         ? "success"
                                         : "neutral"
                                 }
@@ -284,6 +390,10 @@ function SanitizationCertificate() {
                 </div>
             </section>
 
+            {/* ------------------------------------------------
+                CERTIFICATE EVIDENCE
+            ------------------------------------------------ */}
+
             <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <div className="border-b border-slate-200 px-5 py-4">
                     <h2 className="text-base font-semibold text-slate-900">
@@ -291,8 +401,8 @@ function SanitizationCertificate() {
                     </h2>
 
                     <p className="mt-1 text-sm text-slate-500">
-                        Recorded device, operation, sanitization, and
-                        verification information.
+                        Recorded device, operation, sanitization,
+                        and verification information.
                     </p>
                 </div>
 
@@ -306,6 +416,12 @@ function SanitizationCertificate() {
                     <Meta
                         label="Request ID"
                         value={certificate.requestId}
+                        mono
+                    />
+
+                    <Meta
+                        label="Workstation ID"
+                        value={certificate.workstationId}
                         mono
                     />
 
@@ -388,7 +504,9 @@ function SanitizationCertificate() {
 
                     <Meta
                         label="Hash Algorithm"
-                        value={certificate.hashAlgorithm}
+                        value={
+                            certificate.hashAlgorithm
+                        }
                     />
 
                     <Meta
@@ -407,8 +525,8 @@ function SanitizationCertificate() {
                             </p>
 
                             <p className="mt-1 text-xs text-slate-500">
-                                Cryptographic fingerprint stored with the
-                                certificate.
+                                Cryptographic fingerprint stored with
+                                the certificate.
                             </p>
                         </div>
 
@@ -429,43 +547,7 @@ function SanitizationCertificate() {
                     </div>
                 </div>
             </section>
-
-            <section className="overflow-hidden rounded-2xl border border-indigo-200 bg-indigo-50">
-                <div className="p-5">
-                    <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-                        <div className="max-w-3xl">
-                            <div className="flex items-center gap-2">
-                                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-100 text-indigo-700">
-                                    #
-                                </div>
-
-                                <h2 className="text-base font-semibold text-indigo-950">
-                                    Verify Certificate Integrity
-                                </h2>
-                            </div>
-
-                            <p className="mt-3 text-sm leading-6 text-indigo-800">
-                                SecureWipe recalculates the certificate
-                                fingerprint from the stored evidence and
-                                checks it against the recorded SHA-256 hash.
-                            </p>
-                        </div>
-
-                        <button
-                            type="button"
-                            disabled={verifyLoading}
-                            onClick={handleVerify}
-                            className="shrink-0 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                            {verifyLoading
-                                ? "Verifying..."
-                                : "Verify Integrity"}
-                        </button>
-                    </div>
-                </div>
-            </section>
-
-            {verification && (
+                        {verification && (
                 <section
                     className={`overflow-hidden rounded-2xl border ${
                         integrityPassed
@@ -550,7 +632,218 @@ function SanitizationCertificate() {
     );
 }
 
-function SummaryCard({ label, value }) {
+function AuditEventCard({
+    event,
+    index,
+    total,
+}) {
+    const previousHash =
+        event?.previousEventHash || "";
+
+    const eventHash =
+        event?.eventHash || "";
+
+    const isFirst =
+        index === 0;
+
+    const isLast =
+        index === total - 1;
+
+    return (
+        <div className="relative">
+            {!isLast && (
+                <div className="absolute left-[19px] top-[58px] bottom-[-12px] w-px bg-slate-200" />
+            )}
+
+            <div className="relative rounded-xl border border-slate-200 bg-white p-4">
+                <div className="flex items-start gap-4">
+                    <div className="relative z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-700">
+                        {index + 1}
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <h3 className="text-sm font-semibold text-slate-900">
+                                        {formatEventType(
+                                            event.eventType
+                                        )}
+                                    </h3>
+
+                                    <StatusPill
+                                        label={
+                                            event.severity ||
+                                            "INFO"
+                                        }
+                                        tone={
+                                            String(
+                                                event.severity
+                                            ).toUpperCase() ===
+                                            "ERROR"
+                                                ? "danger"
+                                                : "neutral"
+                                        }
+                                    />
+                                </div>
+
+                                <p className="mt-1 text-xs text-slate-500">
+                                    {formatDate(
+                                        event.timestampUtc
+                                    )}
+                                </p>
+                            </div>
+
+                            <StatusPill
+                                label={
+                                    event.eventHash
+                                        ? "HASH PRESENT"
+                                        : "HASH MISSING"
+                                }
+                                tone={
+                                    event.eventHash
+                                        ? "success"
+                                        : "danger"
+                                }
+                            />
+                        </div>
+
+                        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                            <HashBox
+                                label={
+                                    isFirst
+                                        ? "Previous Hash / Chain Anchor"
+                                        : "Previous Event Hash"
+                                }
+                                value={
+                                    previousHash ||
+                                    "(empty)"
+                                }
+                            />
+
+                            <HashBox
+                                label="Event SHA-256"
+                                value={
+                                    eventHash ||
+                                    "Unavailable"
+                                }
+                            />
+                        </div>
+
+                        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                            <Meta
+                                label="Event ID"
+                                value={
+                                    event.eventId
+                                }
+                                mono
+                            />
+
+                            <Meta
+                                label="Operation ID"
+                                value={
+                                    event.operationId
+                                }
+                                mono
+                            />
+
+                            <Meta
+                                label="Request ID"
+                                value={
+                                    event.requestId
+                                }
+                                mono
+                            />
+
+                            <Meta
+                                label="Actor"
+                                value={
+                                    event.actorId
+                                }
+                            />
+                        </div>
+
+                        {(event.deviceId ||
+                            event.model ||
+                            event.serialNumber) && (
+                            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                                <Meta
+                                    label="Device"
+                                    value={
+                                        event.deviceId
+                                    }
+                                    mono
+                                />
+
+                                <Meta
+                                    label="Model"
+                                    value={
+                                        event.model
+                                    }
+                                />
+
+                                <Meta
+                                    label="Serial Number"
+                                    value={
+                                        event.serialNumber
+                                    }
+                                    mono
+                                />
+                            </div>
+                        )}
+
+                        {event.message && (
+                            <div className="mt-4 rounded-lg bg-slate-50 p-3">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                                    Message
+                                </p>
+
+                                <p className="mt-1 text-sm leading-6 text-slate-700">
+                                    {event.message}
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function HashBox({
+    label,
+    value,
+}) {
+    return (
+        <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                {label}
+            </p>
+
+            <p className="mt-2 break-all font-mono text-[11px] leading-5 text-slate-700">
+                {value || "—"}
+            </p>
+        </div>
+    );
+}
+
+function formatEventType(value) {
+    if (!value) {
+        return "Unknown Event";
+    }
+
+    return String(value)
+        .replaceAll("_", " ")
+        .replace(
+            /\b\w/g,
+            (character) =>
+                character.toUpperCase()
+        );
+}
+function SummaryCard({
+    label,
+    value,
+}) {
     return (
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
             <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
@@ -595,8 +888,10 @@ function StatusPill({
     const styles = {
         success:
             "border-green-200 bg-green-100 text-green-700",
+
         danger:
             "border-red-200 bg-red-100 text-red-700",
+
         neutral:
             "border-slate-200 bg-slate-100 text-slate-600",
     };
@@ -628,7 +923,8 @@ function formatMethod(method) {
 }
 
 function formatBytes(bytes) {
-    const value = Number(bytes) || 0;
+    const value =
+        Number(bytes) || 0;
 
     if (value < 1024) {
         return `${value} B`;
@@ -642,12 +938,14 @@ function formatBytes(bytes) {
 
     if (value < 1024 ** 3) {
         return `${(
-            value / 1024 ** 2
+            value /
+            1024 ** 2
         ).toFixed(1)} MB`;
     }
 
     return `${(
-        value / 1024 ** 3
+        value /
+        1024 ** 3
     ).toFixed(2)} GB`;
 }
 
@@ -656,9 +954,14 @@ function formatDate(value) {
         return "—";
     }
 
-    const date = new Date(value);
+    const date =
+        new Date(value);
 
-    if (Number.isNaN(date.getTime())) {
+    if (
+        Number.isNaN(
+            date.getTime()
+        )
+    ) {
         return "—";
     }
 
