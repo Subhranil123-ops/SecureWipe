@@ -1,58 +1,81 @@
 require("dotenv").config();
 
-const express = require("express");
-const cors = require("cors");
+const express =
+    require("express");
 
-const app = express();
+const cors =
+    require("cors");
+
+const app =
+    express();
 
 // --------------------------------------------------
 // CORS
 // --------------------------------------------------
 
-const allowedOrigins = (
-    process.env.CORS_ORIGINS ||
-    "http://localhost:5173,https://securewipe-web.onrender.com"
-)
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean);
+const allowedOrigins =
+    (
+        process.env.CORS_ORIGINS ||
+        "http://localhost:5173,https://securewipe-web.onrender.com"
+    )
+        .split(",")
+        .map(
+            origin =>
+                origin.trim()
+        )
+        .filter(
+            Boolean
+        );
 
 app.use(
-    cors({
-        origin(origin, callback) {
-            // Requests without an Origin header
-            // (for example curl/server-to-server)
-            // are allowed.
-            if (!origin) {
-                return callback(null, true);
-            }
+    cors(
+        {
+            origin(
+                origin,
+                callback
+            ) {
+                if (!origin) {
+                    return callback(
+                        null,
+                        true
+                    );
+                }
 
-            if (allowedOrigins.includes(origin)) {
-                return callback(null, true);
-            }
+                if (
+                    allowedOrigins.includes(
+                        origin
+                    )
+                ) {
+                    return callback(
+                        null,
+                        true
+                    );
+                }
 
-            return callback(
-                new Error("Origin not allowed by CORS")
-            );
-        },
+                return callback(
+                    new Error(
+                        "Origin not allowed by CORS"
+                    )
+                );
+            },
 
-        credentials: false
-    })
+            credentials:
+                false
+        }
+    )
 );
 
 // --------------------------------------------------
 // BODY PARSING
 // --------------------------------------------------
-//
-// The audit JSONL file is sent inside a JSON request.
-// Keep the limit large enough for real audit evidence.
-//
-// --------------------------------------------------
 
 app.use(
-    express.json({
-        limit: "10mb"
-    })
+    express.json(
+        {
+            limit:
+                "40mb"
+        }
+    )
 );
 
 // --------------------------------------------------
@@ -61,12 +84,24 @@ app.use(
 
 app.get(
     "/health",
-    (req, res) => {
-        res.status(200).json({
-            success: true,
-            status: "ok",
-            service: "securewipe-api"
-        });
+    (
+        req,
+        res
+    ) => {
+        res.status(
+            200
+        ).json(
+            {
+                success:
+                    true,
+
+                status:
+                    "ok",
+
+                service:
+                    "securewipe-api"
+            }
+        );
     }
 );
 
@@ -75,31 +110,54 @@ app.get(
 // --------------------------------------------------
 
 const authRoute =
-    require("./Routes/auth.routes");
+    require(
+        "./Routes/auth.routes"
+    );
 
 const workstationRoute =
-    require("./Routes/workstationCenterRoutes");
+    require(
+        "./Routes/workstationCenterRoutes"
+    );
 
 const userRoute =
-    require("./Routes/users.routes");
+    require(
+        "./Routes/users.routes"
+    );
 
 const workstationManagementRoute =
-    require("./Routes/workstation.routes");
+    require(
+        "./Routes/workstation.routes"
+    );
 
 const sanitizationRequestRoute =
-    require("./Routes/sanitizationRequest.routes");
+    require(
+        "./Routes/sanitizationRequest.routes"
+    );
 
 const sanitizationResultRoute =
-    require("./Routes/sanitizationResult.routes");
+    require(
+        "./Routes/sanitizationResult.routes"
+    );
 
 const sanitizationCertificateRoute =
-    require("./Routes/sanitizationCertificate.routes");
+    require(
+        "./Routes/sanitizationCertificate.routes"
+    );
 
 const sanitizationAuditChainRoute =
-    require("./Routes/sanitizationAuditChain.routes");
+    require(
+        "./Routes/sanitizationAuditChain.routes"
+    );
 
 const forensicCaseRoute =
-    require("./Routes/forensicCase.routes");
+    require(
+        "./Routes/forensicCase.routes"
+    );
+
+const forensicEvidenceRoute =
+    require(
+        "./Routes/forensicEvidence.routes"
+    );
 
 // --------------------------------------------------
 // ROUTING
@@ -147,6 +205,11 @@ app.use(
 
 app.use(
     "/api/forensics",
+    forensicEvidenceRoute
+);
+
+app.use(
+    "/api/forensics",
     forensicCaseRoute
 );
 
@@ -155,10 +218,14 @@ app.use(
 // --------------------------------------------------
 
 const notFound =
-    require("./middlewares/notFound");
+    require(
+        "./middlewares/notFound"
+    );
 
 const errorHandler =
-    require("./middlewares/errorHandler");
+    require(
+        "./middlewares/errorHandler"
+    );
 
 app.use(
     notFound
@@ -168,4 +235,5 @@ app.use(
     errorHandler
 );
 
-module.exports = app;
+module.exports =
+    app;
