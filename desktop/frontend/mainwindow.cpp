@@ -5979,6 +5979,9 @@ void MainWindow::startSanitization()
     const StorageDevice targetCopy =
         *target;
 
+    const QString expectedSerialNumber =
+        selectedRequestSerialNumber_.trimmed();
+
     operationRunning_ =
         true;
 
@@ -6036,7 +6039,7 @@ void MainWindow::startSanitization()
         &SanitizationRequestService::
             requestStatusUpdated,
         this,
-        [this, targetCopy, actorId, workstationId](
+        [this, targetCopy, actorId, workstationId, expectedSerialNumber](
             const QString &requestId,
             const QString &status)
         {
@@ -6085,7 +6088,7 @@ void MainWindow::startSanitization()
 
             watcher->setFuture(
                 QtConcurrent::run(
-                    [targetCopy, requestId, actorId, workstationId]()
+                    [targetCopy, requestId, actorId, workstationId, expectedSerialNumber]()
                         -> SecureWipe::SanitizationPipelineResult
                     {
                         try
@@ -6096,7 +6099,8 @@ void MainWindow::startSanitization()
                                 targetCopy,
                                 requestId.toStdString(),
                                 actorId.toStdString(),
-                                workstationId.toStdString());
+                                workstationId.toStdString(),
+                                expectedSerialNumber.toStdString());
                         }
                         catch (
                             const std::exception &exception)

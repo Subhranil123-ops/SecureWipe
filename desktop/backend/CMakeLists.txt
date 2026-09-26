@@ -160,6 +160,14 @@ add_executable(
     tests/HostOverwriteE2ETest.cpp
 )
 
+if(WIN32)
+    target_link_libraries(
+        HostOverwriteE2ETest
+        PRIVATE
+            winhttp
+    )
+endif()
+
 # ============================================================
 # FORENSIC TESTS
 # ============================================================
