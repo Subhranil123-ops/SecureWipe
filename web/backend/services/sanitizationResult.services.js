@@ -102,7 +102,10 @@ const submitSanitizationResult = async (
             );
         }
 
-        if (workstation.status !== "ACTIVE") {
+        if (
+            workstation.status !==
+            "ACTIVE"
+        ) {
             throw new AppError(
                 "The assigned workstation is not active",
                 409
@@ -132,6 +135,51 @@ const submitSanitizationResult = async (
         );
     }
 
+    /*
+     * --------------------------------------------------------
+     * REQUEST-AUTHORIZED PHYSICAL DEVICE CHECK
+     * --------------------------------------------------------
+     *
+     * The submitted serial number must be the same physical
+     * device serial number authorized by this exact request.
+     *
+     * This prevents a valid employee from accidentally or
+     * intentionally submitting a result belonging to another
+     * physical storage device under this request.
+     */
+
+    const submittedSerialNumber =
+        String(
+            payload.serialNumber || ""
+        ).trim();
+
+    if (!submittedSerialNumber) {
+        throw new AppError(
+            "Serial number is required",
+            400
+        );
+    }
+
+    if (
+        submittedSerialNumber.toLowerCase() !==
+        String(
+            request.serialNumber || ""
+        )
+            .trim()
+            .toLowerCase()
+    ) {
+        throw new AppError(
+            "The submitted device serial number does not match the serial number authorized by this sanitization request",
+            403
+        );
+    }
+
+    /*
+     * --------------------------------------------------------
+     * REQUIRED RESULT FIELDS
+     * --------------------------------------------------------
+     */
+
     const requiredFields = [
         "operationId",
         "deviceId",
@@ -160,8 +208,16 @@ const submitSanitizationResult = async (
         }
     }
 
+    /*
+     * --------------------------------------------------------
+     * WORKSTATION VALIDATION
+     * --------------------------------------------------------
+     */
+
     const submittedWorkstationId =
-        String(payload.workstationId || "").trim();
+        String(
+            payload.workstationId || ""
+        ).trim();
 
     if (!submittedWorkstationId) {
         throw new AppError(
@@ -202,7 +258,8 @@ const submitSanitizationResult = async (
     }
 
     if (
-        user.role === "WORKSTATION_EMPLOYEE" &&
+        user.role ===
+            "WORKSTATION_EMPLOYEE" &&
         (
             !assignedWorkstation.assignedEmployee ||
             assignedWorkstation.assignedEmployee.toString() !==
@@ -216,6 +273,25 @@ const submitSanitizationResult = async (
     }
 
     if (
+        assignedWorkstation.status !==
+        "ACTIVE"
+    ) {
+        throw new AppError(
+            "The submitted workstation is not active",
+            409
+        );
+    }
+
+    /*
+     * --------------------------------------------------------
+     * CURRENT END-TO-END METHOD
+     * --------------------------------------------------------
+     *
+     * The current web-bound destructive pipeline is
+     * specifically Host Overwrite.
+     */
+
+    if (
         payload.method !==
         "HOST_OVERWRITE"
     ) {
@@ -224,6 +300,12 @@ const submitSanitizationResult = async (
             400
         );
     }
+
+    /*
+     * --------------------------------------------------------
+     * RESULT STATUS VALIDATION
+     * --------------------------------------------------------
+     */
 
     if (
         ![
@@ -238,6 +320,21 @@ const submitSanitizationResult = async (
             400
         );
     }
+
+    /*
+     * --------------------------------------------------------
+     * VERIFICATION VALIDATION
+     * --------------------------------------------------------
+     *
+     * A COMPLETED result must have:
+     *
+     * verificationPerformed = true
+     * verificationStatus   = PASSED
+     *
+     * This prevents a certificate from being built on top
+     * of a sanitization operation that did not actually pass
+     * post-write verification.
+     */
 
     const verificationPassed =
         Boolean(
@@ -258,7 +355,8 @@ const submitSanitizationResult = async (
     }
 
     if (
-        payload.status === "FAILED" &&
+        payload.status ===
+            "FAILED" &&
         payload.verificationStatus ===
             "PASSED"
     ) {
@@ -267,6 +365,12 @@ const submitSanitizationResult = async (
             400
         );
     }
+
+    /*
+     * --------------------------------------------------------
+     * PREVENT DUPLICATE OPERATION SUBMISSION
+     * --------------------------------------------------------
+     */
 
     const existingResult =
         await SanitizationResult.findOne({
@@ -282,6 +386,12 @@ const submitSanitizationResult = async (
             409
         );
     }
+
+    /*
+     * --------------------------------------------------------
+     * CREATE SANITIZATION RESULT
+     * --------------------------------------------------------
+     */
 
     const result =
         await SanitizationResult.create({
@@ -389,9 +499,17 @@ const submitSanitizationResult = async (
         });
 
     /*
-     * A successful physical sanitization result
-     * enters the verification/certificate phase.
+     * --------------------------------------------------------
+     * SUCCESSFUL SANITIZATION
+     * --------------------------------------------------------
+     *
+     * A successful native operation is not immediately
+     * COMPLETED at the request level.
+     *
+     * It first enters VERIFYING so that the native certificate
+     * can be uploaded and validated by the certificate service.
      */
+
     if (
         result.status ===
         "COMPLETED"
@@ -400,9 +518,15 @@ const submitSanitizationResult = async (
             "VERIFYING";
 
         request.history.push({
-            status: "VERIFYING",
-            changedBy: user._id,
-            changedAt: new Date(),
+            status:
+                "VERIFYING",
+
+            changedBy:
+                user._id,
+
+            changedAt:
+                new Date(),
+
             note:
                 "Sanitization result submitted for verification and certificate review"
         });
@@ -411,12 +535,14 @@ const submitSanitizationResult = async (
     }
 
     /*
-     * A failed physical sanitization operation
-     * terminates the request as FAILED.
+     * --------------------------------------------------------
+     * FAILED SANITIZATION
+     * --------------------------------------------------------
      *
-     * It must not enter VERIFYING because there
-     * is no successful sanitization to certify.
+     * A failed native operation does not enter VERIFYING
+     * because no successful sanitization should be certified.
      */
+
     if (
         result.status ===
         "FAILED"
@@ -428,9 +554,15 @@ const submitSanitizationResult = async (
             new Date();
 
         request.history.push({
-            status: "FAILED",
-            changedBy: user._id,
-            changedAt: new Date(),
+            status:
+                "FAILED",
+
+            changedBy:
+                user._id,
+
+            changedAt:
+                new Date(),
+
             note:
                 result.verificationMessage ||
                 "Sanitization operation failed on the workstation"
@@ -466,6 +598,12 @@ const getSanitizationResultByRequest =
             );
         }
 
+        /*
+         * --------------------------------------------------------
+         * CUSTOMER ACCESS
+         * --------------------------------------------------------
+         */
+
         if (
             user.role ===
                 "CUSTOMER" &&
@@ -477,6 +615,12 @@ const getSanitizationResultByRequest =
                 403
             );
         }
+
+        /*
+         * --------------------------------------------------------
+         * WORKSTATION EMPLOYEE ACCESS
+         * --------------------------------------------------------
+         */
 
         if (
             user.role ===
@@ -490,6 +634,12 @@ const getSanitizationResultByRequest =
             );
         }
 
+        /*
+         * --------------------------------------------------------
+         * WORKSTATION HEAD ACCESS
+         * --------------------------------------------------------
+         */
+
         if (
             user.role ===
                 "WORKSTATION_HEAD" &&
@@ -501,6 +651,12 @@ const getSanitizationResultByRequest =
                 403
             );
         }
+
+        /*
+         * --------------------------------------------------------
+         * FETCH RESULT
+         * --------------------------------------------------------
+         */
 
         const result =
             await SanitizationResult.findOne({
@@ -520,6 +676,15 @@ const getSanitizationResultByRequest =
                 404
             );
         }
+
+        /*
+         * --------------------------------------------------------
+         * FETCH CERTIFICATE
+         * --------------------------------------------------------
+         *
+         * The result response also exposes the certificate
+         * associated with this operation when it exists.
+         */
 
         const certificate =
             await SanitizationCertificate.findOne({
