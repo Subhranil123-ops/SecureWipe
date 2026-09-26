@@ -1,13 +1,50 @@
-const express = require("express");
-const router = express.Router();
+const express =
+    require("express");
 
-const { Authenticate } = require("../middlewares/auth.middleware");
-const { Authorize } = require("../middlewares/authorize.middleware");
-const controller = require("../Controller/forensicCase.controller");
-const { validate } = require("../middlewares/validate.middleware");
-const { forensicCaseSchema } = require("../forensic.schema");
+const router =
+    express.Router();
 
-router.use(Authenticate);
+const {
+    Authenticate
+} =
+    require(
+        "../middlewares/auth.middleware"
+    );
+
+const {
+    Authorize
+} =
+    require(
+        "../middlewares/authorize.middleware"
+    );
+
+const controller =
+    require(
+        "../Controller/forensicCase.controller"
+    );
+
+const evidencePackageController =
+    require(
+        "../Controller/forensicEvidencePackage.controller"
+    );
+
+const {
+    validate
+} =
+    require(
+        "../middlewares/validate.middleware"
+    );
+
+const {
+    forensicCaseSchema
+} =
+    require(
+        "../forensic.schema"
+    );
+
+router.use(
+    Authenticate
+);
 
 router.get(
     "/dashboard",
@@ -33,8 +70,12 @@ router.get(
 
 router.post(
     "/",
-    Authorize("CUSTOMER"),
-    validate(forensicCaseSchema),
+    Authorize(
+        "CUSTOMER"
+    ),
+    validate(
+        forensicCaseSchema
+    ),
     controller.createCase
 );
 
@@ -62,7 +103,10 @@ router.get(
 
 router.patch(
     "/:caseId/assign",
-    Authorize("ADMIN", "WORKSTATION_HEAD"),
+    Authorize(
+        "ADMIN",
+        "WORKSTATION_HEAD"
+    ),
     controller.assignCase
 );
 
@@ -74,6 +118,16 @@ router.patch(
         "WORKSTATION_EMPLOYEE"
     ),
     controller.updateStatus
+);
+
+router.post(
+    "/:caseId/evidence-package",
+    Authorize(
+        "ADMIN",
+        "WORKSTATION_EMPLOYEE"
+    ),
+    evidencePackageController
+        .ingestEvidencePackage
 );
 
 router.post(
@@ -96,4 +150,5 @@ router.post(
     controller.generateReport
 );
 
-module.exports = router;
+module.exports =
+    router;

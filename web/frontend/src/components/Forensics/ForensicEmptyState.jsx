@@ -1,24 +1,41 @@
-function ForensicModal({ open, title, description, children, onClose, maxWidth = "max-w-lg" }) {
-    if (!open) return null;
-
+function ForensicEmptyState({
+    title = "No data available",
+    description =
+        "There is nothing to display yet.",
+    action = null
+}) {
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4 py-6 backdrop-blur-sm">
-            <div className={`max-h-[90vh] w-full ${maxWidth} overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl`}>
-                <div className="flex items-start justify-between border-b border-slate-200 px-5 py-4">
-                    <div>
-                        <h2 className="text-base font-semibold text-slate-900">{title}</h2>
-                        {description && <p className="mt-1 text-sm text-slate-500">{description}</p>}
-                    </div>
-
-                    <button type="button" onClick={onClose} className="rounded-lg p-1 text-xl leading-none text-slate-400 transition hover:bg-slate-100 hover:text-slate-700">
-                        ×
-                    </button>
+        <div className="flex min-h-[220px] items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white p-8">
+            <div className="max-w-md text-center">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-500">
+                    <svg
+                        viewBox="0 0 24 24"
+                        className="h-6 w-6"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.7"
+                    >
+                        <path d="M7 4h10a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" />
+                        <path d="M9 9h6M9 13h6M9 17h3" />
+                    </svg>
                 </div>
 
-                <div className="max-h-[calc(90vh-80px)] overflow-y-auto p-5">{children}</div>
+                <h3 className="mt-4 text-sm font-semibold text-slate-900">
+                    {title}
+                </h3>
+
+                <p className="mt-2 text-sm leading-6 text-slate-500">
+                    {description}
+                </p>
+
+                {action ? (
+                    <div className="mt-5">
+                        {action}
+                    </div>
+                ) : null}
             </div>
         </div>
     );
 }
 
-export default ForensicModal;
+export default ForensicEmptyState;
