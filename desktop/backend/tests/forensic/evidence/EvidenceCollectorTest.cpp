@@ -1889,6 +1889,17 @@ std::string readSecret(
     return trim(value);
 }
 
+struct AuthSession
+{
+    std::string baseUrl;
+    std::string token;
+    std::string email;
+    std::string password;
+    std::string userId;
+    std::string name;
+    std::string role;
+};
+
 std::string readEnvironmentValue(
     const char *name)
 {
@@ -1917,8 +1928,130 @@ bool extractJsonObjectField(
     std::string &objectJson,
     std::size_t searchFrom = 0);
 
-std::string loginAndGetToken(
-    const std::string &baseUrl)
+bool refreshWebSession(
+    const std::string &baseUrl,
+    AuthSession &session)
+{
+    if (session.email.empty() || session.password.empty())
+    {
+        Console::fail(
+            "Automatic JWT refresh is unavailable because the in-memory workstation credentials are missing.");
+        return false;
+    }
+
+    std::ostringstream body;
+
+    body
+        << "{"
+        << "\"email\":\""
+        << jsonEscape(session.email)
+        << "\","
+        << "\"password\":\""
+        << jsonEscape(session.password)
+        << "\""
+        << "}";
+
+    const HttpResponse response =
+        sendHttpRequest(
+            "POST",
+            baseUrl + "/api/auth/login",
+            "",
+            body.str());
+
+    if (!response.transportOk ||
+        response.statusCode < 200 ||
+        response.statusCode >= 300)
+    {
+        Console::fail(
+            "Automatic JWT refresh login failed (HTTP " +
+            std::to_string(response.statusCode) +
+            ").");
+        return false;
+    }
+
+    std::string token;
+
+    if (!extractJsonStringField(
+            response.body,
+            "token",
+            token) ||
+        token.empty())
+    {
+        Console::fail(
+            "Automatic JWT refresh response did not contain a usable token.");
+        return false;
+    }
+
+    session.token = token;
+
+    std::string userObject;
+
+    if (extractJsonObjectField(
+            response.body,
+            "user",
+            userObject))
+    {
+        extractJsonStringField(userObject, "name", session.name);
+        extractJsonStringField(userObject, "role", session.role);
+        extractJsonStringField(userObject, "email", session.email);
+        extractJsonStringField(userObject, "id", session.userId);
+
+        if (session.userId.empty())
+        {
+            extractJsonStringField(userObject, "_id", session.userId);
+        }
+    }
+
+    if (session.role != "WORKSTATION_EMPLOYEE" &&
+        session.role != "ADMIN")
+    {
+        Console::fail(
+            "Automatic JWT refresh returned an account without a desktop-operator role.");
+        return false;
+    }
+
+    Console::pass(
+        "Fresh 15-minute JWT obtained automatically after token expiry.");
+
+    return true;
+}
+
+HttpResponse sendAuthenticatedHttpRequest(
+    const std::string &method,
+    const std::string &url,
+    AuthSession &session,
+    const std::string &body = {})
+{
+    HttpResponse response =
+        sendHttpRequest(
+            method,
+            url,
+            session.token,
+            body);
+
+    if (response.statusCode != 401)
+    {
+        return response;
+    }
+
+    Console::warn(
+        "The access token expired during the long-running forensic operation. Refreshing authentication and retrying the same request once.");
+
+    if (!refreshWebSession(session.baseUrl, session))
+    {
+        return response;
+    }
+
+    return sendHttpRequest(
+        method,
+        url,
+        session.token,
+        body);
+}
+
+bool loginAndCreateSession(
+    const std::string &baseUrl,
+    AuthSession &session)
 {
     Console::section(
         "DESKTOP AUTHENTICATION");
@@ -1950,7 +2083,7 @@ std::string loginAndGetToken(
     {
         Console::fail(
             "Workstation account email is required.");
-        return {};
+        return false;
     }
 
     if (password.empty())
@@ -1968,7 +2101,7 @@ std::string loginAndGetToken(
     {
         Console::fail(
             "Workstation account password is required.");
-        return {};
+        return false;
     }
 
     std::ostringstream body;
@@ -1995,7 +2128,7 @@ std::string loginAndGetToken(
             response,
             "Desktop authentication"))
     {
-        return {};
+        return false;
     }
 
     std::string token;
@@ -2007,14 +2140,14 @@ std::string loginAndGetToken(
     {
         Console::fail(
             "Login response did not contain an authentication token.");
-        return {};
+        return false;
     }
 
     if (token.empty())
     {
         Console::fail(
             "Login returned an empty authentication token.");
-        return {};
+        return false;
     }
 
     std::string userObject;
@@ -2035,6 +2168,24 @@ std::string loginAndGetToken(
             userObject,
             "role",
             role);
+
+        extractJsonStringField(
+            userObject,
+            "email",
+            session.email);
+
+        extractJsonStringField(
+            userObject,
+            "id",
+            session.userId);
+
+        if (session.userId.empty())
+        {
+            extractJsonStringField(
+                userObject,
+                "_id",
+                session.userId);
+        }
     }
 
     if (
@@ -2045,7 +2196,7 @@ std::string loginAndGetToken(
             "The logged-in account does not have a desktop-operator role."
             " Received role: " +
             (role.empty() ? "(unknown)" : role));
-        return {};
+        return false;
     }
 
     Console::pass(
@@ -2059,7 +2210,13 @@ std::string loginAndGetToken(
         << (role.empty() ? "(not returned)" : role)
         << '\n';
 
-    return token;
+    session.token = token;
+    session.baseUrl = baseUrl;
+    session.email = email;
+    session.password = password;
+    session.name = userName;
+    session.role = role;
+    return true;
 }
 
 struct ForensicCaseBinding
@@ -2363,16 +2520,16 @@ bool extractJsonObjectField(
 bool loadForensicCaseBinding(
     const std::string &baseUrl,
     const std::string &caseId,
-    const std::string &token,
+    AuthSession &session,
     ForensicCaseBinding &binding)
 {
     const HttpResponse response =
-        sendHttpRequest(
+        sendAuthenticatedHttpRequest(
             "GET",
             baseUrl +
                 "/api/forensics/" +
                 caseId,
-            token);
+            session);
 
     if (!expectHttpSuccess(
             response,
@@ -2537,7 +2694,7 @@ bool updateCaseStatus(
     const std::string &baseUrl,
     const std::string &caseId,
     const std::string &workstationId,
-    const std::string &token,
+    AuthSession &session,
     const std::string &status,
     const std::string &note)
 {
@@ -2563,10 +2720,10 @@ bool updateCaseStatus(
         "/status";
 
     const HttpResponse response =
-        sendHttpRequest(
+        sendAuthenticatedHttpRequest(
             "PATCH",
             url,
-            token,
+            session,
             body.str());
 
     return expectHttpSuccess(
@@ -2577,7 +2734,7 @@ bool updateCaseStatus(
 bool uploadEvidencePackage(
     const std::string &baseUrl,
     const std::string &caseId,
-    const std::string &token,
+    AuthSession &session,
     const std::string &workstationId,
     const std::string &sourceIdentifier,
     const std::string &runId,
@@ -2697,13 +2854,13 @@ bool uploadEvidencePackage(
     }
 
     const HttpResponse response =
-        sendHttpRequest(
+        sendAuthenticatedHttpRequest(
             "POST",
             baseUrl +
                 "/api/forensics/" +
                 caseId +
                 "/evidence-package",
-            token,
+            session,
             body.str());
 
     return expectHttpSuccess(
@@ -3211,10 +3368,11 @@ int main()
         return 1;
     }
 
-    const std::string token =
-        loginAndGetToken(baseUrl);
+    AuthSession session;
 
-    if (token.empty())
+    if (!loginAndCreateSession(
+            baseUrl,
+            session))
     {
         return 1;
     }
@@ -3224,7 +3382,7 @@ int main()
     if (!loadForensicCaseBinding(
             baseUrl,
             caseId,
-            token,
+            session,
             caseBinding))
     {
         return 1;
@@ -3449,7 +3607,7 @@ int main()
             baseUrl,
             caseId,
             caseBinding.workstationMongoId,
-            token,
+            session,
             "ACQUIRING",
             "Native ForenWipe forensic E2E acquisition started"))
     {
@@ -3529,7 +3687,7 @@ int main()
             baseUrl,
             caseId,
             caseBinding.workstationMongoId,
-            token,
+            session,
             "ANALYZING",
             "Native forensic scan completed without validated artifacts");
 
@@ -3537,7 +3695,7 @@ int main()
             baseUrl,
             caseId,
             caseBinding.workstationMongoId,
-            token,
+            session,
             "FAILED",
             "No validated forensic artifacts were recovered by the native acquisition engine");
 
@@ -3673,7 +3831,7 @@ int main()
     if (!uploadEvidencePackage(
             baseUrl,
             caseId,
-            token,
+            session,
             caseBinding.workstationMongoId,
             caseBinding.sourceIdentifier,
             runId,
