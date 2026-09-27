@@ -38,7 +38,6 @@
 #include "SafetyResult.h"
 #include "AuditChainVerifier.h"
 #include "CertificateVerifier.h"
-#include "DeviceClassifier.h"
 
 using namespace SecureWipe;
 
@@ -388,11 +387,17 @@ struct HttpResponse
 
 struct AuthSession
 {
+    std::string baseUrl;
     std::string token;
     std::string userId;
     std::string email;
     std::string name;
     std::string role;
+
+    // Kept only in process memory so a new short-lived JWT can be
+    // obtained automatically if a long-running sanitization operation
+    // outlives the 15-minute access token. Never written to disk/logs.
+    std::string password;
 };
 
 struct WebSanitizationRequestBinding
@@ -825,6 +830,198 @@ bool expectHttpSuccess(
     return true;
 }
 
+bool extractJsonStringField(
+    const std::string& json,
+    const std::string& key,
+    std::string& value,
+    std::size_t searchFrom = 0);
+
+bool extractJsonObjectField(
+    const std::string& json,
+    const std::string& key,
+    std::string& objectJson,
+    std::size_t searchFrom = 0);
+
+
+bool refreshWebSession(
+    const std::string& baseUrl,
+    AuthSession& session)
+{
+    if (
+        session.email.empty() ||
+        session.password.empty())
+    {
+        Console::fail(
+            "Automatic JWT refresh is unavailable because the in-memory workstation credentials are missing.");
+        return false;
+    }
+
+    std::ostringstream body;
+
+    body
+        << "{"
+        << "\"email\":\""
+        << jsonEscape(session.email)
+        << "\","
+        << "\"password\":\""
+        << jsonEscape(session.password)
+        << "\""
+        << "}";
+
+    const HttpResponse response =
+        sendHttpRequest(
+            "POST",
+            baseUrl + "/api/auth/login",
+            {},
+            body.str());
+
+    if (
+        !response.transportOk ||
+        response.statusCode < 200 ||
+        response.statusCode >= 300)
+    {
+        Console::fail(
+            "Automatic JWT refresh login failed (HTTP " +
+            std::to_string(response.statusCode) +
+            ").");
+
+        if (!response.body.empty())
+        {
+            std::cout
+                << Console::RED
+                << "  Refresh response: "
+                << response.body
+                << Console::RESET
+                << "\n";
+        }
+
+        return false;
+    }
+
+    std::string newToken;
+
+    if (!extractJsonStringField(
+            response.body,
+            "token",
+            newToken) ||
+        newToken.empty())
+    {
+        Console::fail(
+            "Automatic JWT refresh response did not contain a usable token.");
+        return false;
+    }
+
+    session.token = newToken;
+
+    std::string userJson;
+
+    if (extractJsonObjectField(
+            response.body,
+            "user",
+            userJson))
+    {
+        std::string refreshedRole;
+        std::string refreshedEmail;
+        std::string refreshedName;
+        std::string refreshedUserId;
+
+        extractJsonStringField(
+            userJson,
+            "id",
+            refreshedUserId);
+
+        if (refreshedUserId.empty())
+        {
+            extractJsonStringField(
+                userJson,
+                "_id",
+                refreshedUserId);
+        }
+
+        extractJsonStringField(
+            userJson,
+            "email",
+            refreshedEmail);
+
+        extractJsonStringField(
+            userJson,
+            "name",
+            refreshedName);
+
+        extractJsonStringField(
+            userJson,
+            "role",
+            refreshedRole);
+
+        if (!refreshedUserId.empty())
+        {
+            session.userId = refreshedUserId;
+        }
+
+        if (!refreshedEmail.empty())
+        {
+            session.email = refreshedEmail;
+        }
+
+        if (!refreshedName.empty())
+        {
+            session.name = refreshedName;
+        }
+
+        if (!refreshedRole.empty())
+        {
+            session.role = refreshedRole;
+        }
+    }
+
+    if (session.role != "WORKSTATION_EMPLOYEE")
+    {
+        Console::fail(
+            "Automatic JWT refresh returned an account that is no longer a WORKSTATION_EMPLOYEE.");
+        return false;
+    }
+
+    Console::pass(
+        "Fresh 15-minute JWT obtained automatically after token expiry.");
+
+    return true;
+}
+
+HttpResponse sendAuthenticatedHttpRequest(
+    const std::string& method,
+    const std::string& url,
+    AuthSession& session,
+    const std::string& body = {})
+{
+    HttpResponse response =
+        sendHttpRequest(
+            method,
+            url,
+            session.token,
+            body);
+
+    if (response.statusCode != 401)
+    {
+        return response;
+    }
+
+    Console::warning(
+        "The access token expired during the long-running operation. Refreshing authentication and retrying the same request once.");
+
+    if (!refreshWebSession(
+            session.baseUrl,
+            session))
+    {
+        return response;
+    }
+
+    return sendHttpRequest(
+        method,
+        url,
+        session.token,
+        body);
+}
+
 std::string apiBaseUrl()
 {
     const char* overrideValue =
@@ -1135,7 +1332,7 @@ bool extractJsonStringField(
     const std::string& json,
     const std::string& key,
     std::string& value,
-    std::size_t searchFrom = 0)
+    std::size_t searchFrom)
 {
     const std::size_t keyPosition =
         findJsonKey(
@@ -1345,7 +1542,7 @@ bool extractJsonObjectField(
     const std::string& json,
     const std::string& key,
     std::string& objectJson,
-    std::size_t searchFrom = 0)
+    std::size_t searchFrom)
 {
     const std::size_t keyPosition =
         findJsonKey(
@@ -1699,6 +1896,10 @@ bool loginWebUser(
         return false;
     }
 
+    session.baseUrl = baseUrl;
+    session.email = email;
+    session.password = password;
+
     std::ostringstream body;
 
     body
@@ -1810,7 +2011,7 @@ bool loginWebUser(
 
 bool loadAssignedSanitizationRequest(
     const std::string& baseUrl,
-    const AuthSession& session,
+    AuthSession& session,
     const std::string& requestedRequestId,
     WebSanitizationRequestBinding& binding)
 {
@@ -1846,11 +2047,11 @@ bool loadAssignedSanitizationRequest(
     }
 
     const HttpResponse response =
-        sendHttpRequest(
+        sendAuthenticatedHttpRequest(
             "GET",
             baseUrl +
                 "/api/sanitization-requests/employee",
-            session.token);
+            session);
 
     if (!expectHttpSuccess(
             response,
@@ -2267,7 +2468,7 @@ bool calculateSha256Hex(
 
 bool bindWorkstationIdentity(
     const std::string& baseUrl,
-    const AuthSession& session,
+    AuthSession& session,
     const std::string& workstationId)
 {
     separator();
@@ -2337,11 +2538,11 @@ bool bindWorkstationIdentity(
         << "}";
 
     const HttpResponse response =
-        sendHttpRequest(
+        sendAuthenticatedHttpRequest(
             "POST",
             baseUrl +
                 "/api/workstations/identity",
-            session.token,
+            session,
             body.str());
 
     if (!expectHttpSuccess(
@@ -2400,48 +2601,18 @@ bool bindWorkstationIdentity(
 // ============================================================
 // DEVICE / REQUEST MATCHING
 // ============================================================
-
-bool requestMatchesDeviceType(
-    const std::string& requestedType,
-    const StorageDevice& device)
-{
-    DeviceClassifier classifier;
-
-    const ClassificationResult classification =
-        classifier.classify(device);
-
-    const std::string type =
-        toUpper(trim(requestedType));
-
-    if (type == "SSD")
-    {
-        return classification.mediaType ==
-               MediaType::SSD;
-    }
-
-    if (type == "HDD")
-    {
-        return classification.mediaType ==
-               MediaType::HDD;
-    }
-
-    if (type == "USB DRIVE" ||
-        type == "USB")
-    {
-        return classification.busType ==
-               BusType::USB;
-    }
-
-    if (type == "NVME SSD" ||
-        type == "NVME")
-    {
-        return
-            classification.busType == BusType::NVMe &&
-            classification.mediaType == MediaType::SSD;
-    }
-
-    return false;
-}
+//
+// The web request's authorized SERIAL NUMBER is the sole device
+// identity criterion here.
+//
+// IMPORTANT:
+// - requestBinding.deviceType is NOT used for physical-device matching.
+// - USB / NVMe / SATA are transport/interface characteristics and
+//   must not be compared directly with the request's logical media
+//   type (for example HDD).
+// - Safety checks later in the pipeline still decide whether the
+//   serial-matched device is safe to sanitize.
+//
 
 std::optional<StorageDevice> findRequestTarget(
     const std::vector<StorageDevice>& devices,
@@ -2449,20 +2620,29 @@ std::optional<StorageDevice> findRequestTarget(
 {
     std::vector<StorageDevice> matches;
 
+    const std::string authorizedSerial =
+        trim(binding.serialNumber);
+
+    if (authorizedSerial.empty())
+    {
+        return std::nullopt;
+    }
+
     for (const auto& device : devices)
     {
-        if (
-            device.getSerialNumber().empty() ||
-            !stringsEqualIgnoreCase(
-                device.getSerialNumber(),
-                binding.serialNumber))
+        const std::string detectedSerial =
+            trim(device.getSerialNumber());
+
+        if (detectedSerial.empty())
         {
             continue;
         }
 
-        if (!requestMatchesDeviceType(
-                binding.deviceType,
-                device))
+        // EXACT PHYSICAL DEVICE IDENTITY MATCH:
+        // Only the authorized serial number is used.
+        if (!stringsEqualIgnoreCase(
+                detectedSerial,
+                authorizedSerial))
         {
             continue;
         }
@@ -2475,10 +2655,12 @@ std::optional<StorageDevice> findRequestTarget(
         return std::nullopt;
     }
 
+    // The serial number must resolve to exactly one currently
+    // detected physical device. Never guess when it is ambiguous.
     if (matches.size() != 1)
     {
         Console::fail(
-            "More than one currently detected physical device matches the request serial/type. Destructive execution is blocked to avoid ambiguity.");
+            "More than one currently detected physical device has the authorized serial number. Destructive execution is blocked to avoid ambiguity.");
         return std::nullopt;
     }
 
@@ -2487,7 +2669,7 @@ std::optional<StorageDevice> findRequestTarget(
 
 bool updateSanitizationRequestStatus(
     const std::string& baseUrl,
-    const AuthSession& session,
+    AuthSession& session,
     const std::string& requestId,
     const std::string& status)
 {
@@ -2501,13 +2683,13 @@ bool updateSanitizationRequestStatus(
         << "}";
 
     const HttpResponse response =
-        sendHttpRequest(
+        sendAuthenticatedHttpRequest(
             "PATCH",
             baseUrl +
                 "/api/sanitization-requests/" +
                 requestId +
                 "/employee-status",
-            session.token,
+            session,
             body.str());
 
     return expectHttpSuccess(
@@ -2646,7 +2828,7 @@ bool readTextFile(
 
 bool submitSanitizationResultToWeb(
     const std::string& baseUrl,
-    const AuthSession& session,
+    AuthSession& session,
     const std::string& requestId,
     const std::string& workstationId,
     const SanitizationPipelineResult& result)
@@ -2673,12 +2855,12 @@ bool submitSanitizationResultToWeb(
             workstationId);
 
     const HttpResponse response =
-        sendHttpRequest(
+        sendAuthenticatedHttpRequest(
             "POST",
             baseUrl +
                 "/api/sanitization-results/" +
                 requestId,
-            session.token,
+            session,
             body);
 
     if (!expectHttpSuccess(
@@ -2721,7 +2903,7 @@ bool submitSanitizationResultToWeb(
 
 bool uploadCertificateToWeb(
     const std::string& baseUrl,
-    const AuthSession& session,
+    AuthSession& session,
     const std::string& requestId,
     const std::string& workstationId,
     const SanitizationPipelineResult& result)
@@ -2814,12 +2996,12 @@ bool uploadCertificateToWeb(
         << '\n';
 
     const HttpResponse uploadResponse =
-        sendHttpRequest(
+        sendAuthenticatedHttpRequest(
             "POST",
             baseUrl +
                 "/api/sanitization-certificates/" +
                 requestId,
-            session.token,
+            session,
             certificateJson);
 
     if (!expectHttpSuccess(
@@ -2833,13 +3015,13 @@ bool uploadCertificateToWeb(
         "Certificate accepted by backend; server-side SHA-256 validation succeeded.");
 
     const HttpResponse verificationResponse =
-        sendHttpRequest(
+        sendAuthenticatedHttpRequest(
             "GET",
             baseUrl +
                 "/api/sanitization-certificates/" +
                 certificateId +
                 "/verify",
-            session.token);
+            session);
 
     if (!expectHttpSuccess(
             verificationResponse,
@@ -2869,7 +3051,7 @@ bool uploadCertificateToWeb(
 
 bool uploadAuditChainToWeb(
     const std::string& baseUrl,
-    const AuthSession& session,
+    AuthSession& session,
     const std::string& requestId,
     const std::string& workstationId,
     const SanitizationPipelineResult& result)
@@ -2941,12 +3123,12 @@ bool uploadAuditChainToWeb(
         << "}";
 
     const HttpResponse uploadResponse =
-        sendHttpRequest(
+        sendAuthenticatedHttpRequest(
             "POST",
             baseUrl +
                 "/api/sanitization-audit/" +
                 requestId,
-            session.token,
+            session,
             body.str());
 
     if (!expectHttpSuccess(
@@ -2960,13 +3142,13 @@ bool uploadAuditChainToWeb(
         "Complete native audit ledger accepted and cryptographically verified by backend.");
 
     const HttpResponse verificationResponse =
-        sendHttpRequest(
+        sendAuthenticatedHttpRequest(
             "GET",
             baseUrl +
                 "/api/sanitization-audit/" +
                 requestId +
                 "/verify",
-            session.token);
+            session);
 
     if (!expectHttpSuccess(
             verificationResponse,
@@ -2996,7 +3178,7 @@ bool uploadAuditChainToWeb(
 
 bool verifyFinalWebRequestState(
     const std::string& baseUrl,
-    const AuthSession& session,
+    AuthSession& session,
     const WebSanitizationRequestBinding& originalBinding,
     const SanitizationPipelineResult& result)
 {
@@ -3010,11 +3192,11 @@ bool verifyFinalWebRequestState(
         << "------------------------------------------------------------\n";
 
     const HttpResponse response =
-        sendHttpRequest(
+        sendAuthenticatedHttpRequest(
             "GET",
             baseUrl +
                 "/api/sanitization-requests/employee",
-            session.token);
+            session);
 
     if (!expectHttpSuccess(
             response,
@@ -3963,7 +4145,7 @@ int main()
     if (!targetOptional.has_value())
     {
         Console::fail(
-            "No unique physical device matched the request's authorized serial number and device type.");
+            "No unique physical device matched the request's authorized serial number.");
         return 6;
     }
 
@@ -3992,7 +4174,7 @@ int main()
         1);
 
     Console::pass(
-        "The physical device was selected automatically from the exact web request serial/type; no manual workstation/device ID was accepted.");
+        "The physical device was selected automatically from the exact web request authorized serial number; no device type matching or manual workstation/device ID was used.");
 
     // =========================================================
     // STEP 7 - PRE-FLIGHT SAFETY
