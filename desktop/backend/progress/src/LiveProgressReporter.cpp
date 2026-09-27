@@ -6,7 +6,6 @@
 #include <algorithm>
 #include <chrono>
 #include <iomanip>
-#include <iostream>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -25,6 +24,13 @@ struct HttpResponse
     std::string error;
 };
 
+
+/*
+ * --------------------------------------------------------------
+ * STRING / URL HELPERS
+ * --------------------------------------------------------------
+ */
+
 std::wstring widenAscii(
     const std::string& value)
 {
@@ -33,7 +39,8 @@ std::wstring widenAscii(
     wide.reserve(
         value.size());
 
-    for (const unsigned char character : value)
+    for (const unsigned char character :
+         value)
     {
         wide.push_back(
             static_cast<wchar_t>(
@@ -42,6 +49,7 @@ std::wstring widenAscii(
 
     return wide;
 }
+
 
 bool crackUrl(
     const std::string& url,
@@ -52,7 +60,8 @@ bool crackUrl(
     std::string& error)
 {
     const std::wstring wideUrl =
-        widenAscii(url);
+        widenAscii(
+            url);
 
     URL_COMPONENTSW components{};
 
@@ -113,7 +122,8 @@ bool crackUrl(
 
     if (path.empty())
     {
-        path = L"/";
+        path =
+            L"/";
     }
 
     if (components.dwExtraInfoLength > 0)
@@ -133,6 +143,13 @@ bool crackUrl(
     return true;
 }
 
+
+/*
+ * --------------------------------------------------------------
+ * HTTP
+ * --------------------------------------------------------------
+ */
+
 HttpResponse sendHttpRequest(
     const std::string& method,
     const std::string& url,
@@ -147,7 +164,8 @@ HttpResponse sendHttpRequest(
     INTERNET_PORT port =
         INTERNET_DEFAULT_HTTP_PORT;
 
-    bool secure = false;
+    bool secure =
+        false;
 
     if (!crackUrl(
             url,
@@ -180,8 +198,9 @@ HttpResponse sendHttpRequest(
     }
 
     /*
-     * Progress updates must not hang the native operation
-     * for a long period because of an unavailable backend.
+     * Progress reporting must never leave the actual storage
+     * operation blocked for an excessive period because the
+     * backend is unavailable.
      */
     WinHttpSetTimeouts(
         session,
@@ -212,7 +231,8 @@ HttpResponse sendHttpRequest(
     }
 
     const std::wstring wideMethod =
-        widenAscii(method);
+        widenAscii(
+            method);
 
     HINTERNET request =
         WinHttpOpenRequest(
@@ -251,7 +271,8 @@ HttpResponse sendHttpRequest(
     {
         headers +=
             L"Authorization: Bearer " +
-            widenAscii(token) +
+            widenAscii(
+                token) +
             L"\r\n";
     }
 
@@ -259,7 +280,8 @@ HttpResponse sendHttpRequest(
         WinHttpSendRequest(
             request,
             headers.c_str(),
-            static_cast<DWORD>(-1L),
+            static_cast<DWORD>(
+                -1L),
             body.empty()
                 ? WINHTTP_NO_REQUEST_DATA
                 : reinterpret_cast<LPVOID>(
@@ -317,7 +339,8 @@ HttpResponse sendHttpRequest(
         return response;
     }
 
-    DWORD statusCode = 0;
+    DWORD statusCode =
+        0;
 
     DWORD statusSize =
         sizeof(statusCode);
@@ -342,7 +365,8 @@ HttpResponse sendHttpRequest(
 
     while (true)
     {
-        DWORD available = 0;
+        DWORD available =
+            0;
 
         if (!WinHttpQueryDataAvailable(
                 request,
@@ -366,7 +390,8 @@ HttpResponse sendHttpRequest(
             static_cast<std::size_t>(
                 available));
 
-        DWORD read = 0;
+        DWORD read =
+            0;
 
         if (!WinHttpReadData(
                 request,
@@ -410,24 +435,43 @@ HttpResponse sendHttpRequest(
 
 } // namespace
 
+
+/*
+ * --------------------------------------------------------------
+ * CONSTRUCTOR
+ * --------------------------------------------------------------
+ */
+
 LiveProgressReporter::LiveProgressReporter(
     OperationType operationType,
+    const std::string& resourceId,
     const std::string& operationId,
     const Config& config)
     : operationType_(
-          operationType),
-      operationId_(
-          operationId),
-      config_(
+          operationType)
+    , resourceId_(
+          resourceId)
+    , operationId_(
+          operationId)
+    , config_(
           config)
 {
     enabled_ =
         !config_.baseUrl.empty() &&
+        !resourceId_.empty() &&
         !operationId_.empty();
 }
 
+
 LiveProgressReporter::~LiveProgressReporter() =
     default;
+
+
+/*
+ * --------------------------------------------------------------
+ * TIME
+ * --------------------------------------------------------------
+ */
 
 std::uint64_t
 LiveProgressReporter::nowMs()
@@ -439,6 +483,18 @@ LiveProgressReporter::nowMs()
                 .time_since_epoch())
             .count());
 }
+
+
+/*
+ * --------------------------------------------------------------
+ * PERCENTAGE
+ *
+ * This calculation is used ONLY when totalBytes is actually
+ * known.
+ *
+ * It never manufactures totalBytes.
+ * --------------------------------------------------------------
+ */
 
 int
 LiveProgressReporter::calculatePercentage(
@@ -455,15 +511,12 @@ LiveProgressReporter::calculatePercentage(
         return 100;
     }
 
-    /*
-     * Use division after scaling carefully so that
-     * overflow is avoided for normal storage sizes.
-     */
     const long double percentage =
         (
             static_cast<long double>(
                 processedBytes) *
-            100.0L) /
+            100.0L
+        ) /
         static_cast<long double>(
             totalBytes);
 
@@ -479,6 +532,13 @@ LiveProgressReporter::calculatePercentage(
 
     return result;
 }
+
+
+/*
+ * --------------------------------------------------------------
+ * THROTTLING
+ * --------------------------------------------------------------
+ */
 
 bool
 LiveProgressReporter::shouldSend(
@@ -496,13 +556,13 @@ LiveProgressReporter::shouldSend(
         return false;
     }
 
-    const std::uint64_t current =
-        nowMs();
-
     if (lastSentAtMs_ == 0)
     {
         return true;
     }
+
+    const std::uint64_t current =
+        nowMs();
 
     if (
         current -
@@ -512,20 +572,25 @@ LiveProgressReporter::shouldSend(
         return true;
     }
 
-    const int percentage =
-        calculatePercentage(
-            processedBytes,
-            totalBytes);
-
     /*
-     * If percentage changed while throttled,
-     * keep throttling based on time. This prevents
-     * a huge number of HTTP requests.
+     * Deliberately do not bypass throttling merely because the
+     * percentage changed.
+     *
+     * A fast native operation can generate many callbacks and
+     * therefore many percentage changes in a short period.
      */
-    (void)percentage;
+    (void)processedBytes;
+    (void)totalBytes;
 
     return false;
 }
+
+
+/*
+ * --------------------------------------------------------------
+ * JSON ESCAPING
+ * --------------------------------------------------------------
+ */
 
 std::string
 LiveProgressReporter::escapeJson(
@@ -593,6 +658,13 @@ LiveProgressReporter::escapeJson(
     return output.str();
 }
 
+
+/*
+ * --------------------------------------------------------------
+ * URL JOIN
+ * --------------------------------------------------------------
+ */
+
 std::string
 LiveProgressReporter::joinUrl(
     const std::string& baseUrl,
@@ -632,8 +704,22 @@ LiveProgressReporter::joinUrl(
     return baseUrl + path;
 }
 
+
+/*
+ * --------------------------------------------------------------
+ * PATCH
+ * --------------------------------------------------------------
+ *
+ * IMPORTANT:
+ *
+ * The backend live-progress routes are PATCH endpoints.
+ *
+ * The old implementation incorrectly used POST.
+ * --------------------------------------------------------------
+ */
+
 bool
-LiveProgressReporter::postJson(
+LiveProgressReporter::patchJson(
     const std::string& url,
     const std::string& jsonBody)
 {
@@ -644,7 +730,7 @@ LiveProgressReporter::postJson(
 
     const HttpResponse response =
         sendHttpRequest(
-            "POST",
+            "PATCH",
             url,
             config_.token,
             jsonBody);
@@ -654,18 +740,18 @@ LiveProgressReporter::postJson(
         response.statusCode < 200 ||
         response.statusCode >= 300)
     {
-        /*
-         * Progress reporting must be non-fatal.
-         *
-         * The actual sanitization/forensic operation must
-         * continue even if the web server is temporarily
-         * unavailable.
-         */
         return false;
     }
 
     return true;
 }
+
+
+/*
+ * --------------------------------------------------------------
+ * SANITIZATION PROGRESS
+ * --------------------------------------------------------------
+ */
 
 bool
 LiveProgressReporter::reportSanitizationProgress(
@@ -705,8 +791,16 @@ LiveProgressReporter::reportSanitizationProgress(
         totalBytes,
         phase,
         message,
+        "IN_PROGRESS",
         force);
 }
+
+
+/*
+ * --------------------------------------------------------------
+ * SANITIZATION REQUEST
+ * --------------------------------------------------------------
+ */
 
 bool
 LiveProgressReporter::sendSanitizationRequest(
@@ -714,6 +808,7 @@ LiveProgressReporter::sendSanitizationRequest(
     std::uint64_t totalBytes,
     const std::string& phase,
     const std::string& message,
+    const std::string& status,
     bool force)
 {
     if (!enabled_)
@@ -735,14 +830,16 @@ LiveProgressReporter::sendSanitizationRequest(
                operationId_)
         << "\","
         << "\"progress\":"
-        << (percentage < 0
-                ? 0
-                : percentage)
+        << (
+               percentage < 0
+                   ? 0
+                   : percentage)
         << ","
         << "\"progressKnown\":"
-        << (totalBytes > 0
-                ? "true"
-                : "false")
+        << (
+               totalBytes > 0
+                   ? "true"
+                   : "false")
         << ","
         << "\"processedBytes\":"
         << processedBytes
@@ -761,28 +858,33 @@ LiveProgressReporter::sendSanitizationRequest(
         << escapeJson(
                phase)
         << "\","
-        << "\"progressMessage\":\""
+        << "\"message\":\""
         << escapeJson(
                message)
+        << "\","
+        << "\"status\":\""
+        << escapeJson(
+               status)
         << "\""
         << "}";
 
     /*
-     * This is the backend live-progress endpoint introduced
-     * in Part 1.
+     * resourceId_ is the SanitizationRequest.requestId.
+     *
+     * Do NOT use operationId_ here.
      */
     const std::string url =
         joinUrl(
             config_.baseUrl,
             "/api/live-progress/sanitization/" +
-                operationId_);
+                resourceId_);
 
     const bool success =
-        postJson(
+        patchJson(
             url,
             json.str());
 
-    if (success || force)
+    if (success)
     {
         lastSentAtMs_ =
             nowMs();
@@ -790,9 +892,71 @@ LiveProgressReporter::sendSanitizationRequest(
         lastPercentage_ =
             percentage;
     }
+    else if (force)
+    {
+        /*
+         * A failed boundary request must NOT stop the physical
+         * operation.
+         *
+         * We deliberately do not mutate lastSentAtMs_ here.
+         */
+    }
 
     return success;
 }
+
+
+/*
+ * --------------------------------------------------------------
+ * SANITIZATION FINISH
+ * --------------------------------------------------------------
+ */
+
+bool
+LiveProgressReporter::finishSanitization(
+    std::uint64_t processedBytes,
+    std::uint64_t totalBytes,
+    const std::string& phase,
+    const std::string& message)
+{
+    return sendSanitizationRequest(
+        processedBytes,
+        totalBytes,
+        phase,
+        message,
+        "COMPLETED",
+        true);
+}
+
+
+/*
+ * --------------------------------------------------------------
+ * SANITIZATION FAILURE
+ * --------------------------------------------------------------
+ */
+
+bool
+LiveProgressReporter::failSanitization(
+    std::uint64_t processedBytes,
+    std::uint64_t totalBytes,
+    const std::string& phase,
+    const std::string& message)
+{
+    return sendSanitizationRequest(
+        processedBytes,
+        totalBytes,
+        phase,
+        message,
+        "FAILED",
+        true);
+}
+
+
+/*
+ * --------------------------------------------------------------
+ * FORENSIC PROGRESS
+ * --------------------------------------------------------------
+ */
 
 bool
 LiveProgressReporter::reportForensicProgress(
@@ -844,8 +1008,16 @@ LiveProgressReporter::reportForensicProgress(
         recoveredBytes,
         phase,
         message,
+        "IN_PROGRESS",
         force);
 }
+
+
+/*
+ * --------------------------------------------------------------
+ * FORENSIC REQUEST
+ * --------------------------------------------------------------
+ */
 
 bool
 LiveProgressReporter::sendForensicRequest(
@@ -859,6 +1031,7 @@ LiveProgressReporter::sendForensicRequest(
     std::uint64_t recoveredBytes,
     const std::string& phase,
     const std::string& message,
+    const std::string& status,
     bool force)
 {
     if (!enabled_)
@@ -880,14 +1053,16 @@ LiveProgressReporter::sendForensicRequest(
                operationId_)
         << "\","
         << "\"progress\":"
-        << (percentage < 0
-                ? 0
-                : percentage)
+        << (
+               percentage < 0
+                   ? 0
+                   : percentage)
         << ","
         << "\"progressKnown\":"
-        << (totalBytes > 0
-                ? "true"
-                : "false")
+        << (
+               totalBytes > 0
+                   ? "true"
+                   : "false")
         << ","
         << "\"bytesScanned\":"
         << bytesScanned
@@ -924,24 +1099,33 @@ LiveProgressReporter::sendForensicRequest(
         << escapeJson(
                phase)
         << "\","
-        << "\"progressMessage\":\""
+        << "\"message\":\""
         << escapeJson(
                message)
+        << "\","
+        << "\"status\":\""
+        << escapeJson(
+               status)
         << "\""
         << "}";
 
+    /*
+     * resourceId_ is the ForensicCase.caseId.
+     *
+     * Do NOT use operationId_ here.
+     */
     const std::string url =
         joinUrl(
             config_.baseUrl,
-            "/api/live-progress/forensic/" +
-                operationId_);
+            "/api/live-progress/forensics/" +
+                resourceId_);
 
     const bool success =
-        postJson(
+        patchJson(
             url,
             json.str());
 
-    if (success || force)
+    if (success)
     {
         lastSentAtMs_ =
             nowMs();
@@ -949,24 +1133,22 @@ LiveProgressReporter::sendForensicRequest(
         lastPercentage_ =
             percentage;
     }
+    else if (force)
+    {
+        /*
+         * Reporting failure remains non-fatal.
+         */
+    }
 
     return success;
 }
 
-bool
-LiveProgressReporter::finishSanitization(
-    std::uint64_t processedBytes,
-    std::uint64_t totalBytes,
-    const std::string& phase,
-    const std::string& message)
-{
-    return sendSanitizationRequest(
-        processedBytes,
-        totalBytes,
-        phase,
-        message,
-        true);
-}
+
+/*
+ * --------------------------------------------------------------
+ * FORENSIC FINISH
+ * --------------------------------------------------------------
+ */
 
 bool
 LiveProgressReporter::finishForensic(
@@ -992,14 +1174,59 @@ LiveProgressReporter::finishForensic(
         recoveredBytes,
         phase,
         message,
+        "COMPLETED",
         true);
 }
+
+
+/*
+ * --------------------------------------------------------------
+ * FORENSIC FAILURE
+ * --------------------------------------------------------------
+ */
+
+bool
+LiveProgressReporter::failForensic(
+    std::uint64_t bytesScanned,
+    std::uint64_t totalBytes,
+    std::uint64_t candidatesFound,
+    std::uint64_t recoveredArtifacts,
+    std::uint64_t validatedArtifacts,
+    std::uint64_t rejectedArtifacts,
+    std::uint64_t highConfidenceArtifacts,
+    std::uint64_t recoveredBytes,
+    const std::string& phase,
+    const std::string& message)
+{
+    return sendForensicRequest(
+        bytesScanned,
+        totalBytes,
+        candidatesFound,
+        recoveredArtifacts,
+        validatedArtifacts,
+        rejectedArtifacts,
+        highConfidenceArtifacts,
+        recoveredBytes,
+        phase,
+        message,
+        "FAILED",
+        true);
+}
+
+
+/*
+ * --------------------------------------------------------------
+ * ENABLE / DISABLE
+ * --------------------------------------------------------------
+ */
 
 void
 LiveProgressReporter::disable()
 {
-    enabled_ = false;
+    enabled_ =
+        false;
 }
+
 
 bool
 LiveProgressReporter::enabled() const

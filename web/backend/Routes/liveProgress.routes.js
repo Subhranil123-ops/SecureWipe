@@ -33,10 +33,17 @@ const controller =
 // ======================================================
 
 /*
- * CLI / authorized execution worker updates the
- * currently running sanitization operation.
+ * The native execution worker / CLI reports the progress
+ * of an already-authorized sanitization request.
  *
- * CUSTOMER is intentionally excluded.
+ * URL identifier:
+ *
+ *     SanitizationRequest.requestId
+ *
+ * The native operation identifier is carried separately
+ * inside the JSON payload as "operationId".
+ *
+ * CUSTOMER is intentionally excluded from writes.
  */
 
 router.patch(
@@ -52,10 +59,11 @@ router.patch(
 
 
 /*
- * Website reads current sanitization progress.
+ * Website / authenticated users read the current
+ * sanitization progress.
  *
- * All four roles may READ, but the service performs
- * object-level authorization as well.
+ * Object-level authorization is still enforced inside
+ * the service.
  */
 
 router.get(
@@ -76,8 +84,15 @@ router.get(
 // ======================================================
 
 /*
- * CLI / authorized execution worker updates the
- * currently running forensic operation.
+ * The native forensic execution worker reports progress
+ * against the assigned forensic case.
+ *
+ * URL identifier:
+ *
+ *     ForensicCase.caseId
+ *
+ * The native execution identifier is carried separately
+ * inside the JSON payload as "operationId".
  */
 
 router.patch(
@@ -93,7 +108,10 @@ router.patch(
 
 
 /*
- * Website reads current forensic progress.
+ * Website / authenticated users read current forensic
+ * progress.
+ *
+ * Object-level authorization is enforced by the service.
  */
 
 router.get(
