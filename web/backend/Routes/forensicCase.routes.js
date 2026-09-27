@@ -25,7 +25,7 @@ const controller =
 
 const evidencePackageController =
     require(
-        "../Controller/forensicEvidencePackage.controller"
+        "../Controller/forensicEvidence.controller"
     );
 
 const {

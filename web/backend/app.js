@@ -154,11 +154,6 @@ const forensicCaseRoute =
         "./Routes/forensicCase.routes"
     );
 
-const forensicEvidenceRoute =
-    require(
-        "./Routes/forensicEvidence.routes"
-    );
-
 // --------------------------------------------------
 // ROUTING
 // --------------------------------------------------
@@ -201,11 +196,6 @@ app.use(
 app.use(
     "/api/sanitization-audit",
     sanitizationAuditChainRoute
-);
-
-app.use(
-    "/api/forensics",
-    forensicEvidenceRoute
 );
 
 app.use(
