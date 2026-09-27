@@ -74,7 +74,11 @@ public:
      *
      * operationId:
      *
-     * unique identifier of the native execution.
+     * May be empty initially.
+     *
+     * This is intentional because the actual native operation
+     * identifier may only become available when the pipeline
+     * creates the operation context.
      */
     LiveProgressReporter(
         OperationType operationType,
@@ -95,6 +99,15 @@ public:
 
     LiveProgressReporter& operator=(
         LiveProgressReporter&&) = delete;
+
+    /*
+     * Update the native operation identifier after the real
+     * native operation has created/returned it.
+     *
+     * This does NOT change the backend resource identifier.
+     */
+    void setOperationId(
+        const std::string& operationId);
 
     /*
      * ----------------------------------------------------------
@@ -206,6 +219,8 @@ private:
 
     /*
      * Native execution identifier.
+     *
+     * May initially be empty.
      */
     std::string operationId_;
 

@@ -19,7 +19,6 @@ struct HttpResponse
 {
     bool transportOk = false;
     DWORD statusCode = 0;
-
     std::string body;
     std::string error;
 };
@@ -456,15 +455,40 @@ LiveProgressReporter::LiveProgressReporter(
     , config_(
           config)
 {
+    /*
+     * IMPORTANT:
+     *
+     * operationId_ may legitimately be empty here.
+     *
+     * The actual native operation can generate its unique
+     * operation identifier only after execution begins.
+     *
+     * Therefore the reporter must NOT be disabled merely
+     * because operationId_ is initially empty.
+     */
     enabled_ =
         !config_.baseUrl.empty() &&
         !resourceId_.empty() &&
-        !operationId_.empty();
+        !config_.token.empty();
 }
 
 
 LiveProgressReporter::~LiveProgressReporter() =
     default;
+
+
+/*
+ * --------------------------------------------------------------
+ * OPERATION ID
+ * --------------------------------------------------------------
+ */
+
+void LiveProgressReporter::setOperationId(
+    const std::string& operationId)
+{
+    operationId_ =
+        operationId;
+}
 
 
 /*
@@ -515,8 +539,7 @@ LiveProgressReporter::calculatePercentage(
         (
             static_cast<long double>(
                 processedBytes) *
-            100.0L
-        ) /
+            100.0L) /
         static_cast<long double>(
             totalBytes);
 
@@ -710,11 +733,11 @@ LiveProgressReporter::joinUrl(
  * PATCH
  * --------------------------------------------------------------
  *
- * IMPORTANT:
- *
  * The backend live-progress routes are PATCH endpoints.
  *
- * The old implementation incorrectly used POST.
+ * The network request is intentionally auxiliary.
+ * A backend/network failure must never abort the native
+ * sanitization or forensic operation.
  * --------------------------------------------------------------
  */
 
@@ -871,7 +894,7 @@ LiveProgressReporter::sendSanitizationRequest(
     /*
      * resourceId_ is the SanitizationRequest.requestId.
      *
-     * Do NOT use operationId_ here.
+     * DO NOT use operationId_ here.
      */
     const std::string url =
         joinUrl(
@@ -901,6 +924,8 @@ LiveProgressReporter::sendSanitizationRequest(
          * We deliberately do not mutate lastSentAtMs_ here.
          */
     }
+
+    (void)force;
 
     return success;
 }
@@ -1112,7 +1137,7 @@ LiveProgressReporter::sendForensicRequest(
     /*
      * resourceId_ is the ForensicCase.caseId.
      *
-     * Do NOT use operationId_ here.
+     * DO NOT use operationId_ here.
      */
     const std::string url =
         joinUrl(
@@ -1139,6 +1164,8 @@ LiveProgressReporter::sendForensicRequest(
          * Reporting failure remains non-fatal.
          */
     }
+
+    (void)force;
 
     return success;
 }
