@@ -38,6 +38,7 @@
 #include "SafetyResult.h"
 #include "AuditChainVerifier.h"
 #include "CertificateVerifier.h"
+#include "../progress/include/LiveProgressReporter.h"
 
 using namespace SecureWipe;
 
@@ -513,25 +514,33 @@ bool crackUrl(
 
     components.lpszHostName = hostBuffer;
     components.dwHostNameLength =
-        static_cast<DWORD>(sizeof(hostBuffer) / sizeof(hostBuffer[0]));
+        static_cast<DWORD>(
+            sizeof(hostBuffer) /
+            sizeof(hostBuffer[0]));
 
     components.lpszUrlPath = pathBuffer;
     components.dwUrlPathLength =
-        static_cast<DWORD>(sizeof(pathBuffer) / sizeof(pathBuffer[0]));
+        static_cast<DWORD>(
+            sizeof(pathBuffer) /
+            sizeof(pathBuffer[0]));
 
     components.lpszExtraInfo = extraBuffer;
     components.dwExtraInfoLength =
-        static_cast<DWORD>(sizeof(extraBuffer) / sizeof(extraBuffer[0]));
+        static_cast<DWORD>(
+            sizeof(extraBuffer) /
+            sizeof(extraBuffer[0]));
 
     if (!WinHttpCrackUrl(
             wideUrl.c_str(),
-            static_cast<DWORD>(wideUrl.size()),
+            static_cast<DWORD>(
+                wideUrl.size()),
             0,
             &components))
     {
         error =
             "WinHttpCrackUrl failed with error " +
-            std::to_string(GetLastError()) +
+            std::to_string(
+                GetLastError()) +
             ".";
 
         return false;
@@ -558,8 +567,10 @@ bool crackUrl(
     }
 
     port = components.nPort;
+
     secure =
-        components.nScheme == INTERNET_SCHEME_HTTPS;
+        components.nScheme ==
+        INTERNET_SCHEME_HTTPS;
 
     return true;
 }
@@ -574,8 +585,12 @@ HttpResponse sendHttpRequest(
 
     std::wstring host;
     std::wstring path;
-    INTERNET_PORT port = INTERNET_DEFAULT_HTTP_PORT;
-    bool secure = false;
+
+    INTERNET_PORT port =
+        INTERNET_DEFAULT_HTTP_PORT;
+
+    bool secure =
+        false;
 
     if (!crackUrl(
             url,
@@ -600,8 +615,10 @@ HttpResponse sendHttpRequest(
     {
         response.error =
             "WinHttpOpen failed with error " +
-            std::to_string(GetLastError()) +
+            std::to_string(
+                GetLastError()) +
             ".";
+
         return response;
     }
 
@@ -623,15 +640,19 @@ HttpResponse sendHttpRequest(
     {
         response.error =
             "WinHttpConnect failed with error " +
-            std::to_string(GetLastError()) +
+            std::to_string(
+                GetLastError()) +
             ".";
 
-        WinHttpCloseHandle(session);
+        WinHttpCloseHandle(
+            session);
+
         return response;
     }
 
     const std::wstring wideMethod =
-        widenAscii(method);
+        widenAscii(
+            method);
 
     HINTERNET request =
         WinHttpOpenRequest(
@@ -649,11 +670,16 @@ HttpResponse sendHttpRequest(
     {
         response.error =
             "WinHttpOpenRequest failed with error " +
-            std::to_string(GetLastError()) +
+            std::to_string(
+                GetLastError()) +
             ".";
 
-        WinHttpCloseHandle(connection);
-        WinHttpCloseHandle(session);
+        WinHttpCloseHandle(
+            connection);
+
+        WinHttpCloseHandle(
+            session);
+
         return response;
     }
 
@@ -665,7 +691,8 @@ HttpResponse sendHttpRequest(
     {
         headers +=
             L"Authorization: Bearer " +
-            widenAscii(token) +
+            widenAscii(
+                token) +
             L"\r\n";
     }
 
@@ -673,7 +700,8 @@ HttpResponse sendHttpRequest(
         WinHttpSendRequest(
             request,
             headers.c_str(),
-            static_cast<DWORD>(-1L),
+            static_cast<DWORD>(
+                -1L),
             body.empty()
                 ? WINHTTP_NO_REQUEST_DATA
                 : reinterpret_cast<LPVOID>(
@@ -693,12 +721,19 @@ HttpResponse sendHttpRequest(
     {
         response.error =
             "WinHttpSendRequest failed with error " +
-            std::to_string(GetLastError()) +
+            std::to_string(
+                GetLastError()) +
             ".";
 
-        WinHttpCloseHandle(request);
-        WinHttpCloseHandle(connection);
-        WinHttpCloseHandle(session);
+        WinHttpCloseHandle(
+            request);
+
+        WinHttpCloseHandle(
+            connection);
+
+        WinHttpCloseHandle(
+            session);
+
         return response;
     }
 
@@ -708,17 +743,27 @@ HttpResponse sendHttpRequest(
     {
         response.error =
             "WinHttpReceiveResponse failed with error " +
-            std::to_string(GetLastError()) +
+            std::to_string(
+                GetLastError()) +
             ".";
 
-        WinHttpCloseHandle(request);
-        WinHttpCloseHandle(connection);
-        WinHttpCloseHandle(session);
+        WinHttpCloseHandle(
+            request);
+
+        WinHttpCloseHandle(
+            connection);
+
+        WinHttpCloseHandle(
+            session);
+
         return response;
     }
 
-    DWORD statusCode = 0;
-    DWORD statusSize = sizeof(statusCode);
+    DWORD statusCode =
+        0;
+
+    DWORD statusSize =
+        sizeof(statusCode);
 
     if (!WinHttpQueryHeaders(
             request,
@@ -740,7 +785,8 @@ HttpResponse sendHttpRequest(
 
     while (true)
     {
-        DWORD available = 0;
+        DWORD available =
+            0;
 
         if (!WinHttpQueryDataAvailable(
                 request,
@@ -748,8 +794,10 @@ HttpResponse sendHttpRequest(
         {
             response.error =
                 "WinHttpQueryDataAvailable failed with error " +
-                std::to_string(GetLastError()) +
+                std::to_string(
+                    GetLastError()) +
                 ".";
+
             break;
         }
 
@@ -759,9 +807,11 @@ HttpResponse sendHttpRequest(
         }
 
         std::vector<char> buffer(
-            static_cast<std::size_t>(available));
+            static_cast<std::size_t>(
+                available));
 
-        DWORD read = 0;
+        DWORD read =
+            0;
 
         if (!WinHttpReadData(
                 request,
@@ -771,8 +821,10 @@ HttpResponse sendHttpRequest(
         {
             response.error =
                 "WinHttpReadData failed with error " +
-                std::to_string(GetLastError()) +
+                std::to_string(
+                    GetLastError()) +
                 ".";
+
             break;
         }
 
@@ -789,9 +841,14 @@ HttpResponse sendHttpRequest(
     response.transportOk =
         response.statusCode > 0;
 
-    WinHttpCloseHandle(request);
-    WinHttpCloseHandle(connection);
-    WinHttpCloseHandle(session);
+    WinHttpCloseHandle(
+        request);
+
+    WinHttpCloseHandle(
+        connection);
+
+    WinHttpCloseHandle(
+        session);
 
     return response;
 }
@@ -808,11 +865,14 @@ bool expectHttpSuccess(
         Console::fail(
             operation +
             " failed (HTTP " +
-            std::to_string(response.statusCode) +
+            std::to_string(
+                response.statusCode) +
             ")" +
-            (response.error.empty()
-                ? ""
-                : ": " + response.error));
+            (
+                response.error.empty()
+                    ? ""
+                    : ": " +
+                      response.error));
 
         if (!response.body.empty())
         {
@@ -842,7 +902,6 @@ bool extractJsonObjectField(
     std::string& objectJson,
     std::size_t searchFrom = 0);
 
-
 bool refreshWebSession(
     const std::string& baseUrl,
     AuthSession& session)
@@ -853,6 +912,7 @@ bool refreshWebSession(
     {
         Console::fail(
             "Automatic JWT refresh is unavailable because the in-memory workstation credentials are missing.");
+
         return false;
     }
 
@@ -861,17 +921,20 @@ bool refreshWebSession(
     body
         << "{"
         << "\"email\":\""
-        << jsonEscape(session.email)
+        << jsonEscape(
+               session.email)
         << "\","
         << "\"password\":\""
-        << jsonEscape(session.password)
+        << jsonEscape(
+               session.password)
         << "\""
         << "}";
 
     const HttpResponse response =
         sendHttpRequest(
             "POST",
-            baseUrl + "/api/auth/login",
+            baseUrl +
+                "/api/auth/login",
             {},
             body.str());
 
@@ -882,7 +945,8 @@ bool refreshWebSession(
     {
         Console::fail(
             "Automatic JWT refresh login failed (HTTP " +
-            std::to_string(response.statusCode) +
+            std::to_string(
+                response.statusCode) +
             ").");
 
         if (!response.body.empty())
@@ -900,7 +964,8 @@ bool refreshWebSession(
 
     std::string newToken;
 
-    if (!extractJsonStringField(
+    if (
+        !extractJsonStringField(
             response.body,
             "token",
             newToken) ||
@@ -908,10 +973,12 @@ bool refreshWebSession(
     {
         Console::fail(
             "Automatic JWT refresh response did not contain a usable token.");
+
         return false;
     }
 
-    session.token = newToken;
+    session.token =
+        newToken;
 
     std::string userJson;
 
@@ -955,29 +1022,36 @@ bool refreshWebSession(
 
         if (!refreshedUserId.empty())
         {
-            session.userId = refreshedUserId;
+            session.userId =
+                refreshedUserId;
         }
 
         if (!refreshedEmail.empty())
         {
-            session.email = refreshedEmail;
+            session.email =
+                refreshedEmail;
         }
 
         if (!refreshedName.empty())
         {
-            session.name = refreshedName;
+            session.name =
+                refreshedName;
         }
 
         if (!refreshedRole.empty())
         {
-            session.role = refreshedRole;
+            session.role =
+                refreshedRole;
         }
     }
 
-    if (session.role != "WORKSTATION_EMPLOYEE")
+    if (
+        session.role !=
+        "WORKSTATION_EMPLOYEE")
     {
         Console::fail(
             "Automatic JWT refresh returned an account that is no longer a WORKSTATION_EMPLOYEE.");
+
         return false;
     }
 
@@ -1000,7 +1074,9 @@ HttpResponse sendAuthenticatedHttpRequest(
             session.token,
             body);
 
-    if (response.statusCode != 401)
+    if (
+        response.statusCode !=
+        401)
     {
         return response;
     }
@@ -1032,7 +1108,8 @@ std::string apiBaseUrl()
         overrideValue &&
         *overrideValue)
     {
-        return trim(overrideValue);
+        return trim(
+            overrideValue);
     }
 
     std::string base =
@@ -1052,13 +1129,15 @@ std::string readEnvironmentValue(
     const char* name)
 {
     const char* value =
-        std::getenv(name);
+        std::getenv(
+            name);
 
     if (
         value &&
         *value)
     {
-        return trim(value);
+        return trim(
+            value);
     }
 
     return {};
@@ -1099,7 +1178,9 @@ std::string readSecret(
 
         if (character == 3)
         {
-            std::cout << '\n';
+            std::cout
+                << '\n';
+
             return {};
         }
 
@@ -1108,12 +1189,16 @@ std::string readSecret(
             character <= 126)
         {
             value.push_back(
-                static_cast<char>(character));
+                static_cast<char>(
+                    character));
         }
     }
 
-    std::cout << '\n';
-    return trim(value);
+    std::cout
+        << '\n';
+
+    return trim(
+        value);
 }
 
 std::size_t findJsonStringEnd(
@@ -1233,13 +1318,19 @@ std::string decodeJsonString(
     const std::string& value)
 {
     std::string output;
-    output.reserve(value.size());
+
+    output.reserve(
+        value.size());
 
     bool escaped = false;
 
-    for (std::size_t index = 0; index < value.size(); ++index)
+    for (
+        std::size_t index = 0;
+        index < value.size();
+        ++index)
     {
-        const char character = value[index];
+        const char character =
+            value[index];
 
         if (!escaped)
         {
@@ -1249,7 +1340,8 @@ std::string decodeJsonString(
             }
             else
             {
-                output.push_back(character);
+                output.push_back(
+                    character);
             }
 
             continue;
@@ -1290,7 +1382,8 @@ std::string decodeJsonString(
             break;
 
         default:
-            output.push_back(character);
+            output.push_back(
+                character);
             break;
         }
 
@@ -1306,7 +1399,9 @@ std::size_t findJsonKey(
     std::size_t searchFrom = 0)
 {
     return json.find(
-        "\"" + key + "\"",
+        "\"" +
+            key +
+            "\"",
         searchFrom);
 }
 
@@ -1340,7 +1435,8 @@ bool extractJsonStringField(
             key,
             searchFrom);
 
-    if (keyPosition == std::string::npos)
+    if (keyPosition ==
+        std::string::npos)
     {
         return false;
     }
@@ -1348,9 +1444,12 @@ bool extractJsonStringField(
     const std::size_t colonPosition =
         json.find(
             ':',
-            keyPosition + key.size() + 2);
+            keyPosition +
+                key.size() +
+                2);
 
-    if (colonPosition == std::string::npos)
+    if (colonPosition ==
+        std::string::npos)
     {
         return false;
     }
@@ -1361,7 +1460,8 @@ bool extractJsonStringField(
             colonPosition + 1);
 
     if (
-        valuePosition >= json.size() ||
+        valuePosition >=
+            json.size() ||
         json[valuePosition] != '"')
     {
         return false;
@@ -1372,7 +1472,8 @@ bool extractJsonStringField(
             json,
             valuePosition);
 
-    if (endPosition == std::string::npos)
+    if (endPosition ==
+        std::string::npos)
     {
         return false;
     }
@@ -1381,24 +1482,32 @@ bool extractJsonStringField(
         decodeJsonString(
             json.substr(
                 valuePosition + 1,
-                endPosition - valuePosition - 1));
+                endPosition -
+                    valuePosition -
+                    1));
 
     return true;
 }
 
 
-// Extract a string-valued field only when the key belongs to the
-// outermost JSON object represented by this string. This is needed for
-// fields such as `status`, because the request contains nested objects
-// (for example assignedWorkstation.status) that can otherwise be picked
-// up by the generic recursive string-field search.
+/*
+ * Extract a string-valued field only when the key belongs to the
+ * outermost JSON object represented by this string.
+ *
+ * This is needed for fields such as `status`, because the request
+ * contains nested objects such as assignedWorkstation.status that
+ * can otherwise be picked up by the generic recursive string-field
+ * search.
+ */
 bool extractTopLevelJsonStringField(
     const std::string& json,
     const std::string& key,
     std::string& value)
 {
     std::size_t position =
-        skipJsonWhitespace(json, 0);
+        skipJsonWhitespace(
+            json,
+            0);
 
     if (
         position >= json.size() ||
@@ -1409,6 +1518,7 @@ bool extractTopLevelJsonStringField(
 
     int objectDepth = 0;
     int arrayDepth = 0;
+
     bool inString = false;
     bool escaped = false;
 
@@ -1449,7 +1559,9 @@ bool extractTopLevelJsonStringField(
                     json,
                     index);
 
-            if (stringEnd == std::string::npos)
+            if (
+                stringEnd ==
+                std::string::npos)
             {
                 return false;
             }
@@ -1462,7 +1574,9 @@ bool extractTopLevelJsonStringField(
                     decodeJsonString(
                         json.substr(
                             index + 1,
-                            stringEnd - index - 1));
+                            stringEnd -
+                                index -
+                                1));
 
                 const std::size_t afterKey =
                     skipJsonWhitespace(
@@ -1480,7 +1594,8 @@ bool extractTopLevelJsonStringField(
                             afterKey + 1);
 
                     if (
-                        valuePosition >= json.size() ||
+                        valuePosition >=
+                            json.size() ||
                         json[valuePosition] != '"')
                     {
                         return false;
@@ -1491,7 +1606,9 @@ bool extractTopLevelJsonStringField(
                             json,
                             valuePosition);
 
-                    if (valueEnd == std::string::npos)
+                    if (
+                        valueEnd ==
+                        std::string::npos)
                     {
                         return false;
                     }
@@ -1500,13 +1617,17 @@ bool extractTopLevelJsonStringField(
                         decodeJsonString(
                             json.substr(
                                 valuePosition + 1,
-                                valueEnd - valuePosition - 1));
+                                valueEnd -
+                                    valuePosition -
+                                    1));
 
                     return true;
                 }
             }
 
-            index = stringEnd;
+            index =
+                stringEnd;
+
             continue;
         }
 
@@ -1550,7 +1671,9 @@ bool extractJsonObjectField(
             key,
             searchFrom);
 
-    if (keyPosition == std::string::npos)
+    if (
+        keyPosition ==
+        std::string::npos)
     {
         return false;
     }
@@ -1558,9 +1681,13 @@ bool extractJsonObjectField(
     const std::size_t colonPosition =
         json.find(
             ':',
-            keyPosition + key.size() + 2);
+            keyPosition +
+                key.size() +
+                2);
 
-    if (colonPosition == std::string::npos)
+    if (
+        colonPosition ==
+        std::string::npos)
     {
         return false;
     }
@@ -1584,7 +1711,9 @@ bool extractJsonObjectField(
             '{',
             '}');
 
-    if (endPosition == std::string::npos)
+    if (
+        endPosition ==
+        std::string::npos)
     {
         return false;
     }
@@ -1592,7 +1721,9 @@ bool extractJsonObjectField(
     objectJson =
         json.substr(
             valuePosition,
-            endPosition - valuePosition + 1);
+            endPosition -
+                valuePosition +
+                1);
 
     return true;
 }
@@ -1609,7 +1740,9 @@ bool extractJsonArrayField(
             key,
             searchFrom);
 
-    if (keyPosition == std::string::npos)
+    if (
+        keyPosition ==
+        std::string::npos)
     {
         return false;
     }
@@ -1617,9 +1750,13 @@ bool extractJsonArrayField(
     const std::size_t colonPosition =
         json.find(
             ':',
-            keyPosition + key.size() + 2);
+            keyPosition +
+                key.size() +
+                2);
 
-    if (colonPosition == std::string::npos)
+    if (
+        colonPosition ==
+        std::string::npos)
     {
         return false;
     }
@@ -1643,7 +1780,9 @@ bool extractJsonArrayField(
             '[',
             ']');
 
-    if (endPosition == std::string::npos)
+    if (
+        endPosition ==
+        std::string::npos)
     {
         return false;
     }
@@ -1651,7 +1790,9 @@ bool extractJsonArrayField(
     arrayJson =
         json.substr(
             valuePosition,
-            endPosition - valuePosition + 1);
+            endPosition -
+                valuePosition +
+                1);
 
     return true;
 }
@@ -1668,7 +1809,9 @@ bool extractJsonBoolField(
             key,
             searchFrom);
 
-    if (keyPosition == std::string::npos)
+    if (
+        keyPosition ==
+        std::string::npos)
     {
         return false;
     }
@@ -1676,9 +1819,13 @@ bool extractJsonBoolField(
     const std::size_t colonPosition =
         json.find(
             ':',
-            keyPosition + key.size() + 2);
+            keyPosition +
+                key.size() +
+                2);
 
-    if (colonPosition == std::string::npos)
+    if (
+        colonPosition ==
+        std::string::npos)
     {
         return false;
     }
@@ -1719,7 +1866,9 @@ std::vector<std::string> splitJsonArrayObjects(
     const std::size_t openPosition =
         arrayJson.find('[');
 
-    if (openPosition == std::string::npos)
+    if (
+        openPosition ==
+        std::string::npos)
     {
         return objects;
     }
@@ -1731,7 +1880,9 @@ std::vector<std::string> splitJsonArrayObjects(
             '[',
             ']');
 
-    if (closePosition == std::string::npos)
+    if (
+        closePosition ==
+        std::string::npos)
     {
         return objects;
     }
@@ -1739,19 +1890,25 @@ std::vector<std::string> splitJsonArrayObjects(
     std::size_t position =
         openPosition + 1;
 
-    while (position < closePosition)
+    while (
+        position <
+        closePosition)
     {
         position =
             skipJsonWhitespace(
                 arrayJson,
                 position);
 
-        if (position >= closePosition)
+        if (
+            position >=
+            closePosition)
         {
             break;
         }
 
-        if (arrayJson[position] != '{')
+        if (
+            arrayJson[position] !=
+            '{')
         {
             return {};
         }
@@ -1764,8 +1921,10 @@ std::vector<std::string> splitJsonArrayObjects(
                 '}');
 
         if (
-            endPosition == std::string::npos ||
-            endPosition >= closePosition)
+            endPosition ==
+                std::string::npos ||
+            endPosition >=
+                closePosition)
         {
             return {};
         }
@@ -1773,7 +1932,9 @@ std::vector<std::string> splitJsonArrayObjects(
         objects.push_back(
             arrayJson.substr(
                 position,
-                endPosition - position + 1));
+                endPosition -
+                    position +
+                    1));
 
         position =
             endPosition + 1;
@@ -1784,14 +1945,17 @@ std::vector<std::string> splitJsonArrayObjects(
                 position);
 
         if (
-            position < closePosition &&
+            position <
+                closePosition &&
             arrayJson[position] == ',')
         {
             ++position;
             continue;
         }
 
-        if (position != closePosition)
+        if (
+            position !=
+            closePosition)
         {
             return {};
         }
@@ -1804,8 +1968,13 @@ bool stringsEqualIgnoreCase(
     std::string left,
     std::string right)
 {
-    left = trim(std::move(left));
-    right = trim(std::move(right));
+    left =
+        trim(
+            std::move(left));
+
+    right =
+        trim(
+            std::move(right));
 
     std::transform(
         left.begin(),
@@ -1814,7 +1983,8 @@ bool stringsEqualIgnoreCase(
         [](unsigned char character)
         {
             return static_cast<char>(
-                std::tolower(character));
+                std::tolower(
+                    character));
         });
 
     std::transform(
@@ -1824,7 +1994,8 @@ bool stringsEqualIgnoreCase(
         [](unsigned char character)
         {
             return static_cast<char>(
-                std::tolower(character));
+                std::tolower(
+                    character));
         });
 
     return left == right;
@@ -1859,8 +2030,10 @@ bool loginWebUser(
     {
         std::cout
             << "\nWorkstation employee email: ";
+
         email =
-            trim(readLine());
+            trim(
+                readLine());
     }
     else
     {
@@ -1874,6 +2047,7 @@ bool loginWebUser(
     {
         Console::fail(
             "Employee email is required.");
+
         return false;
     }
 
@@ -1893,12 +2067,18 @@ bool loginWebUser(
     {
         Console::fail(
             "Employee password is required.");
+
         return false;
     }
 
-    session.baseUrl = baseUrl;
-    session.email = email;
-    session.password = password;
+    session.baseUrl =
+        baseUrl;
+
+    session.email =
+        email;
+
+    session.password =
+        password;
 
     std::ostringstream body;
 
@@ -1915,7 +2095,8 @@ bool loginWebUser(
     const HttpResponse response =
         sendHttpRequest(
             "POST",
-            baseUrl + "/api/auth/login",
+            baseUrl +
+                "/api/auth/login",
             {},
             body.str());
 
@@ -1928,7 +2109,8 @@ bool loginWebUser(
 
     std::string userJson;
 
-    if (!extractJsonStringField(
+    if (
+        !extractJsonStringField(
             response.body,
             "token",
             session.token) ||
@@ -1936,6 +2118,7 @@ bool loginWebUser(
     {
         Console::fail(
             "Login succeeded but the web response did not contain a usable JWT token.");
+
         return false;
     }
 
@@ -1977,14 +2160,17 @@ bool loginWebUser(
 
     if (session.email.empty())
     {
-        session.email = email;
+        session.email =
+            email;
     }
 
-    if (session.role !=
+    if (
+        session.role !=
         "WORKSTATION_EMPLOYEE")
     {
         Console::fail(
             "Authenticated account is not a WORKSTATION_EMPLOYEE account.");
+
         return false;
     }
 
@@ -1993,7 +2179,8 @@ bool loginWebUser(
 
     std::cout
         << "\nAuthenticated employee : "
-        << (session.name.empty()
+        << (
+            session.name.empty()
                 ? session.email
                 : session.name)
         << "\nEmail                  : "
@@ -2001,7 +2188,8 @@ bool loginWebUser(
         << "\nRole                   : "
         << session.role
         << "\nUser ID                : "
-        << (session.userId.empty()
+        << (
+            session.userId.empty()
                 ? "(not returned)"
                 : session.userId)
         << '\n';
@@ -2025,7 +2213,8 @@ bool loadAssignedSanitizationRequest(
         << "------------------------------------------------------------\n";
 
     std::string requestId =
-        trim(requestedRequestId);
+        trim(
+            requestedRequestId);
 
     if (requestId.empty())
     {
@@ -2036,13 +2225,15 @@ bool loadAssignedSanitizationRequest(
     if (requestId.empty())
     {
         requestId =
-            trim(readLine());
+            trim(
+                readLine());
     }
 
     if (requestId.empty())
     {
         Console::fail(
             "Sanitization request ID is required.");
+
         return false;
     }
 
@@ -2069,6 +2260,7 @@ bool loadAssignedSanitizationRequest(
     {
         Console::fail(
             "Employee request API returned no data array.");
+
         return false;
     }
 
@@ -2080,10 +2272,12 @@ bool loadAssignedSanitizationRequest(
     {
         Console::fail(
             "No sanitization requests are currently assigned to this employee.");
+
         return false;
     }
 
-    for (const auto& record : records)
+    for (const auto& record :
+         records)
     {
         std::string recordRequestId;
 
@@ -2095,7 +2289,9 @@ bool loadAssignedSanitizationRequest(
             continue;
         }
 
-        if (recordRequestId != requestId)
+        if (
+            recordRequestId !=
+            requestId)
         {
             continue;
         }
@@ -2148,7 +2344,8 @@ bool loadAssignedSanitizationRequest(
                 "_id",
                 binding.assignedEmployeeId);
 
-            if (binding.assignedEmployeeId.empty())
+            if (
+                binding.assignedEmployeeId.empty())
             {
                 extractJsonStringField(
                     employeeJson,
@@ -2169,7 +2366,8 @@ bool loadAssignedSanitizationRequest(
                 "_id",
                 binding.workstationMongoId);
 
-            if (binding.workstationMongoId.empty())
+            if (
+                binding.workstationMongoId.empty())
             {
                 extractJsonStringField(
                     workstationJson,
@@ -2201,16 +2399,20 @@ bool loadAssignedSanitizationRequest(
         {
             Console::fail(
                 "The returned request is not assigned to the authenticated employee email.");
+
             return false;
         }
 
-        if (binding.status != "ASSIGNED")
+        if (
+            binding.status !=
+            "ASSIGNED")
         {
             Console::fail(
                 "Request " +
                 requestId +
                 " is not in ASSIGNED state. Current state: " +
                 binding.status);
+
             return false;
         }
 
@@ -2218,6 +2420,7 @@ bool loadAssignedSanitizationRequest(
         {
             Console::fail(
                 "The selected request has no authorized physical serial number.");
+
             return false;
         }
 
@@ -2225,6 +2428,7 @@ bool loadAssignedSanitizationRequest(
         {
             Console::fail(
                 "The selected request has no authorized device type.");
+
             return false;
         }
 
@@ -2232,14 +2436,18 @@ bool loadAssignedSanitizationRequest(
         {
             Console::fail(
                 "The selected request has no assigned workstation ID.");
+
             return false;
         }
 
-        if (binding.workstationStatus != "ACTIVE")
+        if (
+            binding.workstationStatus !=
+            "ACTIVE")
         {
             Console::fail(
                 "Assigned workstation is not ACTIVE. Current state: " +
                 binding.workstationStatus);
+
             return false;
         }
 
@@ -2258,7 +2466,8 @@ bool loadAssignedSanitizationRequest(
             << "\nAuthorized serial: "
             << binding.serialNumber
             << "\nAsset identifier : "
-            << (binding.assetIdentifier.empty()
+            << (
+                binding.assetIdentifier.empty()
                     ? "(none)"
                     : binding.assetIdentifier)
             << "\nAssigned employee: "
@@ -2305,8 +2514,11 @@ bool readMachineGuid(
     }
 
     char buffer[256]{};
+
     DWORD bufferSize =
-        static_cast<DWORD>(sizeof(buffer));
+        static_cast<DWORD>(
+            sizeof(buffer));
+
     DWORD type = 0;
 
     const LONG queryResult =
@@ -2315,22 +2527,30 @@ bool readMachineGuid(
             "MachineGuid",
             nullptr,
             &type,
-            reinterpret_cast<LPBYTE>(buffer),
+            reinterpret_cast<LPBYTE>(
+                buffer),
             &bufferSize);
 
-    RegCloseKey(key);
+    RegCloseKey(
+        key);
 
     if (
         queryResult != ERROR_SUCCESS ||
-        (type != REG_SZ && type != REG_EXPAND_SZ) ||
+        (type != REG_SZ &&
+         type != REG_EXPAND_SZ) ||
         bufferSize == 0)
     {
         return false;
     }
 
-    buffer[sizeof(buffer) - 1] = '\0';
+    buffer[
+        sizeof(buffer) - 1] =
+        '\0';
+
     machineGuid =
-        trim(std::string(buffer));
+        trim(
+            std::string(
+                buffer));
 
     return !machineGuid.empty();
 }
@@ -2339,12 +2559,20 @@ bool calculateSha256Hex(
     const std::string& input,
     std::string& hashHex)
 {
-    BCRYPT_ALG_HANDLE algorithm = nullptr;
-    BCRYPT_HASH_HANDLE hash = nullptr;
+    BCRYPT_ALG_HANDLE algorithm =
+        nullptr;
 
-    DWORD hashObjectLength = 0;
-    DWORD hashLength = 0;
-    DWORD bytesWritten = 0;
+    BCRYPT_HASH_HANDLE hash =
+        nullptr;
+
+    DWORD hashObjectLength =
+        0;
+
+    DWORD hashLength =
+        0;
+
+    DWORD bytesWritten =
+        0;
 
     NTSTATUS status =
         BCryptOpenAlgorithmProvider(
@@ -2368,11 +2596,14 @@ bool calculateSha256Hex(
             &bytesWritten,
             0);
 
-    if (status < 0 || hashObjectLength == 0)
+    if (
+        status < 0 ||
+        hashObjectLength == 0)
     {
         BCryptCloseAlgorithmProvider(
             algorithm,
             0);
+
         return false;
     }
 
@@ -2386,19 +2617,24 @@ bool calculateSha256Hex(
             &bytesWritten,
             0);
 
-    if (status < 0 || hashLength == 0)
+    if (
+        status < 0 ||
+        hashLength == 0)
     {
         BCryptCloseAlgorithmProvider(
             algorithm,
             0);
+
         return false;
     }
 
-    std::vector<unsigned char> hashObject(
-        hashObjectLength);
+    std::vector<unsigned char>
+        hashObject(
+            hashObjectLength);
 
-    std::vector<unsigned char> digest(
-        hashLength);
+    std::vector<unsigned char>
+        digest(
+            hashLength);
 
     status =
         BCryptCreateHash(
@@ -2415,6 +2651,7 @@ bool calculateSha256Hex(
         BCryptCloseAlgorithmProvider(
             algorithm,
             0);
+
         return false;
     }
 
@@ -2438,7 +2675,9 @@ bool calculateSha256Hex(
                 0);
     }
 
-    BCryptDestroyHash(hash);
+    BCryptDestroyHash(
+        hash);
+
     BCryptCloseAlgorithmProvider(
         algorithm,
         0);
@@ -2452,15 +2691,25 @@ bool calculateSha256Hex(
         "0123456789abcdef";
 
     hashHex.clear();
-    hashHex.reserve(
-        static_cast<std::size_t>(hashLength) * 2);
 
-    for (const unsigned char byte : digest)
+    hashHex.reserve(
+        static_cast<std::size_t>(
+            hashLength) *
+        2);
+
+    for (
+        const unsigned char byte :
+        digest)
     {
         hashHex.push_back(
-            hex[(byte >> 4) & 0x0F]);
+            hex[
+                (byte >> 4) &
+                0x0F]);
+
         hashHex.push_back(
-            hex[byte & 0x0F]);
+            hex[
+                byte &
+                0x0F]);
     }
 
     return true;
@@ -2482,18 +2731,22 @@ bool bindWorkstationIdentity(
 
     std::string machineGuid;
 
-    if (!readMachineGuid(machineGuid))
+    if (!readMachineGuid(
+            machineGuid))
     {
         Console::fail(
             "Windows MachineGuid could not be read. Destructive execution is blocked.");
+
         return false;
     }
 
     std::string machineFingerprint;
     std::string legacyMachineFingerprint;
 
-    if (!calculateSha256Hex(
-            "SecureWipe|MachineGuid|" + machineGuid,
+    if (
+        !calculateSha256Hex(
+            "SecureWipe|MachineGuid|" +
+            machineGuid,
             machineFingerprint) ||
         !calculateSha256Hex(
             machineGuid,
@@ -2501,18 +2754,22 @@ bool bindWorkstationIdentity(
     {
         Console::fail(
             "Could not calculate the SecureWipe workstation fingerprint.");
+
         return false;
     }
 
     char hostnameBuffer[256]{};
+
     DWORD hostnameSize =
-        static_cast<DWORD>(sizeof(hostnameBuffer));
+        static_cast<DWORD>(
+            sizeof(hostnameBuffer));
 
     if (!GetComputerNameA(
             hostnameBuffer,
             &hostnameSize))
     {
-        hostnameBuffer[0] = '\0';
+        hostnameBuffer[0] =
+            '\0';
     }
 
     std::ostringstream body;
@@ -2520,7 +2777,8 @@ bool bindWorkstationIdentity(
     body
         << "{"
         << "\"workstationId\":\""
-        << jsonEscape(workstationId)
+        << jsonEscape(
+               workstationId)
         << "\","
         << "\"machineFingerprint\":\""
         << machineFingerprint
@@ -2530,7 +2788,8 @@ bool bindWorkstationIdentity(
         << "\","
         << "\"hostname\":\""
         << jsonEscape(
-               std::string(hostnameBuffer))
+               std::string(
+                   hostnameBuffer))
         << "\","
         << "\"operatingSystem\":{"
         << "\"name\":\"Windows\""
@@ -2556,6 +2815,7 @@ bool bindWorkstationIdentity(
     std::string returnedFingerprint;
 
     std::string dataJson;
+
     extractJsonObjectField(
         response.body,
         "data",
@@ -2576,19 +2836,23 @@ bool bindWorkstationIdentity(
 
     if (
         !returnedWorkstationId.empty() &&
-        returnedWorkstationId != workstationId)
+        returnedWorkstationId !=
+            workstationId)
     {
         Console::fail(
             "Backend returned a different workstation identity than the assigned request.");
+
         return false;
     }
 
     if (
         !returnedFingerprint.empty() &&
-        returnedFingerprint != machineFingerprint)
+        returnedFingerprint !=
+            machineFingerprint)
     {
         Console::fail(
             "Backend returned a different machine fingerprint than this physical desktop.");
+
         return false;
     }
 
@@ -2621,17 +2885,20 @@ std::optional<StorageDevice> findRequestTarget(
     std::vector<StorageDevice> matches;
 
     const std::string authorizedSerial =
-        trim(binding.serialNumber);
+        trim(
+            binding.serialNumber);
 
     if (authorizedSerial.empty())
     {
         return std::nullopt;
     }
 
-    for (const auto& device : devices)
+    for (const auto& device :
+         devices)
     {
         const std::string detectedSerial =
-            trim(device.getSerialNumber());
+            trim(
+                device.getSerialNumber());
 
         if (detectedSerial.empty())
         {
@@ -2647,7 +2914,8 @@ std::optional<StorageDevice> findRequestTarget(
             continue;
         }
 
-        matches.push_back(device);
+        matches.push_back(
+            device);
     }
 
     if (matches.empty())
@@ -2661,6 +2929,7 @@ std::optional<StorageDevice> findRequestTarget(
     {
         Console::fail(
             "More than one currently detected physical device has the authorized serial number. Destructive execution is blocked to avoid ambiguity.");
+
         return std::nullopt;
     }
 
@@ -2678,7 +2947,8 @@ bool updateSanitizationRequestStatus(
     body
         << "{"
         << "\"status\":\""
-        << jsonEscape(status)
+        << jsonEscape(
+               status)
         << "\""
         << "}";
 
@@ -2714,19 +2984,23 @@ std::string sanitizationResultToJson(
     body
         << "{"
         << "\"operationId\":\""
-        << jsonEscape(result.operationId)
+        << jsonEscape(
+               result.operationId)
         << "\","
 
         << "\"deviceId\":\""
-        << jsonEscape(result.deviceId)
+        << jsonEscape(
+               result.deviceId)
         << "\","
 
         << "\"model\":\""
-        << jsonEscape(result.model)
+        << jsonEscape(
+               result.model)
         << "\","
 
         << "\"serialNumber\":\""
-        << jsonEscape(result.serialNumber)
+        << jsonEscape(
+               result.serialNumber)
         << "\","
 
         << "\"capacityBytes\":"
@@ -2734,7 +3008,8 @@ std::string sanitizationResultToJson(
         << ","
 
         << "\"interfaceType\":\""
-        << jsonEscape(result.interfaceType)
+        << jsonEscape(
+               result.interfaceType)
         << "\","
 
         << "\"method\":\""
@@ -2764,7 +3039,8 @@ std::string sanitizationResultToJson(
         << "\","
 
         << "\"verificationPerformed\":"
-        << (result.verificationPerformed
+        << (
+            result.verificationPerformed
                 ? "true"
                 : "false")
         << ","
@@ -2778,7 +3054,8 @@ std::string sanitizationResultToJson(
         << ","
 
         << "\"verificationMessage\":\""
-        << jsonEscape(result.verificationMessage)
+        << jsonEscape(
+               result.verificationMessage)
         << "\","
 
         << "\"nativeErrorCode\":"
@@ -2789,15 +3066,18 @@ std::string sanitizationResultToJson(
         << "\"globalDataErased\":false,"
 
         << "\"message\":\""
-        << jsonEscape(result.message)
+        << jsonEscape(
+               result.message)
         << "\","
 
         << "\"errorMessage\":\""
-        << jsonEscape(result.errorMessage)
+        << jsonEscape(
+               result.errorMessage)
         << "\","
 
         << "\"workstationId\":\""
-        << jsonEscape(workstationId)
+        << jsonEscape(
+               workstationId)
         << "\""
 
         << "}";
@@ -2820,8 +3100,12 @@ bool readTextFile(
     }
 
     std::ostringstream buffer;
-    buffer << input.rdbuf();
-    content = buffer.str();
+
+    buffer <<
+        input.rdbuf();
+
+    content =
+        buffer.str();
 
     return !content.empty();
 }
@@ -2846,6 +3130,7 @@ bool submitSanitizationResultToWeb(
     {
         Console::fail(
             "Refusing to upload a non-successful sanitization result.");
+
         return false;
     }
 
@@ -2873,6 +3158,7 @@ bool submitSanitizationResultToWeb(
     std::string serverOperationId;
 
     std::string dataJson;
+
     extractJsonObjectField(
         response.body,
         "data",
@@ -2888,10 +3174,12 @@ bool submitSanitizationResultToWeb(
 
     if (
         !serverOperationId.empty() &&
-        serverOperationId != result.sanitization.operationId)
+        serverOperationId !=
+            result.sanitization.operationId)
     {
         Console::fail(
             "Backend accepted a result with a different operation ID.");
+
         return false;
     }
 
@@ -2925,6 +3213,7 @@ bool uploadCertificateToWeb(
     {
         Console::fail(
             "Persisted native certificate JSON is missing.");
+
         return false;
     }
 
@@ -2936,6 +3225,7 @@ bool uploadCertificateToWeb(
     {
         Console::fail(
             "Could not read the persisted certificate JSON.");
+
         return false;
     }
 
@@ -2971,14 +3261,17 @@ bool uploadCertificateToWeb(
         certificateHash);
 
     if (
-        certificateRequestId != requestId ||
+        certificateRequestId !=
+            requestId ||
         certificateOperationId !=
             result.sanitization.operationId ||
-        certificateWorkstationId != workstationId ||
+        certificateWorkstationId !=
+            workstationId ||
         certificateHash.empty())
     {
         Console::fail(
             "Persisted certificate metadata does not match the active web request/operation/workstation.");
+
         return false;
     }
 
@@ -3032,7 +3325,8 @@ bool uploadCertificateToWeb(
 
     bool valid = false;
 
-    if (!extractJsonBoolField(
+    if (
+        !extractJsonBoolField(
             verificationResponse.body,
             "valid",
             valid) ||
@@ -3040,6 +3334,7 @@ bool uploadCertificateToWeb(
     {
         Console::fail(
             "Website certificate verification endpoint did not report VALID.");
+
         return false;
     }
 
@@ -3072,6 +3367,7 @@ bool uploadAuditChainToWeb(
     {
         Console::fail(
             "Native audit JSONL file is missing.");
+
         return false;
     }
 
@@ -3083,6 +3379,7 @@ bool uploadAuditChainToWeb(
     {
         Console::fail(
             "Could not read the native audit JSONL file.");
+
         return false;
     }
 
@@ -3095,6 +3392,7 @@ bool uploadAuditChainToWeb(
     {
         Console::fail(
             "Native audit JSONL is too large for the configured web upload envelope.");
+
         return false;
     }
 
@@ -3113,13 +3411,14 @@ bool uploadAuditChainToWeb(
         << "\","
 
         << "\"workstationId\":\""
-        << jsonEscape(workstationId)
+        << jsonEscape(
+               workstationId)
         << "\","
 
         << "\"auditLog\":\""
-        << jsonEscape(auditLog)
+        << jsonEscape(
+               auditLog)
         << "\""
-
         << "}";
 
     const HttpResponse uploadResponse =
@@ -3159,7 +3458,8 @@ bool uploadAuditChainToWeb(
 
     bool valid = false;
 
-    if (!extractJsonBoolField(
+    if (
+        !extractJsonBoolField(
             verificationResponse.body,
             "valid",
             valid) ||
@@ -3167,6 +3467,7 @@ bool uploadAuditChainToWeb(
     {
         Console::fail(
             "Website audit-chain verification endpoint did not report VALID.");
+
         return false;
     }
 
@@ -3214,19 +3515,23 @@ bool verifyFinalWebRequestState(
     {
         Console::fail(
             "Final request-state response has no data array.");
+
         return false;
     }
 
     for (const auto& record :
-         splitJsonArrayObjects(dataArray))
+         splitJsonArrayObjects(
+             dataArray))
     {
         std::string requestId;
 
-        if (!extractJsonStringField(
+        if (
+            !extractJsonStringField(
                 record,
                 "requestId",
                 requestId) ||
-            requestId != originalBinding.requestId)
+            requestId !=
+                originalBinding.requestId)
         {
             continue;
         }
@@ -3269,16 +3574,19 @@ bool verifyFinalWebRequestState(
         {
             Console::fail(
                 "Final website state does not show the exact sanitization request as COMPLETED with the same target and workstation.");
+
             return false;
         }
 
         Console::pass(
             "Website request is COMPLETED and still bound to the same physical serial/workstation.");
+
         return true;
     }
 
     Console::fail(
         "The completed sanitization request disappeared from the authenticated employee workload.");
+
     return false;
 }
 
@@ -3380,8 +3688,7 @@ void printDevice(
         << (
             device.isRemovable()
                 ? "YES"
-                : "NO"
-        )
+                : "NO")
         << '\n';
 }
 
@@ -3477,7 +3784,9 @@ bool containsText(
         std::ios::binary);
 
     if (!input)
+    {
         return false;
+    }
 
     std::string line;
 
@@ -3785,8 +4094,7 @@ bool validateCertificate(
             "Certificate SHA-256 hash is present.");
     }
 
-    if (
-        !certificate.isValid())
+    if (!certificate.isValid())
     {
         Console::fail(
             "Certificate isValid() returned FALSE.");
@@ -3901,8 +4209,7 @@ bool runRealSystemDiskRejectionTest(
             "No device bytes were processed.");
     }
 
-    if (
-        !result.auditTrailPersisted)
+    if (!result.auditTrailPersisted)
     {
         Console::fail(
             "System-disk safety rejection was not fully audited.");
@@ -3953,10 +4260,12 @@ int main()
 
     std::string actorId;
 
-    if (!getCurrentWindowsUser(actorId))
+    if (!getCurrentWindowsUser(
+            actorId))
     {
         Console::fail(
             "Could not determine the Windows actor.");
+
         return 1;
     }
 
@@ -3967,6 +4276,7 @@ int main()
     {
         Console::fail(
             "SecureWipe API base URL is empty.");
+
         return 1;
     }
 
@@ -3999,12 +4309,14 @@ int main()
         << "Request ID to execute: ";
 
     const std::string requestId =
-        trim(readLine());
+        trim(
+            readLine());
 
     if (requestId.empty())
     {
         Console::fail(
             "Request ID is required.");
+
         return 2;
     }
 
@@ -4057,13 +4369,16 @@ int main()
     {
         Console::fail(
             "Device discovery exception: " +
-            std::string(exception.what()));
+            std::string(
+                exception.what()));
+
         return 4;
     }
     catch (...)
     {
         Console::fail(
             "Unknown exception during device discovery.");
+
         return 4;
     }
 
@@ -4071,12 +4386,14 @@ int main()
     {
         Console::fail(
             "No physical storage devices detected.");
+
         return 4;
     }
 
     Console::pass(
         "Detected " +
-        std::to_string(devices.size()) +
+        std::to_string(
+            devices.size()) +
         " physical device(s).");
 
     for (
@@ -4098,10 +4415,13 @@ int main()
                 return device.isSystemDisk();
             });
 
-    if (systemDiskIt == devices.end())
+    if (
+        systemDiskIt ==
+        devices.end())
     {
         Console::fail(
             "Windows system disk could not be identified.");
+
         return 5;
     }
 
@@ -4118,6 +4438,7 @@ int main()
     {
         Console::fail(
             "System-disk safety test failed.");
+
         return 5;
     }
 
@@ -4146,6 +4467,7 @@ int main()
     {
         Console::fail(
             "No unique physical device matched the request's authorized serial number.");
+
         return 6;
     }
 
@@ -4156,6 +4478,7 @@ int main()
     {
         Console::stop(
             "The request's authorized serial resolves to the Windows system disk. Destructive execution is blocked.");
+
         return 6;
     }
 
@@ -4166,6 +4489,7 @@ int main()
     {
         Console::fail(
             "Request-matched target is missing required physical identity/capacity data.");
+
         return 6;
     }
 
@@ -4205,7 +4529,8 @@ int main()
         << safetyResult.summary
         << "\n\n";
 
-    for (const auto& check : safetyResult.checks)
+    for (const auto& check :
+         safetyResult.checks)
     {
         if (check.passed)
         {
@@ -4227,6 +4552,7 @@ int main()
     {
         Console::stop(
             "Pre-flight safety rejected the request-matched physical target.");
+
         return 7;
     }
 
@@ -4259,14 +4585,17 @@ int main()
 
     std::cout
         << "Selected method : "
-        << methodToString(method)
+        << methodToString(
+               method)
         << '\n';
 
-    if (method !=
+    if (
+        method !=
         SanitizationMethod::HostOverwrite)
     {
         Console::stop(
             "This executable is the Host Overwrite E2E test and will not perform a different destructive method.");
+
         return 8;
     }
 
@@ -4297,13 +4626,16 @@ int main()
     {
         Console::fail(
             "Final device discovery failed: " +
-            std::string(exception.what()));
+            std::string(
+                exception.what()));
+
         return 9;
     }
     catch (...)
     {
         Console::fail(
             "Unknown exception during final device discovery.");
+
         return 9;
     }
 
@@ -4316,6 +4648,7 @@ int main()
     {
         Console::stop(
             "The request-matched target disappeared or became ambiguous before execution.");
+
         return 9;
     }
 
@@ -4326,6 +4659,7 @@ int main()
     {
         Console::stop(
             "The request-matched target is now the Windows system disk.");
+
         return 9;
     }
 
@@ -4340,6 +4674,7 @@ int main()
     {
         Console::stop(
             "Physical target identity changed between discovery passes.");
+
         return 9;
     }
 
@@ -4357,6 +4692,7 @@ int main()
         Console::stop(
             "Final safety validation failed: " +
             finalSafetyResult.summary);
+
         return 9;
     }
 
@@ -4379,7 +4715,8 @@ int main()
         << "\n"
         << "------------------------------------------------------------\n";
 
-    if (!confirmTarget(selectedDevice))
+    if (!confirmTarget(
+            selectedDevice))
     {
         return 10;
     }
@@ -4408,6 +4745,7 @@ int main()
     {
         Console::stop(
             "The physical device could not be rediscovered after destructive confirmation. No write was started.");
+
         return 11;
     }
 
@@ -4420,6 +4758,7 @@ int main()
     {
         Console::stop(
             "The exact request-matched target could not be rediscovered after confirmation. No write was started.");
+
         return 11;
     }
 
@@ -4438,6 +4777,7 @@ int main()
     {
         Console::stop(
             "Post-confirmation target identity no longer matches the web request. No write was started.");
+
         return 11;
     }
 
@@ -4468,6 +4808,7 @@ int main()
     {
         Console::stop(
             "The web request could not be moved to IN_PROGRESS. No destructive write was started.");
+
         return 12;
     }
 
@@ -4500,8 +4841,67 @@ int main()
         << "\n  Method         : HOST_OVERWRITE\n"
         << Console::RESET;
 
+    /*
+     * ----------------------------------------------------------
+     * LIVE PROGRESS REPORTING
+     * ----------------------------------------------------------
+     *
+     * IMPORTANT:
+     *
+     * resourceId = REAL SanitizationRequest.requestId
+     *
+     * operationId is intentionally empty at construction time.
+     * The native pipeline supplies the actual operationId after
+     * execution.
+     */
+    LiveProgressReporter::Config progressConfig;
+
+    progressConfig.baseUrl =
+        baseUrl;
+
+    progressConfig.token =
+        session.token;
+
+    progressConfig.minimumUpdateIntervalMs =
+        1000;
+
+    progressConfig.alwaysSendBoundaryProgress =
+        true;
+
+    LiveProgressReporter liveProgressReporter(
+        LiveProgressReporter::OperationType::SANITIZATION,
+        requestBinding.requestId,
+        {},
+        progressConfig);
+
+    /*
+     * The callback receives ONLY progress generated by the real
+     * native sanitization operation.
+     *
+     * No progress is fabricated here.
+     */
+    const SanitizationProgressCallback progressCallback =
+        [&liveProgressReporter](
+            std::uint64_t processedBytes,
+            std::uint64_t totalBytes,
+            const std::string& phase,
+            const std::string& message)
+        {
+            liveProgressReporter.reportSanitizationProgress(
+                processedBytes,
+                totalBytes,
+                phase,
+                message);
+        };
+
     SanitizationPipeline pipeline;
 
+    /*
+     * THIS IS THE ONLY REAL DESTRUCTIVE PIPELINE EXECUTION.
+     *
+     * The progress callback is passed into the same execution.
+     * There is no second sanitization call.
+     */
     const SanitizationPipelineResult result =
         pipeline.execute(
             selectedDevice,
@@ -4510,7 +4910,17 @@ int main()
                 ? actorId
                 : session.userId,
             requestBinding.workstationId,
-            requestBinding.serialNumber);
+            requestBinding.serialNumber,
+            progressCallback);
+
+    /*
+     * The pipeline is now finished and has produced the actual
+     * native operation identifier.
+     *
+     * Bind that real ID to all subsequent live-progress updates.
+     */
+    liveProgressReporter.setOperationId(
+        result.sanitization.operationId);
 
     // =========================================================
     // STEP 13 - LOCAL SANITIZATION RESULT
@@ -4544,7 +4954,8 @@ int main()
         << verificationStatusToString(
                result.sanitization.verificationStatus)
         << "\nVerification Done  : "
-        << (result.sanitization.verificationPerformed
+        << (
+            result.sanitization.verificationPerformed
                 ? "YES"
                 : "NO")
         << "\nSamples            : "
@@ -4561,10 +4972,31 @@ int main()
 
     if (!result.sanitization.isSuccess())
     {
+        liveProgressReporter.failSanitization(
+            result.sanitization.bytesProcessed,
+            result.sanitization.capacityBytes,
+            "FAILED",
+            result.sanitization.errorMessage.empty()
+                ? result.pipelineMessage
+                : result.sanitization.errorMessage);
+
         Console::fail(
             "Sanitization did not reach a verified-success state. Certificate publication is blocked.");
+
         return 13;
     }
+
+    /*
+     * Native operation completed successfully.
+     *
+     * This is a terminal live-progress update and therefore
+     * bypasses normal throttling.
+     */
+    liveProgressReporter.finishSanitization(
+        result.sanitization.bytesProcessed,
+        result.sanitization.capacityBytes,
+        "COMPLETED",
+        "Sanitization completed and verification passed.");
 
     Console::pass(
         "Native Host Overwrite completed and sampled read-back verification passed.");
@@ -4582,14 +5014,16 @@ int main()
     {
         Console::fail(
             "Native certificate evidence validation failed. Web publication is blocked.");
+
         return 14;
     }
 
     CertificateVerifier certificateVerifier;
 
-    const CertificateVerificationResult certificateVerification =
-        certificateVerifier.verify(
-            result.certificatePath);
+    const CertificateVerificationResult
+        certificateVerification =
+            certificateVerifier.verify(
+                result.certificatePath);
 
     if (!certificateVerification.valid)
     {
@@ -4609,23 +5043,27 @@ int main()
     Console::pass(
         "Native certificate SHA-256 verified before web publication.");
 
-    if (!validateAuditTrail(result))
+    if (!validateAuditTrail(
+            result))
     {
         Console::fail(
             "Required native audit events are missing. Web publication is blocked.");
+
         return 14;
     }
 
     AuditChainVerifier auditVerifier;
 
-    const AuditChainVerificationResult auditVerification =
-        auditVerifier.verify(
-            result.auditLogPath);
+    const AuditChainVerificationResult
+        auditVerification =
+            auditVerifier.verify(
+                result.auditLogPath);
 
     if (!auditVerification.valid)
     {
         Console::fail(
             "Native audit hash chain is invalid. Web publication is blocked.");
+
         return 14;
     }
 
