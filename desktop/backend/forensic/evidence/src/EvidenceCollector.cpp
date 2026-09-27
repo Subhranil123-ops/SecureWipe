@@ -6,11 +6,154 @@
 
 #include <Windows.h>
 
+#include <algorithm>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <string>
 #include <vector>
+
+namespace
+{
+    /*
+     * Larger sequential reads dramatically reduce the number of
+     * ReadFile() calls for large physical disks.
+     *
+     * 16 MiB is deliberately chosen instead of an extremely large
+     * buffer so memory usage remains reasonable.
+     */
+    constexpr std::size_t FORENSIC_CHUNK_SIZE =
+        16ULL * 1024ULL * 1024ULL;
+
+    constexpr std::uint8_t JPEG_MARKER_PREFIX =
+        0xFF;
+
+    constexpr std::uint8_t JPEG_START_SECOND =
+        0xD8;
+
+    constexpr std::uint8_t JPEG_END_SECOND =
+        0xD9;
+
+    /*
+     * Find the next 0xFF byte.
+     *
+     * std::memchr() is generally much faster than a manual byte-by-byte
+     * loop because the C runtime can use optimized memory operations.
+     */
+    const std::uint8_t *findMarkerPrefix(
+        const std::vector<std::uint8_t> &buffer,
+        std::size_t startOffset)
+    {
+        if (startOffset >= buffer.size())
+        {
+            return nullptr;
+        }
+
+        const std::size_t remaining =
+            buffer.size() - startOffset;
+
+        return static_cast<const std::uint8_t *>(
+            std::memchr(
+                buffer.data() + startOffset,
+                JPEG_MARKER_PREFIX,
+                remaining));
+    }
+
+    /*
+     * Find a JPEG SOI marker:
+     *
+     * FF D8 FF
+     *
+     * Returns the offset of FF.
+     */
+    std::size_t findJpegStart(
+        const std::vector<std::uint8_t> &buffer,
+        std::size_t startOffset)
+    {
+        while (startOffset < buffer.size())
+        {
+            const std::uint8_t *marker =
+                findMarkerPrefix(
+                    buffer,
+                    startOffset);
+
+            if (marker == nullptr)
+            {
+                return std::string::npos;
+            }
+
+            const std::size_t offset =
+                static_cast<std::size_t>(
+                    marker - buffer.data());
+
+            /*
+             * Need three bytes:
+             *
+             * FF D8 FF
+             */
+            if (offset + 2 < buffer.size() &&
+                buffer[offset + 1] ==
+                    JPEG_START_SECOND &&
+                buffer[offset + 2] ==
+                    JPEG_MARKER_PREFIX)
+            {
+                return offset;
+            }
+
+            /*
+             * This FF was not a JPEG SOI marker.
+             * Jump directly to the byte after FF.
+             */
+            startOffset =
+                offset + 1;
+        }
+
+        return std::string::npos;
+    }
+
+    /*
+     * Find JPEG EOI marker:
+     *
+     * FF D9
+     *
+     * Returns the offset of D9.
+     */
+    std::size_t findJpegEnd(
+        const std::vector<std::uint8_t> &buffer,
+        std::size_t startOffset)
+    {
+        while (startOffset < buffer.size())
+        {
+            const std::uint8_t *marker =
+                findMarkerPrefix(
+                    buffer,
+                    startOffset);
+
+            if (marker == nullptr)
+            {
+                return std::string::npos;
+            }
+
+            const std::size_t offset =
+                static_cast<std::size_t>(
+                    marker - buffer.data());
+
+            if (offset + 1 < buffer.size() &&
+                buffer[offset + 1] ==
+                    JPEG_END_SECOND)
+            {
+                return offset + 1;
+            }
+
+            startOffset =
+                offset + 1;
+        }
+
+        return std::string::npos;
+    }
+}
 
 std::size_t EvidenceCollector::findEndOffset(
     const std::vector<std::uint8_t> &buffer,
@@ -21,28 +164,31 @@ std::size_t EvidenceCollector::findEndOffset(
         return std::string::npos;
     }
 
-    for (std::size_t offset = startOffset + 2;
-         offset + 1 < buffer.size();
-         ++offset)
-    {
-        if (buffer[offset] == 0xFF &&
-            buffer[offset + 1] == 0xD9)
-        {
-            return offset + 1;
-        }
-    }
-
-    return std::string::npos;
+    return findJpegEnd(
+        buffer,
+        startOffset);
 }
 
 std::string EvidenceCollector::detectFileType(
     const std::vector<std::uint8_t> &buffer,
     std::size_t offset) const
 {
-    if (offset + 2 < buffer.size() &&
-        buffer[offset] == 0xFF &&
-        buffer[offset + 1] == 0xD8 &&
-        buffer[offset + 2] == 0xFF)
+    if (offset + 2 >= buffer.size())
+    {
+        return "UNKNOWN";
+    }
+
+    /*
+     * JPEG SOI:
+     *
+     * FF D8 FF
+     */
+    if (buffer[offset] ==
+            JPEG_MARKER_PREFIX &&
+        buffer[offset + 1] ==
+            JPEG_START_SECOND &&
+        buffer[offset + 2] ==
+            JPEG_MARKER_PREFIX)
     {
         return "JPEG";
     }
@@ -57,10 +203,14 @@ bool EvidenceCollector::readChunk(
 {
     readError = false;
 
-    constexpr std::size_t CHUNK_SIZE =
-        4 * 1024 * 1024;
-
-    buffer.resize(CHUNK_SIZE);
+    /*
+     * Reuse the vector capacity between iterations.
+     *
+     * resize() does not normally reallocate after the first iteration
+     * because the vector already owns enough capacity.
+     */
+    buffer.resize(
+        FORENSIC_CHUNK_SIZE);
 
     DWORD bytesRead = 0;
 
@@ -68,17 +218,21 @@ bool EvidenceCollector::readChunk(
         ReadFile(
             deviceHandle,
             buffer.data(),
-            static_cast<DWORD>(buffer.size()),
+            static_cast<DWORD>(
+                buffer.size()),
             &bytesRead,
             nullptr);
 
-    if (!success || bytesRead == 0)
+    if (!success)
     {
         const DWORD error =
             GetLastError();
 
+        /*
+         * ERROR_HANDLE_EOF is a normal end condition.
+         * Any other error means the scan really failed.
+         */
         readError =
-            !success &&
             error != ERROR_HANDLE_EOF;
 
         buffer.clear();
@@ -86,12 +240,23 @@ bool EvidenceCollector::readChunk(
         return false;
     }
 
-    buffer.resize(bytesRead);
+    if (bytesRead == 0)
+    {
+        buffer.clear();
 
-    std::cout
-        << "Bytes read   : "
-        << bytesRead
-        << '\n';
+        return false;
+    }
+
+    buffer.resize(
+        static_cast<std::size_t>(
+            bytesRead));
+
+    /*
+     * Deliberately no per-chunk std::cout here.
+     *
+     * Console output for thousands of chunks can become a surprisingly
+     * expensive bottleneck during multi-GB forensic scans.
+     */
 
     return true;
 }
@@ -102,7 +267,8 @@ bool EvidenceCollector::carveArtifacts(
     std::size_t endOffset,
     const std::string &outputPath) const
 {
-    if (startOffset >= buffer.size() ||
+    if (buffer.empty() ||
+        startOffset >= buffer.size() ||
         endOffset >= buffer.size() ||
         startOffset > endOffset)
     {
@@ -111,52 +277,35 @@ bool EvidenceCollector::carveArtifacts(
 
     std::ofstream output(
         outputPath,
-        std::ios::binary);
+        std::ios::binary |
+        std::ios::out |
+        std::ios::trunc);
 
     if (!output)
     {
-        std::cerr
-            << "Unable to create recovered file.\n";
-
         return false;
     }
 
     const std::size_t artifactSize =
-        endOffset - startOffset + 1;
+        endOffset -
+        startOffset +
+        1;
 
     output.write(
         reinterpret_cast<const char *>(
-            buffer.data() + startOffset),
+            buffer.data() +
+            startOffset),
         static_cast<std::streamsize>(
             artifactSize));
 
-    if (!output)
-    {
-        std::cerr
-            << "Failed to write recovered file.\n";
-
-        return false;
-    }
-
-    std::cout
-        << "Artifact carved successfully.\n";
-
-    std::cout
-        << "Recovered file: "
-        << outputPath
-        << '\n';
-
-    std::cout
-        << "Recovered size: "
-        << artifactSize
-        << " bytes\n";
-
-    return true;
+    return static_cast<bool>(
+        output);
 }
 
 EvidenceCollectionResult
 EvidenceCollector::collectWithSummary(
-    const std::string &source)
+    const std::string &source,
+    const EvidenceProgressCallback &progressCallback)
 {
     EvidenceCollectionResult result;
 
@@ -184,22 +333,6 @@ EvidenceCollector::collectWithSummary(
     if (deviceHandle ==
         INVALID_HANDLE_VALUE)
     {
-        const DWORD error =
-            GetLastError();
-
-        std::cerr
-            << "Unable to open forensic source.\n";
-
-        std::cerr
-            << "Source: "
-            << source
-            << '\n';
-
-        std::cerr
-            << "Windows error: "
-            << error
-            << '\n';
-
         summary.sourceOpened =
             false;
 
@@ -224,29 +357,36 @@ EvidenceCollector::collectWithSummary(
                 sourceSize.QuadPart);
     }
 
-    std::cout
-        << "Forensic source opened successfully.\n";
+    if (progressCallback)
+    {
+        progressCallback(
+            0,
+            summary.totalBytes);
+    }
 
-    std::cout
-        << "Source size: "
-        << summary.totalBytes
-        << " bytes\n";
+    /*
+     * Reserve some space for evidence metadata.
+     *
+     * This does not affect correctness. It simply reduces vector
+     * reallocations when many artifacts are recovered.
+     */
+    evidence.reserve(64);
 
     std::vector<std::uint8_t>
         buffer;
 
+    /*
+     * Allocate once and reuse.
+     */
+    buffer.reserve(
+        FORENSIC_CHUNK_SIZE);
+
     std::uint64_t globalOffset =
         0;
 
-    std::size_t chunkNumber =
-        0;
-
-    bool jpegInProgress =
-        false;
-
-    std::uint64_t jpegStartOffset =
-        0;
-
+    /*
+     * State used for JPEG markers crossing chunk boundaries.
+     */
     bool hasPreviousByte =
         false;
 
@@ -259,17 +399,177 @@ EvidenceCollector::collectWithSummary(
     std::uint8_t previousTwoBytes =
         0;
 
-    std::string currentArtifactId;
+    bool jpegInProgress =
+        false;
 
+    std::uint64_t jpegStartOffset =
+        0;
+
+    std::string currentArtifactId;
     std::string currentOutputPath;
 
     std::ofstream recoveredFile;
 
+    std::error_code directoryError;
+
     std::filesystem::create_directories(
-        "recovered");
+        "recovered",
+        directoryError);
+
+    /*
+     * If directory creation failed, the actual file open below will
+     * fail and the candidate will simply be rejected.
+     */
 
     bool readError =
         false;
+
+    /*
+     * ---------------------------------------------------------------
+     * FINALIZE CURRENT JPEG
+     * ---------------------------------------------------------------
+     *
+     * Both normal same-chunk EOI and cross-chunk EOI eventually reach
+     * this same validation path.
+     */
+    auto finalizeRecoveredArtifact =
+        [&](std::uint64_t actualEndOffset) -> bool
+        {
+            if (recoveredFile.is_open())
+            {
+                recoveredFile.flush();
+                recoveredFile.close();
+            }
+
+            if (actualEndOffset <
+                jpegStartOffset)
+            {
+                jpegInProgress =
+                    false;
+
+                return false;
+            }
+
+            const std::uint64_t artifactSize =
+                actualEndOffset -
+                jpegStartOffset +
+                1;
+
+            ++summary.recoveredArtifacts;
+
+            summary.recoveredBytes +=
+                artifactSize;
+
+            EvidenceItem item;
+
+            item.artifactId =
+                currentArtifactId;
+
+            item.source =
+                source;
+
+            item.offset =
+                jpegStartOffset;
+
+            item.size =
+                artifactSize;
+
+            item.fileType =
+                "JPEG";
+
+            item.fileName =
+                std::filesystem::path(
+                    currentOutputPath)
+                    .filename()
+                    .string();
+
+            item.recoveredPath =
+                currentOutputPath;
+
+            item.recovered =
+                true;
+
+            /*
+             * Keep the existing validation behavior.
+             *
+             * These calls are intentionally preserved because they
+             * are part of the forensic evidence acceptance criteria.
+             */
+            item.headerValid =
+                validator.validateHeader(
+                    item.recoveredPath);
+
+            item.footerValid =
+                validator.validateFooter(
+                    item.recoveredPath);
+
+            item.sizeValid =
+                validator.validateSize(
+                    item);
+
+            item.structureValid =
+                validator.validateStructure(
+                    item.recoveredPath);
+
+            item.decodable =
+                validator.validateDecodability(
+                    item.recoveredPath);
+
+            item.validated =
+                item.headerValid &&
+                item.footerValid &&
+                item.sizeValid &&
+                item.structureValid &&
+                item.decodable;
+
+            if (!item.validated)
+            {
+                ++summary.rejectedArtifacts;
+
+                jpegInProgress =
+                    false;
+
+                return false;
+            }
+
+            ++summary.validatedArtifacts;
+
+            /*
+             * Hash only validated artifacts.
+             * This avoids hashing rejected JPEGs.
+             */
+            if (!hashCalculator.calculateSha256(
+                    item.recoveredPath,
+                    item.sha256))
+            {
+                ++summary.rejectedArtifacts;
+
+                jpegInProgress =
+                    false;
+
+                return false;
+            }
+
+            confidenceScorer.calculate(
+                item);
+
+            if (item.confidenceScore >= 80)
+            {
+                ++summary.highConfidenceArtifacts;
+            }
+
+            /*
+             * Move/copy the completed evidence item into the result
+             * vector without an unnecessary intermediate object.
+             */
+            evidence.emplace_back(
+                std::move(item));
+
+            jpegInProgress =
+                false;
+
+            return true;
+        };
 
     while (
         readChunk(
@@ -277,303 +577,76 @@ EvidenceCollector::collectWithSummary(
             buffer,
             readError))
     {
-        ++chunkNumber;
-
         const std::uint64_t
             chunkStartOffset =
                 globalOffset;
 
-        std::cout
-            << "\n==============================\n";
+        const std::size_t
+            bufferSize =
+                buffer.size();
 
-        std::cout
-            << "Chunk: "
-            << chunkNumber
-            << '\n';
-
-        std::cout
-            << "Chunk start offset: "
-            << chunkStartOffset
-            << '\n';
-
-        std::cout
-            << "Chunk size: "
-            << buffer.size()
-            << " bytes\n";
+        if (bufferSize == 0)
+        {
+            continue;
+        }
 
         std::size_t scanOffset =
             0;
 
-        while (
-            scanOffset <
-            buffer.size())
+        /*
+         * -----------------------------------------------------------
+         * MAIN CHUNK SCAN
+         * -----------------------------------------------------------
+         */
+        while (scanOffset <
+               bufferSize)
         {
-            if (!jpegInProgress)
-            {
-                bool boundaryJpeg =
-                    false;
-
-                std::size_t boundaryBytes =
-                    0;
-
-                if (
-                    scanOffset == 0 &&
-                    hasPreviousTwoBytes &&
-                    previousTwoBytes == 0xFF &&
-                    previousByte == 0xD8 &&
-                    buffer.size() >= 1 &&
-                    buffer[0] == 0xFF)
-                {
-                    boundaryJpeg =
-                        true;
-
-                    boundaryBytes =
-                        2;
-                }
-                else if (
-                    scanOffset == 0 &&
-                    hasPreviousByte &&
-                    previousByte == 0xFF &&
-                    buffer.size() >= 2 &&
-                    buffer[0] == 0xD8 &&
-                    buffer[1] == 0xFF)
-                {
-                    boundaryJpeg =
-                        true;
-
-                    boundaryBytes =
-                        1;
-                }
-
-                const std::string type =
-                    detectFileType(
-                        buffer,
-                        scanOffset);
-
-                if (
-                    type == "JPEG" ||
-                    boundaryJpeg)
-                {
-                    const std::uint64_t
-                        actualStartOffset =
-                            chunkStartOffset +
-                            scanOffset -
-                            boundaryBytes;
-
-                    ++summary.candidatesFound;
-
-                    std::cout
-                        << "Found JPEG at global offset: "
-                        << actualStartOffset
-                        << '\n';
-
-                    const std::uint64_t
-                        candidateNumber =
-                            summary.candidatesFound;
-
-                    currentArtifactId =
-                        "artifact_" +
-                        std::to_string(
-                            candidateNumber);
-
-                    currentOutputPath =
-                        (std::filesystem::absolute(
-                             std::filesystem::path(
-                                 "recovered") /
-                             ("recovered_" +
-                              std::to_string(
-                                  candidateNumber) +
-                              ".jpg")))
-                            .string();
-
-                    jpegStartOffset =
-                        actualStartOffset;
-
-                    jpegInProgress =
-                        true;
-
-                    recoveredFile.open(
-                        currentOutputPath,
-                        std::ios::binary);
-
-                    if (!recoveredFile)
-                    {
-                        std::cerr
-                            << "Unable to create recovered file.\n";
-
-                        jpegInProgress =
-                            false;
-
-                        ++scanOffset;
-
-                        continue;
-                    }
-
-                    if (boundaryBytes == 2)
-                    {
-                        const std::uint8_t
-                            signatureBytes[2] =
-                                {
-                                    previousTwoBytes,
-                                    previousByte};
-
-                        recoveredFile.write(
-                            reinterpret_cast<
-                                const char *>(signatureBytes),
-                            2);
-                    }
-                    else if (
-                        boundaryBytes == 1)
-                    {
-                        recoveredFile.write(
-                            reinterpret_cast<
-                                const char *>(&previousByte),
-                            1);
-                    }
-
-                    std::cout
-                        << "JPEG carving started.\n";
-                }
-            }
-
+            /*
+             * -------------------------------------------------------
+             * CASE 1:
+             *
+             * We are already inside a JPEG started in an earlier
+             * chunk.
+             * -------------------------------------------------------
+             */
             if (jpegInProgress)
             {
-                bool endFound =
-                    false;
-
-                if (
-                    scanOffset == 0 &&
+                /*
+                 * Special cross-chunk EOI:
+                 *
+                 * previous byte = FF
+                 * current first byte = D9
+                 */
+                if (scanOffset == 0 &&
                     hasPreviousByte &&
-                    previousByte == 0xFF &&
-                    buffer[0] == 0xD9)
+                    previousByte ==
+                        JPEG_MARKER_PREFIX &&
+                    bufferSize >= 1 &&
+                    buffer[0] ==
+                        JPEG_END_SECOND)
                 {
                     recoveredFile.write(
                         reinterpret_cast<
-                            const char *>(&buffer[0]),
+                            const char *>(
+                            buffer.data()),
                         1);
 
                     if (!recoveredFile)
                     {
-                        std::cerr
-                            << "Failed to write recovered JPEG.\n";
-
                         recoveredFile.close();
 
                         jpegInProgress =
                             false;
 
-                        ++scanOffset;
-
-                        continue;
+                        break;
                     }
 
                     const std::uint64_t
                         actualEndOffset =
                             chunkStartOffset;
 
-                    const std::uint64_t
-                        artifactSize =
-                            actualEndOffset -
-                            jpegStartOffset +
-                            1;
-
-                    ++summary.recoveredArtifacts;
-
-                    summary.recoveredBytes +=
-                        artifactSize;
-
-                    recoveredFile.close();
-
-                    EvidenceItem item;
-
-                    item.artifactId =
-                        currentArtifactId;
-
-                    item.source =
-                        source;
-
-                    item.offset =
-                        jpegStartOffset;
-
-                    item.size =
-                        artifactSize;
-
-                    item.fileType =
-                        "JPEG";
-
-                    item.fileName =
-                        std::filesystem::path(
-                            currentOutputPath)
-                            .filename()
-                            .string();
-
-                    item.recoveredPath =
-                        currentOutputPath;
-
-                    item.recovered =
-                        true;
-
-                    item.headerValid =
-                        validator.validateHeader(
-                            item.recoveredPath);
-
-                    item.footerValid =
-                        validator.validateFooter(
-                            item.recoveredPath);
-
-                    item.sizeValid =
-                        validator.validateSize(
-                            item);
-
-                    item.structureValid =
-                        validator.validateStructure(
-                            item.recoveredPath);
-
-                    item.decodable =
-                        validator.validateDecodability(
-                            item.recoveredPath);
-
-                    item.validated =
-                        item.headerValid &&
-                        item.footerValid &&
-                        item.sizeValid &&
-                        item.structureValid &&
-                        item.decodable;
-
-                    if (item.validated)
-                    {
-                        ++summary.validatedArtifacts;
-
-                        if (
-                            hashCalculator.calculateSha256(
-                                item.recoveredPath,
-                                item.sha256))
-                        {
-                            confidenceScorer.calculate(
-                                item);
-
-                            if (
-                                item.confidenceScore >=
-                                80)
-                            {
-                                ++summary.highConfidenceArtifacts;
-                            }
-
-                            evidence.push_back(
-                                item);
-                        }
-                        else
-                        {
-                            ++summary.rejectedArtifacts;
-                        }
-                    }
-                    else
-                    {
-                        ++summary.rejectedArtifacts;
-                    }
-
-                    jpegInProgress =
-                        false;
+                    finalizeRecoveredArtifact(
+                        actualEndOffset);
 
                     scanOffset =
                         1;
@@ -581,172 +654,65 @@ EvidenceCollector::collectWithSummary(
                     continue;
                 }
 
-                for (
-                    std::size_t offset =
-                        scanOffset;
-                    offset + 1 <
-                    buffer.size();
-                    ++offset)
+                /*
+                 * Find FF using optimized memory search.
+                 */
+                const std::size_t
+                    endOffset =
+                    findJpegEnd(
+                        buffer,
+                        scanOffset);
+
+                if (endOffset !=
+                    std::string::npos)
                 {
-                    if (
-                        buffer[offset] == 0xFF &&
-                        buffer[offset + 1] == 0xD9)
+                    /*
+                     * Write everything from the current scan position
+                     * through D9 in one operation.
+                     */
+                    const std::size_t bytesToWrite =
+                        endOffset -
+                        scanOffset +
+                        1;
+
+                    recoveredFile.write(
+                        reinterpret_cast<
+                            const char *>(
+                            buffer.data() +
+                            scanOffset),
+                        static_cast<
+                            std::streamsize>(
+                            bytesToWrite));
+
+                    if (!recoveredFile)
                     {
-                        const std::size_t
-                            endOffset =
-                                offset + 1;
-
-                        recoveredFile.write(
-                            reinterpret_cast<
-                                const char *>(
-                                buffer.data() +
-                                scanOffset),
-                            static_cast<
-                                std::streamsize>(
-                                endOffset -
-                                scanOffset +
-                                1));
-
-                        if (!recoveredFile)
-                        {
-                            std::cerr
-                                << "Failed to write recovered JPEG.\n";
-
-                            recoveredFile.close();
-
-                            jpegInProgress =
-                                false;
-
-                            endFound =
-                                true;
-
-                            break;
-                        }
-
-                        const std::uint64_t
-                            actualEndOffset =
-                                chunkStartOffset +
-                                endOffset;
-
-                        const std::uint64_t
-                            artifactSize =
-                                actualEndOffset -
-                                jpegStartOffset +
-                                1;
-
-                        ++summary.recoveredArtifacts;
-
-                        summary.recoveredBytes +=
-                            artifactSize;
-
                         recoveredFile.close();
-
-                        EvidenceItem item;
-
-                        item.artifactId =
-                            currentArtifactId;
-
-                        item.source =
-                            source;
-
-                        item.offset =
-                            jpegStartOffset;
-
-                        item.size =
-                            artifactSize;
-
-                        item.fileType =
-                            "JPEG";
-
-                        item.fileName =
-                            std::filesystem::path(
-                                currentOutputPath)
-                                .filename()
-                                .string();
-
-                        item.recoveredPath =
-                            currentOutputPath;
-
-                        item.recovered =
-                            true;
-
-                        item.headerValid =
-                            validator.validateHeader(
-                                item.recoveredPath);
-
-                        item.footerValid =
-                            validator.validateFooter(
-                                item.recoveredPath);
-
-                        item.sizeValid =
-                            validator.validateSize(
-                                item);
-
-                        item.structureValid =
-                            validator.validateStructure(
-                                item.recoveredPath);
-
-                        item.decodable =
-                            validator.validateDecodability(
-                                item.recoveredPath);
-
-                        item.validated =
-                            item.headerValid &&
-                            item.footerValid &&
-                            item.sizeValid &&
-                            item.structureValid &&
-                            item.decodable;
-
-                        if (item.validated)
-                        {
-                            ++summary.validatedArtifacts;
-
-                            if (
-                                hashCalculator.calculateSha256(
-                                    item.recoveredPath,
-                                    item.sha256))
-                            {
-                                confidenceScorer.calculate(
-                                    item);
-
-                                if (
-                                    item.confidenceScore >=
-                                    80)
-                                {
-                                    ++summary.highConfidenceArtifacts;
-                                }
-
-                                evidence.push_back(
-                                    item);
-                            }
-                            else
-                            {
-                                ++summary.rejectedArtifacts;
-                            }
-                        }
-                        else
-                        {
-                            ++summary.rejectedArtifacts;
-                        }
 
                         jpegInProgress =
                             false;
 
-                        scanOffset =
-                            endOffset + 1;
-
-                        endFound =
-                            true;
-
                         break;
                     }
-                }
 
-                if (endFound)
-                {
+                    const std::uint64_t
+                        actualEndOffset =
+                            chunkStartOffset +
+                            endOffset;
+
+                    finalizeRecoveredArtifact(
+                        actualEndOffset);
+
+                    scanOffset =
+                        endOffset + 1;
+
                     continue;
                 }
 
+                /*
+                 * No EOI in this chunk.
+                 *
+                 * Write the remaining chunk in one operation.
+                 */
                 recoveredFile.write(
                     reinterpret_cast<
                         const char *>(
@@ -754,14 +720,11 @@ EvidenceCollector::collectWithSummary(
                         scanOffset),
                     static_cast<
                         std::streamsize>(
-                        buffer.size() -
+                        bufferSize -
                         scanOffset));
 
                 if (!recoveredFile)
                 {
-                    std::cerr
-                        << "Failed to write JPEG chunk.\n";
-
                     recoveredFile.close();
 
                     jpegInProgress =
@@ -771,58 +734,282 @@ EvidenceCollector::collectWithSummary(
                 }
 
                 scanOffset =
-                    buffer.size();
+                    bufferSize;
 
                 continue;
             }
 
-            ++scanOffset;
+            /*
+             * -------------------------------------------------------
+             * CASE 2:
+             *
+             * Search for the next JPEG SOI.
+             *
+             * The old implementation checked every byte and called
+             * detectFileType() at every position.
+             *
+             * This version jumps directly between 0xFF bytes.
+             * -------------------------------------------------------
+             */
+            bool boundaryJpeg =
+                false;
+
+            std::size_t boundaryBytes =
+                0;
+
+            /*
+             * JPEG SOI may cross the chunk boundary:
+             *
+             * previous two bytes: FF D8
+             * current first byte: FF
+             *
+             * Therefore actual JPEG start is 2 bytes before this chunk.
+             */
+            if (scanOffset == 0 &&
+                hasPreviousTwoBytes &&
+                previousTwoBytes ==
+                    JPEG_MARKER_PREFIX &&
+                previousByte ==
+                    JPEG_START_SECOND &&
+                buffer[0] ==
+                    JPEG_MARKER_PREFIX)
+            {
+                boundaryJpeg =
+                    true;
+
+                boundaryBytes =
+                    2;
+            }
+            /*
+             * Another possible boundary:
+             *
+             * previous byte: FF
+             * current first two bytes: D8 FF
+             */
+            else if (
+                scanOffset == 0 &&
+                hasPreviousByte &&
+                previousByte ==
+                    JPEG_MARKER_PREFIX &&
+                bufferSize >= 2 &&
+                buffer[0] ==
+                    JPEG_START_SECOND &&
+                buffer[1] ==
+                    JPEG_MARKER_PREFIX)
+            {
+                boundaryJpeg =
+                    true;
+
+                boundaryBytes =
+                    1;
+            }
+
+            std::size_t jpegOffset =
+                std::string::npos;
+
+            if (!boundaryJpeg)
+            {
+                jpegOffset =
+                    findJpegStart(
+                        buffer,
+                        scanOffset);
+            }
+
+            if (!boundaryJpeg &&
+                jpegOffset ==
+                    std::string::npos)
+            {
+                /*
+                 * No JPEG start exists in the remainder of this chunk.
+                 */
+                scanOffset =
+                    bufferSize;
+
+                continue;
+            }
+
+            /*
+             * If a boundary JPEG was detected, the current logical
+             * start position is zero. Otherwise use jpegOffset.
+             */
+            const std::size_t
+                actualBufferOffset =
+                    boundaryJpeg
+                        ? 0
+                        : jpegOffset;
+
+            const std::uint64_t
+                actualStartOffset =
+                    chunkStartOffset +
+                    actualBufferOffset -
+                    boundaryBytes;
+
+            ++summary.candidatesFound;
+
+            const std::uint64_t
+                candidateNumber =
+                    summary.candidatesFound;
+
+            currentArtifactId =
+                "artifact_" +
+                std::to_string(
+                    candidateNumber);
+
+            currentOutputPath =
+                (std::filesystem::absolute(
+                     std::filesystem::path(
+                         "recovered") /
+                     ("recovered_" +
+                      std::to_string(
+                          candidateNumber) +
+                      ".jpg")))
+                    .string();
+
+            jpegStartOffset =
+                actualStartOffset;
+
+            recoveredFile.open(
+                currentOutputPath,
+                std::ios::binary |
+                std::ios::out |
+                std::ios::trunc);
+
+            if (!recoveredFile)
+            {
+                jpegInProgress =
+                    false;
+
+                /*
+                 * Move past the candidate marker so that a bad output
+                 * path does not repeatedly rediscover the same marker.
+                 */
+                scanOffset =
+                    actualBufferOffset + 1;
+
+                continue;
+            }
+
+            jpegInProgress =
+                true;
+
+            /*
+             * Write the signature bytes that belong to the previous
+             * chunk when the JPEG starts across the boundary.
+             */
+            if (boundaryBytes == 2)
+            {
+                const std::uint8_t
+                    signatureBytes[2] =
+                        {
+                            previousTwoBytes,
+                            previousByte};
+
+                recoveredFile.write(
+                    reinterpret_cast<
+                        const char *>(
+                        signatureBytes),
+                    2);
+            }
+            else if (boundaryBytes == 1)
+            {
+                recoveredFile.write(
+                    reinterpret_cast<
+                        const char *>(
+                        &previousByte),
+                    1);
+            }
+
+            if (!recoveredFile)
+            {
+                recoveredFile.close();
+
+                jpegInProgress =
+                    false;
+
+                scanOffset =
+                    actualBufferOffset + 1;
+
+                continue;
+            }
+
+            /*
+             * Continue scanning from the actual JPEG start.
+             *
+             * For a normal JPEG:
+             *   scanOffset = FF of FF D8 FF
+             *
+             * For a boundary JPEG:
+             *   scanOffset = 0
+             *
+             * The next iteration enters the jpegInProgress branch.
+             */
+            scanOffset =
+                actualBufferOffset;
         }
 
-        if (!buffer.empty())
+        /*
+         * -----------------------------------------------------------
+         * SAVE LAST TWO BYTES FOR CROSS-CHUNK MARKERS
+         * -----------------------------------------------------------
+         */
+        if (bufferSize >= 2)
         {
-            if (buffer.size() >= 2)
-            {
-                previousTwoBytes =
-                    buffer[buffer.size() - 2];
+            previousTwoBytes =
+                buffer[bufferSize - 2];
 
-                previousByte =
-                    buffer[buffer.size() - 1];
+            previousByte =
+                buffer[bufferSize - 1];
 
-                hasPreviousTwoBytes =
-                    true;
+            hasPreviousTwoBytes =
+                true;
 
-                hasPreviousByte =
-                    true;
-            }
-            else
-            {
-                previousByte =
-                    buffer.back();
+            hasPreviousByte =
+                true;
+        }
+        else
+        {
+            previousByte =
+                buffer[bufferSize - 1];
 
-                hasPreviousByte =
-                    true;
+            hasPreviousByte =
+                true;
 
-                hasPreviousTwoBytes =
-                    false;
-            }
+            hasPreviousTwoBytes =
+                false;
         }
 
         globalOffset +=
-            buffer.size();
+            static_cast<std::uint64_t>(
+                bufferSize);
+
+        /*
+         * LIVE PROGRESS
+         *
+         * One callback per large chunk instead of per byte/file marker.
+         * With a 16 MiB chunk this keeps UI overhead extremely small.
+         */
+        if (progressCallback)
+        {
+            progressCallback(
+                globalOffset,
+                summary.totalBytes);
+        }
     }
 
+    /*
+     * ---------------------------------------------------------------
+     * INCOMPLETE JPEG AT EOF
+     * ---------------------------------------------------------------
+     */
     if (jpegInProgress)
     {
-        std::cout
-            << "JPEG started at global offset "
-            << jpegStartOffset
-            << " but end marker was not found before EOF.\n";
-
         if (recoveredFile.is_open())
         {
             recoveredFile.close();
         }
+
+        jpegInProgress =
+            false;
     }
 
     CloseHandle(
@@ -834,50 +1021,26 @@ EvidenceCollector::collectWithSummary(
     summary.completed =
         !readError;
 
-    std::cout
-        << "\n==============================\n";
-
-    std::cout
-        << (summary.completed
-                ? "Forensic source scanning completed.\n"
-                : "Forensic source scanning stopped because of a read error.\n");
-
-    std::cout
-        << "Total bytes scanned: "
-        << summary.bytesScanned
-        << '\n';
-
-    std::cout
-        << "Candidates found: "
-        << summary.candidatesFound
-        << '\n';
-
-    std::cout
-        << "Recovered artifacts: "
-        << summary.recoveredArtifacts
-        << '\n';
-
-    std::cout
-        << "Validated artifacts: "
-        << summary.validatedArtifacts
-        << '\n';
-
-    std::cout
-        << "Rejected artifacts: "
-        << summary.rejectedArtifacts
-        << '\n';
-
-    std::cout
-        << "High confidence: "
-        << summary.highConfidenceArtifacts
-        << '\n';
+    /*
+     * Ensure final progress reaches the exact scanned byte count.
+     */
+    if (progressCallback)
+    {
+        progressCallback(
+            summary.bytesScanned,
+            summary.totalBytes);
+    }
 
     return result;
 }
 
 std::vector<EvidenceItem>
-EvidenceCollector::collect(const std::string &source)
+EvidenceCollector::collect(
+    const std::string &source,
+    const EvidenceProgressCallback &progressCallback)
 {
-    return collectWithSummary(source)
+    return collectWithSummary(
+        source,
+        progressCallback)
         .evidence;
 }

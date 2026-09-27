@@ -1,7 +1,9 @@
 #pragma once
 
 #include <Windows.h>
+
 #include "VerificationResult.h"
+#include "SanitizationResult.h"
 
 enum class AtaSanitizeMethod
 {
@@ -10,4 +12,7 @@ enum class AtaSanitizeMethod
     Overwrite
 };
 
-VerificationResult executeAtaSanitize(HANDLE deviceHandle, AtaSanitizeMethod method);
+VerificationResult executeAtaSanitize(
+    HANDLE deviceHandle,
+    AtaSanitizeMethod method,
+    const SecureWipe::SanitizationProgressCallback& progressCallback = {});

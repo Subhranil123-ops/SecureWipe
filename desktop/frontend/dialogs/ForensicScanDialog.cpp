@@ -5,15 +5,18 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QProgressBar>
+#include <QFileInfo>
 #include <QStringList>
 #include <QVBoxLayout>
+#include <QtGlobal>
 
 ForensicScanDialog::ForensicScanDialog(
     const QString &source,
     QWidget *parent)
     : QDialog(parent),
       sourceLabel_(new QLabel(this)),
-      progressBar_(new QProgressBar(this))
+      progressBar_(new QProgressBar(this)),
+      progressLabel_(new QLabel(this))
 {
     setWindowTitle(
         QStringLiteral(
@@ -157,8 +160,19 @@ ForensicScanDialog::ForensicScanDialog(
         "}"
     );
 
+    /*
+     * The progress bar starts indeterminate because the source
+     * size may not yet be known.
+     *
+     * For a known source size, setProgress() changes this to
+     * determinate 0..100 mode.
+     */
     progressBar_->setRange(
         0,
+        0
+    );
+
+    progressBar_->setValue(
         0
     );
 
@@ -179,6 +193,22 @@ ForensicScanDialog::ForensicScanDialog(
         "QProgressBar::chunk {"
         "background:#2563EB;"
         "border-radius:4px;"
+        "}"
+    );
+
+    progressLabel_->setText(
+        QStringLiteral(
+            "Preparing forensic acquisition…"
+        )
+    );
+
+    progressLabel_->setStyleSheet(
+        "QLabel {"
+        "background:transparent;"
+        "border:none;"
+        "color:#475467;"
+        "font-size:10px;"
+        "font-weight:600;"
         "}"
     );
 
@@ -324,10 +354,75 @@ ForensicScanDialog::ForensicScanDialog(
     );
 
     layout->addWidget(
+        progressLabel_
+    );
+
+    layout->addWidget(
         stageFrame
     );
 
     layout->addWidget(
         note
+    );
+}
+
+void ForensicScanDialog::setProgress(
+    int percentage,
+    quint64 bytesScanned,
+    quint64 totalBytes)
+{
+    /*
+     * A totalBytes value of zero means that the source size is not
+     * available. In that situation we deliberately keep the bar
+     * indeterminate rather than displaying a fabricated percentage.
+     */
+    if (totalBytes == 0 ||
+        percentage < 0)
+    {
+        progressBar_->setRange(
+            0,
+            0
+        );
+
+        progressLabel_->setText(
+            QStringLiteral(
+                "Scanning · %1 bytes read"
+            ).arg(
+                bytesScanned
+            )
+        );
+
+        return;
+    }
+
+    const int boundedPercentage =
+        qBound(
+            0,
+            percentage,
+            100
+        );
+
+    progressBar_->setRange(
+        0,
+        100
+    );
+
+    progressBar_->setValue(
+        boundedPercentage
+    );
+
+    progressLabel_->setText(
+        QStringLiteral(
+            "%1% · %2 / %3 bytes"
+        )
+        .arg(
+            boundedPercentage
+        )
+        .arg(
+            bytesScanned
+        )
+        .arg(
+            totalBytes
+        )
     );
 }

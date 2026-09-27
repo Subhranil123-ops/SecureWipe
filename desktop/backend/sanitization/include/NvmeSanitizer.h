@@ -1,6 +1,9 @@
 #pragma once
 
 #include <Windows.h>
+#include <cstdint>
+
+#include "SanitizationResult.h"
 
 enum class NvmeSanitizeMethod
 {
@@ -9,4 +12,8 @@ enum class NvmeSanitizeMethod
     Overwrite
 };
 
-bool executeNvmeSanitize(HANDLE deviceHandle, NvmeSanitizeMethod method);
+bool executeNvmeSanitize(
+    HANDLE deviceHandle,
+    NvmeSanitizeMethod method,
+    std::uint64_t totalBytes,
+    const SecureWipe::SanitizationProgressCallback& progressCallback = {});

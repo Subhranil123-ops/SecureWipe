@@ -43,12 +43,29 @@ std::string escapeJson(const std::string& value)
     {
         switch (character)
         {
-        case '\\': output << "\\\\"; break;
-        case '"': output << "\\\""; break;
-        case '\n': output << "\\n"; break;
-        case '\r': output << "\\r"; break;
-        case '\t': output << "\\t"; break;
-        default: output << character; break;
+        case '\\':
+            output << "\\\\";
+            break;
+
+        case '"':
+            output << "\\\"";
+            break;
+
+        case '\n':
+            output << "\\n";
+            break;
+
+        case '\r':
+            output << "\\r";
+            break;
+
+        case '\t':
+            output << "\\t";
+            break;
+
+        default:
+            output << character;
+            break;
         }
     }
 
@@ -56,50 +73,118 @@ std::string escapeJson(const std::string& value)
 }
 }
 
-SanitizationPipeline::SanitizationPipeline(const std::filesystem::path& evidenceDirectory)
-    : evidenceDirectory_(evidenceDirectory.empty() ? defaultEvidenceDirectory() : evidenceDirectory)
-    , certificateDirectory_(evidenceDirectory_ / "certificates")
-    , auditLogPath_(evidenceDirectory_ / "audit" / "sanitization_audit.jsonl")
-    , operationLogPath_(evidenceDirectory_ / "logs" / "sanitization.log")
-    , auditLogger_(auditLogPath_)
-    , operationLogger_(operationLogPath_)
+SanitizationPipeline::SanitizationPipeline(
+    const std::filesystem::path& evidenceDirectory)
+    : evidenceDirectory_(
+          evidenceDirectory.empty()
+              ? defaultEvidenceDirectory()
+              : evidenceDirectory)
+    , certificateDirectory_(
+          evidenceDirectory_ / "certificates")
+    , auditLogPath_(
+          evidenceDirectory_ /
+          "audit" /
+          "sanitization_audit.jsonl")
+    , operationLogPath_(
+          evidenceDirectory_ /
+          "logs" /
+          "sanitization.log")
+    , auditLogger_(
+          auditLogPath_)
+    , operationLogger_(
+          operationLogPath_)
 {
 }
 
-const std::filesystem::path& SanitizationPipeline::evidenceDirectory() const
+const std::filesystem::path&
+SanitizationPipeline::evidenceDirectory() const
 {
     return evidenceDirectory_;
 }
 
-SecureWipe::SanitizationPipelineResult SanitizationPipeline::execute(
+SecureWipe::SanitizationPipelineResult
+SanitizationPipeline::execute(
     const StorageDevice& device,
     const std::string& requestId,
     const std::string& actorId,
     const std::string& workstationId,
-    const std::string& expectedSerialNumber)
+    const std::string& expectedSerialNumber,
+    const SecureWipe::SanitizationProgressCallback&
+        progressCallback)
 {
     SecureWipe::SanitizationPipelineResult pipelineResult;
-    pipelineResult.auditLogPath = auditLogPath_.string();
-    pipelineResult.operationLogPath = operationLogPath_.string();
+
+    pipelineResult.auditLogPath =
+        auditLogPath_.string();
+
+    pipelineResult.operationLogPath =
+        operationLogPath_.string();
 
     SecureWipe::SanitizationResult initialResult;
-    initialResult.deviceId = device.getDeviceId();
-    initialResult.model = device.getModel();
-    initialResult.serialNumber = device.getSerialNumber();
-    initialResult.interfaceType = device.getInterfaceType();
-    initialResult.capacityBytes = device.getCapacityBytes();
+
+    initialResult.deviceId =
+        device.getDeviceId();
+
+    initialResult.model =
+        device.getModel();
+
+    initialResult.serialNumber =
+        device.getSerialNumber();
+
+    initialResult.interfaceType =
+        device.getInterfaceType();
+
+    initialResult.capacityBytes =
+        device.getCapacityBytes();
 
     std::string auditError;
     std::string logError;
+
     bool auditOk = true;
 
+    /*
+     * Progress callback is intentionally kept outside the Qt layer.
+     *
+     * The backend only reports progress. It never touches a QWidget
+     * or any other GUI object.
+     */
+    const auto reportProgress =
+        [&progressCallback](
+            std::uint64_t processedBytes,
+            std::uint64_t totalBytes,
+            const std::string& phase,
+            const std::string& message)
+        {
+            if (!progressCallback)
+            {
+                return;
+            }
+
+            progressCallback(
+                processedBytes,
+                totalBytes,
+                phase,
+                message);
+        };
+
+    reportProgress(
+            0,
+            device.getCapacityBytes(),
+            "PIPELINE",
+            "Starting sanitization pipeline");
+
     operationLogger_.info(
-        "Host Overwrite vertical pipeline started. device=" + device.getDeviceId() +
-        ", requestId=" + requestId + ", actorId=" + actorId,
+        "Host Overwrite vertical pipeline started. device=" +
+            device.getDeviceId() +
+            ", requestId=" +
+            requestId +
+            ", actorId=" +
+            actorId,
         logError);
 
     if (!this->appendAudit(
-            SecureWipe::SanitizationAuditEvent::PIPELINE_STARTED,
+            SecureWipe::SanitizationAuditEvent::
+                PIPELINE_STARTED,
             SecureWipe::AuditSeverity::INFO,
             initialResult,
             requestId,
@@ -108,102 +193,222 @@ SecureWipe::SanitizationPipelineResult SanitizationPipeline::execute(
             auditError))
     {
         auditOk = false;
-        pipelineResult.sanitization = initialResult;
-        pipelineResult.sanitization.status = SecureWipe::SanitizationStatus::FAILED;
-        pipelineResult.sanitization.error = SecureWipe::SanitizationErrorCode::SANITIZATION_EXECUTION_FAILED;
-        pipelineResult.sanitization.message = "Unable to write initial audit event: " + auditError;
-        pipelineResult.sanitization.errorMessage = pipelineResult.sanitization.message;
-        pipelineResult.pipelineMessage = pipelineResult.sanitization.message;
-        pipelineResult.auditTrailPersisted = false;
+
+        pipelineResult.sanitization =
+            initialResult;
+
+        pipelineResult.sanitization.status =
+            SecureWipe::SanitizationStatus::FAILED;
+
+        pipelineResult.sanitization.error =
+            SecureWipe::SanitizationErrorCode::
+                SANITIZATION_EXECUTION_FAILED;
+
+        pipelineResult.sanitization.message =
+            "Unable to write initial audit event: " +
+            auditError;
+
+        pipelineResult.sanitization.errorMessage =
+            pipelineResult.sanitization.message;
+
+        pipelineResult.pipelineMessage =
+            pipelineResult.sanitization.message;
+
+        pipelineResult.auditTrailPersisted =
+            false;
+
+        reportProgress(
+            0,
+            device.getCapacityBytes(),
+            "PIPELINE",
+            "Failed to initialize sanitization audit");
+
         return pipelineResult;
     }
 
     try
     {
+        /*
+         * ------------------------------------------------------------
+         * BASIC TARGET VALIDATION
+         * ------------------------------------------------------------
+         */
+
+        reportProgress(
+            0,
+            device.getCapacityBytes(),
+            "PIPELINE",
+            "Validating sanitization target");
+
         if (device.getDeviceId().empty())
         {
-            pipelineResult.sanitization = initialResult;
-            pipelineResult.sanitization.status = SecureWipe::SanitizationStatus::FAILED;
-            pipelineResult.sanitization.error = SecureWipe::SanitizationErrorCode::MISSING_DEVICE_ID;
-            pipelineResult.sanitization.message = "Sanitization target has no physical device identifier.";
-            pipelineResult.sanitization.errorMessage = pipelineResult.sanitization.message;
+            pipelineResult.sanitization =
+                initialResult;
+
+            pipelineResult.sanitization.status =
+                SecureWipe::SanitizationStatus::FAILED;
+
+            pipelineResult.sanitization.error =
+                SecureWipe::SanitizationErrorCode::
+                    MISSING_DEVICE_ID;
+
+            pipelineResult.sanitization.message =
+                "Sanitization target has no physical device identifier.";
+
+            pipelineResult.sanitization.errorMessage =
+                pipelineResult.sanitization.message;
 
             if (!this->appendAudit(
-                    SecureWipe::SanitizationAuditEvent::PIPELINE_FAILED,
+                    SecureWipe::SanitizationAuditEvent::
+                        PIPELINE_FAILED,
                     auditErrorSeverity(),
                     pipelineResult.sanitization,
                     requestId,
                     actorId,
                     pipelineResult.sanitization.message,
                     auditError))
+            {
                 auditOk = false;
+            }
 
-            pipelineResult.auditTrailPersisted = auditOk;
-            pipelineResult.pipelineMessage = pipelineResult.sanitization.message;
+            pipelineResult.auditTrailPersisted =
+                auditOk;
+
+            pipelineResult.pipelineMessage =
+                pipelineResult.sanitization.message;
+
             return pipelineResult;
         }
 
         if (device.getCapacityBytes() == 0)
         {
-            pipelineResult.sanitization = initialResult;
-            pipelineResult.sanitization.status = SecureWipe::SanitizationStatus::FAILED;
-            pipelineResult.sanitization.error = SecureWipe::SanitizationErrorCode::UNKNOWN_DEVICE_CAPACITY;
-            pipelineResult.sanitization.message = "Sanitization target capacity is unknown.";
-            pipelineResult.sanitization.errorMessage = pipelineResult.sanitization.message;
+            pipelineResult.sanitization =
+                initialResult;
+
+            pipelineResult.sanitization.status =
+                SecureWipe::SanitizationStatus::FAILED;
+
+            pipelineResult.sanitization.error =
+                SecureWipe::SanitizationErrorCode::
+                    UNKNOWN_DEVICE_CAPACITY;
+
+            pipelineResult.sanitization.message =
+                "Sanitization target capacity is unknown.";
+
+            pipelineResult.sanitization.errorMessage =
+                pipelineResult.sanitization.message;
 
             if (!this->appendAudit(
-                    SecureWipe::SanitizationAuditEvent::PIPELINE_FAILED,
+                    SecureWipe::SanitizationAuditEvent::
+                        PIPELINE_FAILED,
                     auditErrorSeverity(),
                     pipelineResult.sanitization,
                     requestId,
                     actorId,
                     pipelineResult.sanitization.message,
                     auditError))
+            {
                 auditOk = false;
+            }
 
-            pipelineResult.auditTrailPersisted = auditOk;
-            pipelineResult.pipelineMessage = pipelineResult.sanitization.message;
+            pipelineResult.auditTrailPersisted =
+                auditOk;
+
+            pipelineResult.pipelineMessage =
+                pipelineResult.sanitization.message;
+
             return pipelineResult;
         }
 
+        /*
+         * ------------------------------------------------------------
+         * AUTHORIZED TARGET IDENTITY
+         * ------------------------------------------------------------
+         */
+
+        reportProgress(
+            0,
+            device.getCapacityBytes(),
+            "PIPELINE",
+            "Checking authorized target identity");
+
         if (!expectedSerialNumber.empty())
         {
-            if (device.getSerialNumber() != expectedSerialNumber)
+            if (device.getSerialNumber() !=
+                expectedSerialNumber)
             {
-                pipelineResult.sanitization = initialResult;
-                pipelineResult.sanitization.status = SecureWipe::SanitizationStatus::FAILED;
-                pipelineResult.sanitization.error = SecureWipe::SanitizationErrorCode::SAFETY_VALIDATION_FAILED;
-                pipelineResult.sanitization.message = "Physical target serial number does not match the authorized request.";
-                pipelineResult.sanitization.errorMessage = pipelineResult.sanitization.message;
+                pipelineResult.sanitization =
+                    initialResult;
+
+                pipelineResult.sanitization.status =
+                    SecureWipe::SanitizationStatus::FAILED;
+
+                pipelineResult.sanitization.error =
+                    SecureWipe::SanitizationErrorCode::
+                        SAFETY_VALIDATION_FAILED;
+
+                pipelineResult.sanitization.message =
+                    "Physical target serial number does not match the authorized request.";
+
+                pipelineResult.sanitization.errorMessage =
+                    pipelineResult.sanitization.message;
 
                 if (!this->appendAudit(
-                        SecureWipe::SanitizationAuditEvent::PIPELINE_FAILED,
+                        SecureWipe::SanitizationAuditEvent::
+                            PIPELINE_FAILED,
                         auditErrorSeverity(),
                         pipelineResult.sanitization,
                         requestId,
                         actorId,
                         pipelineResult.sanitization.message,
                         auditError))
+                {
                     auditOk = false;
+                }
 
-                pipelineResult.auditTrailPersisted = auditOk;
-                pipelineResult.pipelineMessage = pipelineResult.sanitization.message;
+                pipelineResult.auditTrailPersisted =
+                    auditOk;
+
+                pipelineResult.pipelineMessage =
+                    pipelineResult.sanitization.message;
+
                 return pipelineResult;
             }
 
-            safetyEngine_.setExpectedTargetSerial(expectedSerialNumber);
+            safetyEngine_.setExpectedTargetSerial(
+                expectedSerialNumber);
         }
         else
         {
-            safetyEngine_.setExpectedTarget(device);
+            safetyEngine_.setExpectedTarget(
+                device);
         }
 
-        const SafetyResult safetyResult = safetyEngine_.evaluateWithResult(device);
-        initialResult.message = safetyResult.summary;
+        /*
+         * ------------------------------------------------------------
+         * SAFETY ENGINE
+         * ------------------------------------------------------------
+         */
+
+        reportProgress(
+            0,
+            device.getCapacityBytes(),
+            "PIPELINE",
+            "Running safety validation");
+
+        const SafetyResult safetyResult =
+            safetyEngine_.evaluateWithResult(
+                device);
+
+        initialResult.message =
+            safetyResult.summary;
 
         if (!this->appendAudit(
-                SecureWipe::SanitizationAuditEvent::SAFETY_CHECK_COMPLETED,
-                safetyResult.isOverallSafe ? SecureWipe::AuditSeverity::INFO : auditErrorSeverity(),
+                SecureWipe::SanitizationAuditEvent::
+                    SAFETY_CHECK_COMPLETED,
+                safetyResult.isOverallSafe
+                    ? SecureWipe::AuditSeverity::INFO
+                    : auditErrorSeverity(),
                 initialResult,
                 requestId,
                 actorId,
@@ -212,26 +417,54 @@ SecureWipe::SanitizationPipelineResult SanitizationPipeline::execute(
                 &safetyResult))
         {
             auditOk = false;
-            pipelineResult.sanitization = initialResult;
-            pipelineResult.sanitization.status = SecureWipe::SanitizationStatus::FAILED;
-            pipelineResult.sanitization.error = SecureWipe::SanitizationErrorCode::SANITIZATION_EXECUTION_FAILED;
-            pipelineResult.sanitization.message = "Audit persistence failed during safety evaluation: " + auditError;
-            pipelineResult.sanitization.errorMessage = pipelineResult.sanitization.message;
-            pipelineResult.pipelineMessage = pipelineResult.sanitization.message;
-            pipelineResult.auditTrailPersisted = false;
+
+            pipelineResult.sanitization =
+                initialResult;
+
+            pipelineResult.sanitization.status =
+                SecureWipe::SanitizationStatus::FAILED;
+
+            pipelineResult.sanitization.error =
+                SecureWipe::SanitizationErrorCode::
+                    SANITIZATION_EXECUTION_FAILED;
+
+            pipelineResult.sanitization.message =
+                "Audit persistence failed during safety evaluation: " +
+                auditError;
+
+            pipelineResult.sanitization.errorMessage =
+                pipelineResult.sanitization.message;
+
+            pipelineResult.pipelineMessage =
+                pipelineResult.sanitization.message;
+
+            pipelineResult.auditTrailPersisted =
+                false;
+
             return pipelineResult;
         }
 
         if (!safetyResult.isOverallSafe)
         {
-            pipelineResult.sanitization = initialResult;
-            pipelineResult.sanitization.status = SecureWipe::SanitizationStatus::FAILED;
-            pipelineResult.sanitization.error = SecureWipe::SanitizationErrorCode::SAFETY_VALIDATION_FAILED;
-            pipelineResult.sanitization.message = safetyResult.summary;
-            pipelineResult.sanitization.errorMessage = safetyResult.summary;
+            pipelineResult.sanitization =
+                initialResult;
+
+            pipelineResult.sanitization.status =
+                SecureWipe::SanitizationStatus::FAILED;
+
+            pipelineResult.sanitization.error =
+                SecureWipe::SanitizationErrorCode::
+                    SAFETY_VALIDATION_FAILED;
+
+            pipelineResult.sanitization.message =
+                safetyResult.summary;
+
+            pipelineResult.sanitization.errorMessage =
+                safetyResult.summary;
 
             if (!this->appendAudit(
-                    SecureWipe::SanitizationAuditEvent::PIPELINE_FAILED,
+                    SecureWipe::SanitizationAuditEvent::
+                        PIPELINE_FAILED,
                     auditErrorSeverity(),
                     pipelineResult.sanitization,
                     requestId,
@@ -239,16 +472,39 @@ SecureWipe::SanitizationPipelineResult SanitizationPipeline::execute(
                     safetyResult.summary,
                     auditError,
                     &safetyResult))
+            {
                 auditOk = false;
+            }
 
-            operationLogger_.warning("Sanitization blocked by safety engine. " + safetyResult.summary, logError);
-            pipelineResult.auditTrailPersisted = auditOk;
-            pipelineResult.pipelineMessage = safetyResult.summary;
+            operationLogger_.warning(
+                "Sanitization blocked by safety engine. " +
+                    safetyResult.summary,
+                logError);
+
+            pipelineResult.auditTrailPersisted =
+                auditOk;
+
+            pipelineResult.pipelineMessage =
+                safetyResult.summary;
+
             return pipelineResult;
         }
 
+        reportProgress(
+            0,
+            device.getCapacityBytes(),
+            "PIPELINE",
+            "Safety validation passed");
+
+        /*
+         * ------------------------------------------------------------
+         * TARGET VALIDATION AUDIT
+         * ------------------------------------------------------------
+         */
+
         if (!this->appendAudit(
-                SecureWipe::SanitizationAuditEvent::TARGET_VALIDATED,
+                SecureWipe::SanitizationAuditEvent::
+                    TARGET_VALIDATED,
                 SecureWipe::AuditSeverity::INFO,
                 initialResult,
                 requestId,
@@ -258,68 +514,166 @@ SecureWipe::SanitizationPipelineResult SanitizationPipeline::execute(
                 &safetyResult))
         {
             auditOk = false;
-            pipelineResult.sanitization = initialResult;
-            pipelineResult.sanitization.status = SecureWipe::SanitizationStatus::FAILED;
-            pipelineResult.sanitization.error = SecureWipe::SanitizationErrorCode::SANITIZATION_EXECUTION_FAILED;
-            pipelineResult.sanitization.message = "Audit persistence failed after target validation: " + auditError;
-            pipelineResult.sanitization.errorMessage = pipelineResult.sanitization.message;
-            pipelineResult.pipelineMessage = pipelineResult.sanitization.message;
-            pipelineResult.auditTrailPersisted = false;
+
+            pipelineResult.sanitization =
+                initialResult;
+
+            pipelineResult.sanitization.status =
+                SecureWipe::SanitizationStatus::FAILED;
+
+            pipelineResult.sanitization.error =
+                SecureWipe::SanitizationErrorCode::
+                    SANITIZATION_EXECUTION_FAILED;
+
+            pipelineResult.sanitization.message =
+                "Audit persistence failed after target validation: " +
+                auditError;
+
+            pipelineResult.sanitization.errorMessage =
+                pipelineResult.sanitization.message;
+
+            pipelineResult.pipelineMessage =
+                pipelineResult.sanitization.message;
+
+            pipelineResult.auditTrailPersisted =
+                false;
+
             return pipelineResult;
         }
 
-        const SanitizationCapability capability = detectSanitizationCapability(device);
-        const SanitizationMethod method = sanitizationEngine_.selectMethod(device, capability);
-        initialResult.method = method;
+        /*
+         * ------------------------------------------------------------
+         * CAPABILITY DETECTION
+         * ------------------------------------------------------------
+         */
+
+        reportProgress(
+            0,
+            device.getCapacityBytes(),
+            "PIPELINE",
+            "Detecting sanitization capability");
+
+        const SanitizationCapability capability =
+            detectSanitizationCapability(
+                device);
+
+        /*
+         * ------------------------------------------------------------
+         * METHOD SELECTION
+         * ------------------------------------------------------------
+         */
+
+        reportProgress(
+            0,
+            device.getCapacityBytes(),
+            "PIPELINE",
+            "Selecting sanitization method");
+
+        const SanitizationMethod method =
+            sanitizationEngine_.selectMethod(
+                device,
+                capability);
+
+        initialResult.method =
+            method;
 
         if (!this->appendAudit(
-                SecureWipe::SanitizationAuditEvent::METHOD_SELECTED,
-                method == SanitizationMethod::Unsupported ? auditErrorSeverity() : SecureWipe::AuditSeverity::INFO,
+                SecureWipe::SanitizationAuditEvent::
+                    METHOD_SELECTED,
+                method == SanitizationMethod::Unsupported
+                    ? auditErrorSeverity()
+                    : SecureWipe::AuditSeverity::INFO,
                 initialResult,
                 requestId,
                 actorId,
-                method == SanitizationMethod::Unsupported ?
-                    "No supported sanitization method was detected." :
-                    "Sanitization method selected.",
+                method == SanitizationMethod::Unsupported
+                    ? "No supported sanitization method was detected."
+                    : "Sanitization method selected.",
                 auditError))
         {
             auditOk = false;
-            pipelineResult.sanitization = initialResult;
-            pipelineResult.sanitization.status = SecureWipe::SanitizationStatus::FAILED;
-            pipelineResult.sanitization.error = SecureWipe::SanitizationErrorCode::SANITIZATION_EXECUTION_FAILED;
-            pipelineResult.sanitization.message = "Audit persistence failed after method selection: " + auditError;
-            pipelineResult.sanitization.errorMessage = pipelineResult.sanitization.message;
-            pipelineResult.pipelineMessage = pipelineResult.sanitization.message;
-            pipelineResult.auditTrailPersisted = false;
+
+            pipelineResult.sanitization =
+                initialResult;
+
+            pipelineResult.sanitization.status =
+                SecureWipe::SanitizationStatus::FAILED;
+
+            pipelineResult.sanitization.error =
+                SecureWipe::SanitizationErrorCode::
+                    SANITIZATION_EXECUTION_FAILED;
+
+            pipelineResult.sanitization.message =
+                "Audit persistence failed after method selection: " +
+                auditError;
+
+            pipelineResult.sanitization.errorMessage =
+                pipelineResult.sanitization.message;
+
+            pipelineResult.pipelineMessage =
+                pipelineResult.sanitization.message;
+
+            pipelineResult.auditTrailPersisted =
+                false;
+
             return pipelineResult;
         }
 
-        if (method == SanitizationMethod::Unsupported)
+        if (method ==
+            SanitizationMethod::Unsupported)
         {
-            pipelineResult.sanitization = initialResult;
-            pipelineResult.sanitization.status = SecureWipe::SanitizationStatus::FAILED;
-            pipelineResult.sanitization.error = SecureWipe::SanitizationErrorCode::UNSUPPORTED_SANITIZATION_METHOD;
-            pipelineResult.sanitization.message = "No supported sanitization method found for this target.";
-            pipelineResult.sanitization.errorMessage = pipelineResult.sanitization.message;
+            pipelineResult.sanitization =
+                initialResult;
+
+            pipelineResult.sanitization.status =
+                SecureWipe::SanitizationStatus::FAILED;
+
+            pipelineResult.sanitization.error =
+                SecureWipe::SanitizationErrorCode::
+                    UNSUPPORTED_SANITIZATION_METHOD;
+
+            pipelineResult.sanitization.message =
+                "No supported sanitization method found for this target.";
+
+            pipelineResult.sanitization.errorMessage =
+                pipelineResult.sanitization.message;
 
             if (!this->appendAudit(
-                    SecureWipe::SanitizationAuditEvent::PIPELINE_FAILED,
+                    SecureWipe::SanitizationAuditEvent::
+                        PIPELINE_FAILED,
                     auditErrorSeverity(),
                     pipelineResult.sanitization,
                     requestId,
                     actorId,
                     pipelineResult.sanitization.message,
                     auditError))
+            {
                 auditOk = false;
+            }
 
-            operationLogger_.error("Unsupported sanitization method for device=" + device.getDeviceId(), logError);
-            pipelineResult.auditTrailPersisted = auditOk;
-            pipelineResult.pipelineMessage = pipelineResult.sanitization.message;
+            operationLogger_.error(
+                "Unsupported sanitization method for device=" +
+                    device.getDeviceId(),
+                logError);
+
+            pipelineResult.auditTrailPersisted =
+                auditOk;
+
+            pipelineResult.pipelineMessage =
+                pipelineResult.sanitization.message;
+
             return pipelineResult;
         }
 
+        /*
+         * ------------------------------------------------------------
+         * SANITIZATION START
+         * ------------------------------------------------------------
+         */
+
         if (!this->appendAudit(
-                SecureWipe::SanitizationAuditEvent::SANITIZATION_STARTED,
+                SecureWipe::SanitizationAuditEvent::
+                    SANITIZATION_STARTED,
                 SecureWipe::AuditSeverity::INFO,
                 initialResult,
                 requestId,
@@ -328,73 +682,194 @@ SecureWipe::SanitizationPipelineResult SanitizationPipeline::execute(
                 auditError))
         {
             auditOk = false;
-            pipelineResult.sanitization = initialResult;
-            pipelineResult.sanitization.status = SecureWipe::SanitizationStatus::FAILED;
-            pipelineResult.sanitization.error = SecureWipe::SanitizationErrorCode::SANITIZATION_EXECUTION_FAILED;
-            pipelineResult.sanitization.message = "Audit persistence failed immediately before sanitization: " + auditError;
-            pipelineResult.sanitization.errorMessage = pipelineResult.sanitization.message;
-            pipelineResult.pipelineMessage = pipelineResult.sanitization.message;
-            pipelineResult.auditTrailPersisted = false;
+
+            pipelineResult.sanitization =
+                initialResult;
+
+            pipelineResult.sanitization.status =
+                SecureWipe::SanitizationStatus::FAILED;
+
+            pipelineResult.sanitization.error =
+                SecureWipe::SanitizationErrorCode::
+                    SANITIZATION_EXECUTION_FAILED;
+
+            pipelineResult.sanitization.message =
+                "Audit persistence failed immediately before sanitization: " +
+                auditError;
+
+            pipelineResult.sanitization.errorMessage =
+                pipelineResult.sanitization.message;
+
+            pipelineResult.pipelineMessage =
+                pipelineResult.sanitization.message;
+
+            pipelineResult.auditTrailPersisted =
+                false;
+
             return pipelineResult;
         }
 
-        operationLogger_.info("Sanitization execution started. device=" + device.getDeviceId(), logError);
+        operationLogger_.info(
+            "Sanitization execution started. device=" +
+                device.getDeviceId(),
+            logError);
 
-        pipelineResult.sanitization = sanitizationEngine_.sanitize(device, safetyResult);
+        /*
+         * IMPORTANT:
+         *
+         * This is the actual bridge from the sanitization pipeline
+         * to the lower-level sanitization engine.
+         *
+         * The pipeline does NOT update Qt directly.
+         * It simply forwards the callback supplied by the UI/worker.
+         */
+
+        reportProgress(
+            0,
+            device.getCapacityBytes(),
+            "PIPELINE",
+            "Sanitization started");
+
+        pipelineResult.sanitization =
+            sanitizationEngine_.sanitize(
+                device,
+                safetyResult,
+                progressCallback);
+
+        /*
+         * Always report the final backend state.
+         *
+         * If the operation failed, the UI receives 0 rather than a
+         * misleading 100%.
+         */
+        if (pipelineResult.sanitization.status ==
+            SecureWipe::SanitizationStatus::COMPLETED)
+        {
+            reportProgress(
+            device.getCapacityBytes(),
+            device.getCapacityBytes(),
+            "PIPELINE",
+            "Sanitization completed");
+        }
+        else
+        {
+            reportProgress(
+            0,
+            device.getCapacityBytes(),
+            "PIPELINE",
+            "Sanitization failed");
+        }
+
+        /*
+         * ------------------------------------------------------------
+         * SANITIZATION AUDIT
+         * ------------------------------------------------------------
+         */
 
         if (!this->appendAudit(
-                SecureWipe::SanitizationAuditEvent::SANITIZATION_COMPLETED,
-                pipelineResult.sanitization.status == SecureWipe::SanitizationStatus::COMPLETED ? SecureWipe::AuditSeverity::INFO : auditErrorSeverity(),
+                SecureWipe::SanitizationAuditEvent::
+                    SANITIZATION_COMPLETED,
+                pipelineResult.sanitization.status ==
+                        SecureWipe::SanitizationStatus::COMPLETED
+                    ? SecureWipe::AuditSeverity::INFO
+                    : auditErrorSeverity(),
                 pipelineResult.sanitization,
                 requestId,
                 actorId,
                 pipelineResult.sanitization.message,
                 auditError))
+        {
             auditOk = false;
+        }
 
-        const SecureWipe::AuditSeverity verificationSeverity =
-            pipelineResult.sanitization.verificationStatus == SecureWipe::VerificationStatus::PASSED ?
-                SecureWipe::AuditSeverity::INFO :
-                auditErrorSeverity();
+        /*
+         * ------------------------------------------------------------
+         * VERIFICATION AUDIT
+         * ------------------------------------------------------------
+         */
+
+        const SecureWipe::AuditSeverity
+            verificationSeverity =
+                pipelineResult.sanitization
+                            .verificationStatus ==
+                        SecureWipe::VerificationStatus::PASSED
+                    ? SecureWipe::AuditSeverity::INFO
+                    : auditErrorSeverity();
 
         if (!this->appendAudit(
-                SecureWipe::SanitizationAuditEvent::VERIFICATION_COMPLETED,
+                SecureWipe::SanitizationAuditEvent::
+                    VERIFICATION_COMPLETED,
                 verificationSeverity,
                 pipelineResult.sanitization,
                 requestId,
                 actorId,
-                pipelineResult.sanitization.verificationMessage,
+                pipelineResult.sanitization
+                    .verificationMessage,
                 auditError))
+        {
             auditOk = false;
+        }
 
         operationLogger_.info(
-            "Sanitization execution finished. operationId=" + pipelineResult.sanitization.operationId,
+            "Sanitization execution finished. operationId=" +
+                pipelineResult.sanitization.operationId,
             logError);
+
+        /*
+         * ------------------------------------------------------------
+         * SUCCESS CHECK
+         * ------------------------------------------------------------
+         */
 
         if (!pipelineResult.sanitization.isSuccess())
         {
             if (pipelineResult.sanitization.errorMessage.empty())
-                pipelineResult.sanitization.errorMessage = pipelineResult.sanitization.message;
+            {
+                pipelineResult.sanitization.errorMessage =
+                    pipelineResult.sanitization.message;
+            }
 
             const std::string failureMessage =
                 "Sanitization did not reach a verified-success state. " +
                 pipelineResult.sanitization.message;
 
             if (!this->appendAudit(
-                    SecureWipe::SanitizationAuditEvent::PIPELINE_FAILED,
+                    SecureWipe::SanitizationAuditEvent::
+                        PIPELINE_FAILED,
                     auditErrorSeverity(),
                     pipelineResult.sanitization,
                     requestId,
                     actorId,
                     failureMessage,
                     auditError))
+            {
                 auditOk = false;
+            }
 
-            operationLogger_.error(failureMessage, logError);
-            pipelineResult.auditTrailPersisted = auditOk;
-            pipelineResult.pipelineMessage = "Sanitization/verification failed. Certificate was not issued.";
+            operationLogger_.error(
+                failureMessage,
+                logError);
+
+            pipelineResult.auditTrailPersisted =
+                auditOk;
+
+            pipelineResult.pipelineMessage =
+                "Sanitization/verification failed. Certificate was not issued.";
+
             return pipelineResult;
         }
+
+        /*
+         * ------------------------------------------------------------
+         * CERTIFICATE GENERATION
+         * ------------------------------------------------------------
+         */
+
+        reportProgress(
+            device.getCapacityBytes(),
+            device.getCapacityBytes(),
+            "PIPELINE",
+            "Generating sanitization certificate");
 
         pipelineResult.certificate =
             certificateGenerator_.generate(
@@ -406,77 +881,125 @@ SecureWipe::SanitizationPipelineResult SanitizationPipeline::execute(
             pipelineResult.certificate.isValid();
 
         if (!this->appendAudit(
-                SecureWipe::SanitizationAuditEvent::CERTIFICATE_GENERATED,
-                pipelineResult.certificateGenerated ? SecureWipe::AuditSeverity::INFO : auditErrorSeverity(),
+                SecureWipe::SanitizationAuditEvent::
+                    CERTIFICATE_GENERATED,
+                pipelineResult.certificateGenerated
+                    ? SecureWipe::AuditSeverity::INFO
+                    : auditErrorSeverity(),
                 pipelineResult.sanitization,
                 requestId,
                 actorId,
                 pipelineResult.certificate.message,
                 auditError))
+        {
             auditOk = false;
+        }
 
         if (!pipelineResult.certificateGenerated)
         {
             if (!this->appendAudit(
-                    SecureWipe::SanitizationAuditEvent::PIPELINE_FAILED,
+                    SecureWipe::SanitizationAuditEvent::
+                        PIPELINE_FAILED,
                     auditErrorSeverity(),
                     pipelineResult.sanitization,
                     requestId,
                     actorId,
                     "Generated certificate failed validation.",
                     auditError))
+            {
                 auditOk = false;
+            }
 
             operationLogger_.error(
-                "Certificate validation failed for operationId=" + pipelineResult.sanitization.operationId,
+                "Certificate validation failed for operationId=" +
+                    pipelineResult.sanitization.operationId,
                 logError);
 
-            pipelineResult.auditTrailPersisted = auditOk;
-            pipelineResult.pipelineMessage = "Certificate validation failed.";
+            pipelineResult.auditTrailPersisted =
+                auditOk;
+
+            pipelineResult.pipelineMessage =
+                "Certificate validation failed.";
+
             return pipelineResult;
         }
 
+        /*
+         * ------------------------------------------------------------
+         * CERTIFICATE PERSISTENCE
+         * ------------------------------------------------------------
+         */
+
         pipelineResult.certificatePath =
-            (certificateDirectory_ / (pipelineResult.certificate.certificateId + ".json")).string();
+            (certificateDirectory_ /
+             (pipelineResult.certificate.certificateId +
+              ".json"))
+                .string();
 
         std::string certificateError;
+
         pipelineResult.certificatePersisted =
-            persistCertificate(pipelineResult.certificate, pipelineResult.certificatePath, certificateError);
+            persistCertificate(
+                pipelineResult.certificate,
+                pipelineResult.certificatePath,
+                certificateError);
 
         if (!pipelineResult.certificatePersisted)
         {
             const std::string failureMessage =
-                "Certificate persistence failed: " + certificateError;
+                "Certificate persistence failed: " +
+                certificateError;
 
             if (!this->appendAudit(
-                    SecureWipe::SanitizationAuditEvent::PIPELINE_FAILED,
+                    SecureWipe::SanitizationAuditEvent::
+                        PIPELINE_FAILED,
                     auditErrorSeverity(),
                     pipelineResult.sanitization,
                     requestId,
                     actorId,
                     failureMessage,
                     auditError))
+            {
                 auditOk = false;
+            }
 
-            operationLogger_.error(failureMessage, logError);
-            pipelineResult.auditTrailPersisted = auditOk;
-            pipelineResult.pipelineMessage = failureMessage;
+            operationLogger_.error(
+                failureMessage,
+                logError);
+
+            pipelineResult.auditTrailPersisted =
+                auditOk;
+
+            pipelineResult.pipelineMessage =
+                failureMessage;
+
             return pipelineResult;
         }
 
         if (!this->appendAudit(
-                SecureWipe::SanitizationAuditEvent::CERTIFICATE_PERSISTED,
+                SecureWipe::SanitizationAuditEvent::
+                    CERTIFICATE_PERSISTED,
                 SecureWipe::AuditSeverity::INFO,
                 pipelineResult.sanitization,
                 requestId,
                 actorId,
-                "Certificate persisted to " + pipelineResult.certificatePath,
+                "Certificate persisted to " +
+                    pipelineResult.certificatePath,
                 auditError))
+        {
             auditOk = false;
+        }
+
+        /*
+         * ------------------------------------------------------------
+         * PIPELINE COMPLETION
+         * ------------------------------------------------------------
+         */
 
         const bool completionAudit =
             this->appendAudit(
-                SecureWipe::SanitizationAuditEvent::PIPELINE_COMPLETED,
+                SecureWipe::SanitizationAuditEvent::
+                    PIPELINE_COMPLETED,
                 SecureWipe::AuditSeverity::INFO,
                 pipelineResult.sanitization,
                 requestId,
@@ -485,65 +1008,121 @@ SecureWipe::SanitizationPipelineResult SanitizationPipeline::execute(
                 auditError);
 
         if (!completionAudit)
+        {
             auditOk = false;
+        }
 
-        pipelineResult.auditTrailPersisted = auditOk;
+        pipelineResult.auditTrailPersisted =
+            auditOk;
 
         operationLogger_.info(
             "Host Overwrite vertical pipeline completed. operationId=" +
-            pipelineResult.sanitization.operationId +
-            ", certificateId=" + pipelineResult.certificate.certificateId,
+                pipelineResult.sanitization.operationId +
+                ", certificateId=" +
+                pipelineResult.certificate.certificateId,
             logError);
 
         pipelineResult.pipelineMessage =
-            pipelineResult.auditTrailPersisted ?
-                "Sanitization, verification, certificate and audit persistence completed successfully." :
-                "Sanitization succeeded, but the audit trail is incomplete.";
+            pipelineResult.auditTrailPersisted
+                ? "Sanitization, verification, certificate and audit persistence completed successfully."
+                : "Sanitization succeeded, but the audit trail is incomplete.";
+
+        reportProgress(
+            device.getCapacityBytes(),
+            device.getCapacityBytes(),
+            "PIPELINE",
+            "Sanitization pipeline completed");
 
         return pipelineResult;
     }
     catch (const std::exception& exception)
     {
-        pipelineResult.sanitization = initialResult;
-        pipelineResult.sanitization.status = SecureWipe::SanitizationStatus::FAILED;
-        pipelineResult.sanitization.error = SecureWipe::SanitizationErrorCode::SANITIZATION_EXECUTION_FAILED;
-        pipelineResult.sanitization.message = exception.what();
-        pipelineResult.sanitization.errorMessage = exception.what();
+        pipelineResult.sanitization =
+            initialResult;
+
+        pipelineResult.sanitization.status =
+            SecureWipe::SanitizationStatus::FAILED;
+
+        pipelineResult.sanitization.error =
+            SecureWipe::SanitizationErrorCode::
+                SANITIZATION_EXECUTION_FAILED;
+
+        pipelineResult.sanitization.message =
+            exception.what();
+
+        pipelineResult.sanitization.errorMessage =
+            exception.what();
 
         if (!this->appendAudit(
-                SecureWipe::SanitizationAuditEvent::PIPELINE_FAILED,
+                SecureWipe::SanitizationAuditEvent::
+                    PIPELINE_FAILED,
                 auditErrorSeverity(),
                 pipelineResult.sanitization,
                 requestId,
                 actorId,
                 exception.what(),
                 auditError))
+        {
             auditOk = false;
+        }
 
-        pipelineResult.auditTrailPersisted = auditOk;
-        pipelineResult.pipelineMessage = exception.what();
+        pipelineResult.auditTrailPersisted =
+            auditOk;
+
+        pipelineResult.pipelineMessage =
+            exception.what();
+
+        reportProgress(
+            0,
+            device.getCapacityBytes(),
+            "PIPELINE",
+            "Sanitization pipeline failed");
+
         return pipelineResult;
     }
     catch (...)
     {
-        pipelineResult.sanitization = initialResult;
-        pipelineResult.sanitization.status = SecureWipe::SanitizationStatus::FAILED;
-        pipelineResult.sanitization.error = SecureWipe::SanitizationErrorCode::SANITIZATION_EXECUTION_FAILED;
-        pipelineResult.sanitization.message = "Unknown exception in sanitization pipeline.";
-        pipelineResult.sanitization.errorMessage = pipelineResult.sanitization.message;
+        pipelineResult.sanitization =
+            initialResult;
+
+        pipelineResult.sanitization.status =
+            SecureWipe::SanitizationStatus::FAILED;
+
+        pipelineResult.sanitization.error =
+            SecureWipe::SanitizationErrorCode::
+                SANITIZATION_EXECUTION_FAILED;
+
+        pipelineResult.sanitization.message =
+            "Unknown exception in sanitization pipeline.";
+
+        pipelineResult.sanitization.errorMessage =
+            pipelineResult.sanitization.message;
 
         if (!this->appendAudit(
-                SecureWipe::SanitizationAuditEvent::PIPELINE_FAILED,
+                SecureWipe::SanitizationAuditEvent::
+                    PIPELINE_FAILED,
                 auditErrorSeverity(),
                 pipelineResult.sanitization,
                 requestId,
                 actorId,
                 pipelineResult.sanitization.message,
                 auditError))
+        {
             auditOk = false;
+        }
 
-        pipelineResult.auditTrailPersisted = auditOk;
-        pipelineResult.pipelineMessage = pipelineResult.sanitization.message;
+        pipelineResult.auditTrailPersisted =
+            auditOk;
+
+        pipelineResult.pipelineMessage =
+            pipelineResult.sanitization.message;
+
+        reportProgress(
+            0,
+            device.getCapacityBytes(),
+            "PIPELINE",
+            "Sanitization pipeline failed");
+
         return pipelineResult;
     }
 }
@@ -559,34 +1138,79 @@ bool SanitizationPipeline::appendAudit(
     const SafetyResult* safetyResult)
 {
     SecureWipe::SanitizationEvent event;
-    event.eventType = eventType;
-    event.severity = severity;
-    event.operationId = result.operationId;
-    event.requestId = requestId;
-    event.actorId = actorId;
-    event.deviceId = result.deviceId;
-    event.model = result.model;
-    event.serialNumber = result.serialNumber;
-    event.interfaceType = result.interfaceType;
-    event.capacityBytes = result.capacityBytes;
-    event.method = result.method;
-    event.sanitizationStatus = result.status;
-    event.verificationStatus = result.verificationStatus;
-    event.bytesProcessed = result.bytesProcessed;
-    event.bytesVerified = result.bytesVerified;
-    event.verificationSamples = result.verificationSamples;
-    event.error = result.error;
-    event.nativeErrorCode = result.nativeErrorCode;
-    event.message = message;
+
+    event.eventType =
+        eventType;
+
+    event.severity =
+        severity;
+
+    event.operationId =
+        result.operationId;
+
+    event.requestId =
+        requestId;
+
+    event.actorId =
+        actorId;
+
+    event.deviceId =
+        result.deviceId;
+
+    event.model =
+        result.model;
+
+    event.serialNumber =
+        result.serialNumber;
+
+    event.interfaceType =
+        result.interfaceType;
+
+    event.capacityBytes =
+        result.capacityBytes;
+
+    event.method =
+        result.method;
+
+    event.sanitizationStatus =
+        result.status;
+
+    event.verificationStatus =
+        result.verificationStatus;
+
+    event.bytesProcessed =
+        result.bytesProcessed;
+
+    event.bytesVerified =
+        result.bytesVerified;
+
+    event.verificationSamples =
+        result.verificationSamples;
+
+    event.error =
+        result.error;
+
+    event.nativeErrorCode =
+        result.nativeErrorCode;
+
+    event.message =
+        message;
 
     if (safetyResult != nullptr)
     {
-        event.safetyDecision = safetyResult->decision;
-        event.safetySummary = safetyResult->summary;
-        event.safetyChecks = safetyResult->checks;
+        event.safetyDecision =
+            safetyResult->decision;
+
+        event.safetySummary =
+            safetyResult->summary;
+
+        event.safetyChecks =
+            safetyResult->checks;
     }
 
-    return auditLogger_.append(std::move(event), errorMessage);
+    return auditLogger_.append(
+        std::move(event),
+        errorMessage);
 }
 
 bool SanitizationPipeline::persistCertificate(
@@ -596,51 +1220,201 @@ bool SanitizationPipeline::persistCertificate(
 {
     try
     {
-        const auto parent = path.parent_path();
-        if (!parent.empty())
-            std::filesystem::create_directories(parent);
+        const auto parent =
+            path.parent_path();
 
-        std::ofstream output(path, std::ios::out | std::ios::trunc | std::ios::binary);
+        if (!parent.empty())
+        {
+            std::filesystem::create_directories(
+                parent);
+        }
+
+        std::ofstream output(
+            path,
+            std::ios::out |
+                std::ios::trunc |
+                std::ios::binary);
 
         if (!output)
         {
-            errorMessage = "Unable to create certificate file: " + path.string();
+            errorMessage =
+                "Unable to create certificate file: " +
+                path.string();
+
             return false;
         }
 
-        output << "{\n";
-        output << "  \"certificateId\": \"" << escapeJson(certificate.certificateId) << "\",\n";
-        output << "  \"operationId\": \"" << escapeJson(certificate.operationId) << "\",\n";
-        output << "  \"requestId\": \"" << escapeJson(certificate.requestId) << "\",\n";
-        output << "  \"workstationId\": \"" << escapeJson(certificate.workstationId) << "\",\n";
-        output << "  \"deviceId\": \"" << escapeJson(certificate.deviceId) << "\",\n";
-        output << "  \"model\": \"" << escapeJson(certificate.model) << "\",\n";
-        output << "  \"serialNumber\": \"" << escapeJson(certificate.serialNumber) << "\",\n";
-        output << "  \"capacityBytes\": " << certificate.capacityBytes << ",\n";
-        output << "  \"interfaceType\": \"" << escapeJson(certificate.interfaceType) << "\",\n";
-        output << "  \"method\": \"" << SecureWipe::SanitizationEvent::methodName(certificate.method) << "\",\n";
-        output << "  \"status\": \"" << SecureWipe::SanitizationEvent::sanitizationStatusName(certificate.status) << "\",\n";
-        output << "  \"bytesProcessed\": " << certificate.bytesProcessed << ",\n";
-        output << "  \"operationDurationMs\": " << certificate.operationDurationMs << ",\n";
-        output << "  \"verificationStatus\": \"" << SecureWipe::SanitizationEvent::verificationStatusName(certificate.verificationStatus) << "\",\n";
-        output << "  \"verificationPerformed\": " << (certificate.verificationPerformed ? "true" : "false") << ",\n";
-        output << "  \"verificationPassed\": " << (certificate.verificationPassed ? "true" : "false") << ",\n";
-        output << "  \"bytesVerified\": " << certificate.bytesVerified << ",\n";
-        output << "  \"verificationSamples\": " << certificate.verificationSamples << ",\n";
-        output << "  \"deviceReportedSuccess\": " << (certificate.deviceReportedSuccess ? "true" : "false") << ",\n";
-        output << "  \"globalDataErased\": " << (certificate.globalDataErased ? "true" : "false") << ",\n";
-        output << "  \"nativeErrorCode\": " << certificate.nativeErrorCode << ",\n";
-        output << "  \"verificationMessage\": \"" << escapeJson(certificate.verificationMessage) << "\",\n";
-        output << "  \"generatedAt\": \"" << escapeJson(certificate.generatedAt) << "\",\n";
-        output << "  \"hashAlgorithm\": \"" << escapeJson(certificate.hashAlgorithm) << "\",\n";
-        output << "  \"certificateHash\": \"" << escapeJson(certificate.certificateHash) << "\",\n";
-        output << "  \"message\": \"" << escapeJson(certificate.message) << "\"\n";
-        output << "}\n";
+        output
+            << "{\n";
+
+        output
+            << "  \"certificateId\": \""
+            << escapeJson(
+                   certificate.certificateId)
+            << "\",\n";
+
+        output
+            << "  \"operationId\": \""
+            << escapeJson(
+                   certificate.operationId)
+            << "\",\n";
+
+        output
+            << "  \"requestId\": \""
+            << escapeJson(
+                   certificate.requestId)
+            << "\",\n";
+
+        output
+            << "  \"workstationId\": \""
+            << escapeJson(
+                   certificate.workstationId)
+            << "\",\n";
+
+        output
+            << "  \"deviceId\": \""
+            << escapeJson(
+                   certificate.deviceId)
+            << "\",\n";
+
+        output
+            << "  \"model\": \""
+            << escapeJson(
+                   certificate.model)
+            << "\",\n";
+
+        output
+            << "  \"serialNumber\": \""
+            << escapeJson(
+                   certificate.serialNumber)
+            << "\",\n";
+
+        output
+            << "  \"capacityBytes\": "
+            << certificate.capacityBytes
+            << ",\n";
+
+        output
+            << "  \"interfaceType\": \""
+            << escapeJson(
+                   certificate.interfaceType)
+            << "\",\n";
+
+        output
+            << "  \"method\": \""
+            << SecureWipe::SanitizationEvent::
+                   methodName(
+                       certificate.method)
+            << "\",\n";
+
+        output
+            << "  \"status\": \""
+            << SecureWipe::SanitizationEvent::
+                   sanitizationStatusName(
+                       certificate.status)
+            << "\",\n";
+
+        output
+            << "  \"bytesProcessed\": "
+            << certificate.bytesProcessed
+            << ",\n";
+
+        output
+            << "  \"operationDurationMs\": "
+            << certificate.operationDurationMs
+            << ",\n";
+
+        output
+            << "  \"verificationStatus\": \""
+            << SecureWipe::SanitizationEvent::
+                   verificationStatusName(
+                       certificate.verificationStatus)
+            << "\",\n";
+
+        output
+            << "  \"verificationPerformed\": "
+            << (certificate.verificationPerformed
+                    ? "true"
+                    : "false")
+            << ",\n";
+
+        output
+            << "  \"verificationPassed\": "
+            << (certificate.verificationPassed
+                    ? "true"
+                    : "false")
+            << ",\n";
+
+        output
+            << "  \"bytesVerified\": "
+            << certificate.bytesVerified
+            << ",\n";
+
+        output
+            << "  \"verificationSamples\": "
+            << certificate.verificationSamples
+            << ",\n";
+
+        output
+            << "  \"deviceReportedSuccess\": "
+            << (certificate.deviceReportedSuccess
+                    ? "true"
+                    : "false")
+            << ",\n";
+
+        output
+            << "  \"globalDataErased\": "
+            << (certificate.globalDataErased
+                    ? "true"
+                    : "false")
+            << ",\n";
+
+        output
+            << "  \"nativeErrorCode\": "
+            << certificate.nativeErrorCode
+            << ",\n";
+
+        output
+            << "  \"verificationMessage\": \""
+            << escapeJson(
+                   certificate.verificationMessage)
+            << "\",\n";
+
+        output
+            << "  \"generatedAt\": \""
+            << escapeJson(
+                   certificate.generatedAt)
+            << "\",\n";
+
+        output
+            << "  \"hashAlgorithm\": \""
+            << escapeJson(
+                   certificate.hashAlgorithm)
+            << "\",\n";
+
+        output
+            << "  \"certificateHash\": \""
+            << escapeJson(
+                   certificate.certificateHash)
+            << "\",\n";
+
+        output
+            << "  \"message\": \""
+            << escapeJson(
+                   certificate.message)
+            << "\"\n";
+
+        output
+            << "}\n";
+
         output.flush();
 
         if (!output.good())
         {
-            errorMessage = "Failed while writing certificate file: " + path.string();
+            errorMessage =
+                "Failed while writing certificate file: " +
+                path.string();
+
             return false;
         }
 
@@ -648,7 +1422,9 @@ bool SanitizationPipeline::persistCertificate(
     }
     catch (const std::exception& exception)
     {
-        errorMessage = exception.what();
+        errorMessage =
+            exception.what();
+
         return false;
     }
 }

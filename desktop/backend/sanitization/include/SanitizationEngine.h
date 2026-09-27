@@ -25,5 +25,6 @@ public:
 
     SecureWipe::SanitizationResult sanitize(
         const StorageDevice &device,
-        const SafetyResult &safetyResult);
+        const SafetyResult &safetyResult,
+        const SecureWipe::SanitizationProgressCallback& progressCallback = {});
 };

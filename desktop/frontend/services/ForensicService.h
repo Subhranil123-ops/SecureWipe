@@ -97,15 +97,23 @@ public:
     bool hasSelectedCase() const;
 
 signals:
+    void scanProgress(
+        int percentage,
+        quint64 bytesScanned,
+        quint64 totalBytes);
+
     void scanFinished();
+
     void scanFailed(
         const QString &message);
 
     void casesLoaded();
+
     void casesLoadFailed(
         const QString &message);
 
     void caseLoaded();
+
     void caseLoadFailed(
         const QString &message);
 
@@ -116,6 +124,7 @@ signals:
         const QString &message);
 
     void resultsSubmitted();
+
     void resultsSubmitFailed(
         const QString &message);
 

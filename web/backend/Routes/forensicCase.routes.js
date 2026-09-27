@@ -46,6 +46,13 @@ router.use(
     Authenticate
 );
 
+
+/*
+ * ============================================================
+ * FORENSIC DASHBOARD
+ * ============================================================
+ */
+
 router.get(
     "/dashboard",
     Authorize(
@@ -56,6 +63,13 @@ router.get(
     ),
     controller.getDashboard
 );
+
+
+/*
+ * ============================================================
+ * FORENSIC CASE LIST
+ * ============================================================
+ */
 
 router.get(
     "/",
@@ -68,6 +82,13 @@ router.get(
     controller.getCases
 );
 
+
+/*
+ * ============================================================
+ * CREATE CASE
+ * ============================================================
+ */
+
 router.post(
     "/",
     Authorize(
@@ -78,6 +99,13 @@ router.post(
     ),
     controller.createCase
 );
+
+
+/*
+ * ============================================================
+ * CASE DETAILS
+ * ============================================================
+ */
 
 router.get(
     "/:caseId",
@@ -90,6 +118,13 @@ router.get(
     controller.getCase
 );
 
+
+/*
+ * ============================================================
+ * SERVER FORENSIC AUDIT TRAIL
+ * ============================================================
+ */
+
 router.get(
     "/:caseId/audit",
     Authorize(
@@ -101,6 +136,49 @@ router.get(
     controller.getAuditTrail
 );
 
+
+/*
+ * ============================================================
+ * NATIVE FORENSIC INTEGRITY
+ * ============================================================
+ */
+
+router.get(
+    "/:caseId/integrity",
+    Authorize(
+        "ADMIN",
+        "CUSTOMER",
+        "WORKSTATION_HEAD",
+        "WORKSTATION_EMPLOYEE"
+    ),
+    controller.getNativeIntegrity
+);
+
+
+/*
+ * ============================================================
+ * VERIFY STORED NATIVE FORENSIC INTEGRITY
+ * ============================================================
+ */
+
+router.post(
+    "/:caseId/integrity/verify",
+    Authorize(
+        "ADMIN",
+        "CUSTOMER",
+        "WORKSTATION_HEAD",
+        "WORKSTATION_EMPLOYEE"
+    ),
+    controller.verifyNativeIntegrity
+);
+
+
+/*
+ * ============================================================
+ * CASE ASSIGNMENT
+ * ============================================================
+ */
+
 router.patch(
     "/:caseId/assign",
     Authorize(
@@ -109,6 +187,13 @@ router.patch(
     ),
     controller.assignCase
 );
+
+
+/*
+ * ============================================================
+ * STATUS
+ * ============================================================
+ */
 
 router.patch(
     "/:caseId/status",
@@ -120,6 +205,13 @@ router.patch(
     controller.updateStatus
 );
 
+
+/*
+ * ============================================================
+ * NATIVE EVIDENCE PACKAGE
+ * ============================================================
+ */
+
 router.post(
     "/:caseId/evidence-package",
     Authorize(
@@ -130,6 +222,32 @@ router.post(
         .ingestEvidencePackage
 );
 
+
+/*
+ * ============================================================
+ * RECOVERED ARTIFACT CONTENT
+ * ============================================================
+ */
+
+router.get(
+    "/:caseId/artifacts/:artifactId/content",
+    Authorize(
+        "ADMIN",
+        "CUSTOMER",
+        "WORKSTATION_HEAD",
+        "WORKSTATION_EMPLOYEE"
+    ),
+    evidencePackageController
+        .getArtifactContent
+);
+
+
+/*
+ * ============================================================
+ * LEGACY RESULT INGESTION
+ * ============================================================
+ */
+
 router.post(
     "/:caseId/results",
     Authorize(
@@ -138,6 +256,13 @@ router.post(
     ),
     controller.ingestResult
 );
+
+
+/*
+ * ============================================================
+ * FORENSIC REPORT
+ * ============================================================
+ */
 
 router.post(
     "/:caseId/report",

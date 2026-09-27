@@ -5,8 +5,14 @@
 #include "EvidenceItem.h"
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
+
+using EvidenceProgressCallback =
+    std::function<void(
+        std::uint64_t bytesScanned,
+        std::uint64_t totalBytes)>;
 
 struct EvidenceCollectionSummary
 {
@@ -68,10 +74,12 @@ private:
 
 public:
     std::vector<EvidenceItem> collect(
-        const std::string &source
+        const std::string &source,
+        const EvidenceProgressCallback& progressCallback = {}
     );
 
     EvidenceCollectionResult collectWithSummary(
-        const std::string &source
+        const std::string &source,
+        const EvidenceProgressCallback& progressCallback = {}
     );
 };

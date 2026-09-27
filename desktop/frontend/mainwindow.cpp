@@ -39,6 +39,7 @@
 #include <QTableWidgetItem>
 #include <QVBoxLayout>
 #include <QFutureWatcher>
+#include <QMetaObject>
 
 #include <QtConcurrent/QtConcurrentRun>
 
@@ -6088,19 +6089,113 @@ void MainWindow::startSanitization()
 
             watcher->setFuture(
                 QtConcurrent::run(
-                    [targetCopy, requestId, actorId, workstationId, expectedSerialNumber]()
+                    [this, targetCopy, requestId, actorId, workstationId, expectedSerialNumber]()
                         -> SecureWipe::SanitizationPipelineResult
                     {
                         try
                         {
                             SanitizationPipeline pipeline;
 
+                            const SecureWipe::SanitizationProgressCallback
+                                progressCallback =
+                                    [this](
+                                        std::uint64_t processedBytes,
+                                        std::uint64_t totalBytes,
+                                        const std::string &phase,
+                                        const std::string &message)
+                                    {
+                                        int percentage = -1;
+
+                                        if (totalBytes > 0)
+                                        {
+                                            const std::uint64_t boundedProcessed =
+                                                processedBytes > totalBytes
+                                                    ? totalBytes
+                                                    : processedBytes;
+
+                                            percentage =
+                                                static_cast<int>(
+                                                    (boundedProcessed * 100ULL) /
+                                                    totalBytes);
+
+                                            if (percentage > 100)
+                                            {
+                                                percentage = 100;
+                                            }
+                                        }
+
+                                        QMetaObject::invokeMethod(
+                                            this,
+                                            [this,
+                                             percentage,
+                                             processedBytes,
+                                             totalBytes,
+                                             phase,
+                                             message]()
+                                            {
+                                                if (totalBytes == 0 || percentage < 0)
+                                                {
+                                                    operationProgress_->setRange(
+                                                        0,
+                                                        0);
+                                                }
+                                                else
+                                                {
+                                                    operationProgress_->setRange(
+                                                        0,
+                                                        100);
+
+                                                    operationProgress_->setValue(
+                                                        percentage);
+                                                }
+
+                                                const QString phaseText =
+                                                    QString::fromStdString(
+                                                        phase);
+
+                                                const QString messageText =
+                                                    QString::fromStdString(
+                                                        message);
+
+                                                operationValue_->setText(
+                                                    phaseText.isEmpty()
+                                                        ? QStringLiteral(
+                                                              "Sanitizing")
+                                                        : phaseText);
+
+                                                if (!messageText.isEmpty())
+                                                {
+                                                    jobMessageLabel_->setText(
+                                                        QStringLiteral(
+                                                            "Sanitization: %1")
+                                                            .arg(messageText));
+                                                }
+                                                else if (totalBytes > 0)
+                                                {
+                                                    jobMessageLabel_->setText(
+                                                        QStringLiteral(
+                                                            "%1% · %2 / %3 bytes")
+                                                            .arg(percentage)
+                                                            .arg(processedBytes)
+                                                            .arg(totalBytes));
+                                                }
+                                                else
+                                                {
+                                                    jobMessageLabel_->setText(
+                                                        QStringLiteral(
+                                                            "Physical sanitization is running..."));
+                                                }
+                                            },
+                                            Qt::QueuedConnection);
+                                    };
+
                             return pipeline.execute(
                                 targetCopy,
                                 requestId.toStdString(),
                                 actorId.toStdString(),
                                 workstationId.toStdString(),
-                                expectedSerialNumber.toStdString());
+                                expectedSerialNumber.toStdString(),
+                                progressCallback);
                         }
                         catch (
                             const std::exception &exception)
