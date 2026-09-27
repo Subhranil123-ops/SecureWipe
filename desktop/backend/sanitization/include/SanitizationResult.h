@@ -1,12 +1,20 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <string>
 
 #include "SanitizationMethod.h"
 
 namespace SecureWipe
 {
+    using SanitizationProgressCallback =
+        std::function<void(
+            std::uint64_t processedBytes,
+            std::uint64_t totalBytes,
+            const std::string& phase,
+            const std::string& message)>;
+
     enum class SanitizationStatus
     {
         NOT_STARTED,

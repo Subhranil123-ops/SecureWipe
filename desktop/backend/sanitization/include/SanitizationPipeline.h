@@ -1,6 +1,8 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <string>
 
 #include "AuditLogger.h"
@@ -45,16 +47,19 @@ namespace SecureWipe
 class SanitizationPipeline
 {
 public:
-    explicit SanitizationPipeline(const std::filesystem::path& evidenceDirectory = {});
+    explicit SanitizationPipeline(
+        const std::filesystem::path &evidenceDirectory = {});
 
     SecureWipe::SanitizationPipelineResult execute(
-        const StorageDevice& device,
-        const std::string& requestId = {},
-        const std::string& actorId = {},
-        const std::string& workstationId = {},
-        const std::string& expectedSerialNumber = {});
+        const StorageDevice &device,
+        const std::string &requestId = {},
+        const std::string &actorId = {},
+        const std::string &workstationId = {},
+        const std::string &expectedSerialNumber = {},
+        const SecureWipe::SanitizationProgressCallback
+            &progressCallback = {});
 
-    const std::filesystem::path& evidenceDirectory() const;
+    const std::filesystem::path &evidenceDirectory() const;
 
 private:
     std::filesystem::path evidenceDirectory_;
@@ -72,15 +77,15 @@ private:
     bool appendAudit(
         SecureWipe::SanitizationAuditEvent eventType,
         SecureWipe::AuditSeverity severity,
-        const SecureWipe::SanitizationResult& result,
-        const std::string& requestId,
-        const std::string& actorId,
-        const std::string& message,
-        std::string& errorMessage,
-        const SafetyResult* safetyResult = nullptr);
+        const SecureWipe::SanitizationResult &result,
+        const std::string &requestId,
+        const std::string &actorId,
+        const std::string &message,
+        std::string &errorMessage,
+        const SafetyResult *safetyResult = nullptr);
 
     bool persistCertificate(
-        const SecureWipe::SanitizationCertificate& certificate,
-        const std::filesystem::path& path,
-        std::string& errorMessage) const;
+        const SecureWipe::SanitizationCertificate &certificate,
+        const std::filesystem::path &path,
+        std::string &errorMessage) const;
 };

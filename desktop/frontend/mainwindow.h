@@ -129,31 +129,31 @@ private:
     QString selectedWorkstationId_;
 
     bool operationRunning_ = false;
+
     bool workstationIdentityVerified_ = false;
+
     QString verifiedWorkstationId_;
 
-    // Cached outcome of the last completed runTargetSafetyCheck() SAFE
-    // branch (i.e. core SafetyResult::isOverallSafe was true along with
-    // every serial/type/capability/method gate). This lets the Start
-    // button be re-evaluated cheaply (see updateStartSanitizationReadiness())
-    // whenever workstation-verification or request state changes on its
-    // own, without re-running hardware target rediscovery. It is reset to
-    // false any time the selected target/request changes or a fresh
-    // safety check has not yet passed.
-    bool lastSafetyCheckPassed_ = false;
-
     void buildUi();
+
     void buildLoginPage();
+
     void buildAppShell();
+
     void buildDashboardPage();
+
     void buildJobsPage();
+
     void buildDevicesPage();
+
     void buildForensicsPage();
+
     void buildSettingsPage();
 
     void applyTheme();
 
-    void setActiveNav(QPushButton *button);
+    void setActiveNav(
+        QPushButton *button);
 
     void setConnectionState(
         bool connected,
@@ -170,44 +170,42 @@ private:
 
     QJsonObject selectedRequestObject() const;
 
-    void selectRequestFromJobs(int index);
+    void selectRequestFromJobs(
+        int index);
+
     void populateJobDetails();
 
     void refreshPhysicalDevices();
+
     void populateDeviceTable();
 
     bool requestMatchesDevice(
         const QString &requestedType,
         const StorageDevice &device) const;
 
-    void selectTargetDevice(int row);
+    void selectTargetDevice(
+        int row);
 
     void resetTargetPanel();
 
     void runTargetSafetyCheck();
 
-    // Single source of truth for Start Sanitization button enablement.
-    // Recomputes requestReady / workstationReady from current state and
-    // combines them with the cached lastSafetyCheckPassed_ flag. This is
-    // a cheap, side-effect-free readout (no hardware access), so it is
-    // safe to call from every site that can change any of those three
-    // inputs (safety check completion, workstation verification events,
-    // assigned-job refresh reconciliation, target/request selection).
-    void updateStartSanitizationReadiness();
-
     void startSanitization();
 
     void finishSanitization(
-        const SecureWipe::SanitizationPipelineResult &pipelineResult);
+        const SecureWipe::SanitizationPipelineResult
+            &pipelineResult);
 
     void submitPipelineResult(
-        const SecureWipe::SanitizationPipelineResult &pipelineResult);
+        const SecureWipe::SanitizationPipelineResult
+            &pipelineResult);
 
     void updateTargetPanelFromDevice(
         const StorageDevice &device);
 
     void updatePipelineUiForResult(
-        const SecureWipe::SanitizationPipelineResult &pipelineResult);
+        const SecureWipe::SanitizationPipelineResult
+            &pipelineResult);
 
     void showSelectedDeviceDetails();
 

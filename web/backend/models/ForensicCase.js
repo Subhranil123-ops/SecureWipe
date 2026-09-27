@@ -102,9 +102,47 @@ const evidenceArtifactSchema = new mongoose.Schema(
             default: false
         },
 
-        // Actual recovered artifact bytes.
-        // Used by the web evidence viewer for the demo.
+        // Backward-compatible field used by the existing
+        // forensic evidence viewer/demo.
         contentBase64: {
+            type: String,
+            default: ""
+        },
+
+        /*
+         * Server-side GridFS storage metadata.
+         *
+         * The actual recovered bytes are stored in GridFS.
+         * These fields allow the web layer to locate and
+         * independently verify the stored bytes.
+         */
+        contentAvailable: {
+            type: Boolean,
+            default: false
+        },
+
+        contentMimeType: {
+            type: String,
+            default: ""
+        },
+
+        contentLength: {
+            type: Number,
+            min: 0,
+            default: 0
+        },
+
+        contentSha256: {
+            type: String,
+            default: ""
+        },
+
+        storageId: {
+            type: String,
+            default: ""
+        },
+
+        contentUrl: {
             type: String,
             default: ""
         },
@@ -312,6 +350,24 @@ const forensicCaseSchema = new mongoose.Schema(
             default: []
         },
 
+        /*
+         * Native forensic certificate and integrity metadata
+         * are already cryptographically validated by
+         * forensicEvidence.services before persistence.
+         *
+         * Mixed is intentional so the native certificate
+         * structure is preserved exactly.
+         */
+        forensicCertificate: {
+            type: mongoose.Schema.Types.Mixed,
+            default: null
+        },
+
+        forensicIntegrity: {
+            type: mongoose.Schema.Types.Mixed,
+            default: null
+        },
+
         nativeIntegrity: {
             received: {
                 type: Boolean,
@@ -415,6 +471,14 @@ forensicCaseSchema.index({
 forensicCaseSchema.index({
     workstationCenter: 1,
     status: 1
+});
+
+forensicCaseSchema.index({
+    "forensicCertificate.certificateId": 1
+});
+
+forensicCaseSchema.index({
+    "forensicIntegrity.runId": 1
 });
 
 module.exports =

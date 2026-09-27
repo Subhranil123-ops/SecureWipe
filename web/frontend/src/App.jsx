@@ -7,52 +7,124 @@ import {
     Link,
 } from "react-router-dom";
 
-import { Download as DownloadIcon } from "lucide-react";
+import {
+    Download as DownloadIcon
+} from "lucide-react";
+
 
 import Login from "./pages/Login/Login";
 import Register from "./pages/Register/Register";
 import AccessDenied from "./pages/AccessDenied/AccessDenied";
 import Download from "./pages/Download/Download";
 
-import ProtectedRoute from "./components/auth/ProtectedRoute";
-import RoleRoute from "./components/auth/RoleRoute"; 
-import DashboardLayout from "./components/layout/DashboardLayout";
 
-import AdminDashboard from "./pages/Admin/Dashboard/AdminDashboard";
-import AdminUsers from "./pages/Admin/Users/AdminUsers";
-import AdminWorkstationCenters from "./pages/Admin/WorkstationCenters/AdminWorkstationCenters";
-import AdminWorkstations from "./pages/Admin/Workstations/AdminWorkstations";
+import ProtectedRoute
+    from "./components/auth/ProtectedRoute";
 
-import WorkstationHeadDashboard from "./pages/WorkstationHead/Dashboard/WorkstationHeadDashboard";
-import WorkstationCenter from "./pages/WorkstationHead/Center/WorkstationCenter";
-import WorkstationHeadSanitizationRequests from "./pages/WorkstationHead/SanitizationRequests/WorkstationHeadSanitizationRequests";
-import WorkstationHeadWorkstations from "./pages/WorkstationHead/Workstations/WorkstationHeadWorkstations";
+import RoleRoute
+    from "./components/auth/RoleRoute";
 
-import WorkstationEmployeeDashboard from "./pages/WorkstationEmployee/Dashboard/WorkstationEmployeeDashboard";
-import SanitizationExecution from "./pages/WorkstationEmployee/Sanitization/SanitizationExecution";
-import SanitizationHistory from "./pages/WorkstationEmployee/Sanitization/SanitizationHistory";
-import SanitizationCertificate from "./pages/WorkstationEmployee/Sanitization/SanitizationCertificate";
+import DashboardLayout
+    from "./components/layout/DashboardLayout";
 
-import CustomerDashboard from "./pages/Customer/Dashboard/CustomerDashboard";
-import CustomerSanitizationRequest from "./pages/Customer/SanitizationRequest/CustomerSanitizationRequest";
 
-import ForensicDashboard from "./pages/Forensics/ForensicDashboard";
-import ForensicCases from "./pages/Forensics/ForensicCases";
-import ForensicCaseDetails from "./pages/Forensics/ForensicCaseDetails";
-import ForensicEvidence from "./pages/Forensics/ForensicEvidence";
-import ForensicNewCase from "./pages/Forensics/ForensicNewCase";
-import ForensicReports from "./pages/Forensics/ForensicReports";
+import AdminDashboard
+    from "./pages/Admin/Dashboard/AdminDashboard";
+
+import AdminUsers
+    from "./pages/Admin/Users/AdminUsers";
+
+import AdminWorkstationCenters
+    from "./pages/Admin/WorkstationCenters/AdminWorkstationCenters";
+
+import AdminWorkstations
+    from "./pages/Admin/Workstations/AdminWorkstations";
+
+
+import WorkstationHeadDashboard
+    from "./pages/WorkstationHead/Dashboard/WorkstationHeadDashboard";
+
+import WorkstationCenter
+    from "./pages/WorkstationHead/Center/WorkstationCenter";
+
+import WorkstationHeadSanitizationRequests
+    from "./pages/WorkstationHead/SanitizationRequests/WorkstationHeadSanitizationRequests";
+
+import WorkstationHeadWorkstations
+    from "./pages/WorkstationHead/Workstations/WorkstationHeadWorkstations";
+
+
+import WorkstationEmployeeDashboard
+    from "./pages/WorkstationEmployee/Dashboard/WorkstationEmployeeDashboard";
+
+import SanitizationExecution
+    from "./pages/WorkstationEmployee/Sanitization/SanitizationExecution";
+
+import SanitizationHistory
+    from "./pages/WorkstationEmployee/Sanitization/SanitizationHistory";
+
+import SanitizationCertificate
+    from "./pages/WorkstationEmployee/Sanitization/SanitizationCertificate";
+
+
+import CustomerDashboard
+    from "./pages/Customer/Dashboard/CustomerDashboard";
+
+import CustomerSanitizationRequest
+    from "./pages/Customer/SanitizationRequest/CustomerSanitizationRequest";
+
+
+import ForensicDashboard
+    from "./pages/Forensics/ForensicDashboard";
+
+import ForensicCases
+    from "./pages/Forensics/ForensicCases";
+
+import ForensicCaseDetails
+    from "./pages/Forensics/ForensicCaseDetails";
+
+import ForensicEvidence
+    from "./pages/Forensics/ForensicEvidence";
+
+import ForensicNewCase
+    from "./pages/Forensics/ForensicNewCase";
+
+import ForensicReports
+    from "./pages/Forensics/ForensicReports";
+
+
+/*
+ * ============================================================
+ * CENTRAL CERTIFICATE UI
+ * ============================================================
+ */
+
+import Certificates
+    from "./pages/Certificates/Certificates";
+
+import CertificateDetails
+    from "./pages/Certificates/CertificateDetails";
+
 
 function FloatingDownloadButton() {
-    const location = useLocation();
+
+    const location =
+        useLocation();
+
 
     if (
-        location.pathname === "/downloads" ||
-        location.pathname === "/login" ||
-        location.pathname === "/register"
+        location.pathname ===
+            "/downloads" ||
+
+        location.pathname ===
+            "/login" ||
+
+        location.pathname ===
+            "/register"
     ) {
         return null;
     }
+
 
     return (
         <Link
@@ -83,60 +155,95 @@ function FloatingDownloadButton() {
                 focus:ring-offset-2
             "
         >
-            <DownloadIcon className="h-4 w-4" />
+
+            <DownloadIcon
+                className="h-4 w-4"
+            />
+
             Download App
+
         </Link>
     );
 }
 
+
 function AppContent() {
+
     return (
         <>
+
             <Routes>
-                {/* Public Routes */}
+
+                {/* PUBLIC */}
+
                 <Route
                     path="/login"
-                    element={<Login />}
+                    element={
+                        <Login />
+                    }
                 />
 
                 <Route
                     path="/register"
-                    element={<Register />}
+                    element={
+                        <Register />
+                    }
                 />
 
                 <Route
                     path="/access-denied"
-                    element={<AccessDenied />}
+                    element={
+                        <AccessDenied />
+                    }
                 />
 
                 <Route
                     path="/downloads"
-                    element={<Download />}
+                    element={
+                        <Download />
+                    }
                 />
 
-                {/* Protected Routes */}
-                <Route element={<ProtectedRoute />}>
+
+                {/* PROTECTED */}
+
+                <Route
+                    element={
+                        <ProtectedRoute />
+                    }
+                >
 
                     {/* ADMIN */}
+
                     <Route
                         element={
                             <RoleRoute
-                                allowedRoles={["ADMIN"]}
+                                allowedRoles={[
+                                    "ADMIN"
+                                ]}
                             />
                         }
                     >
+
                         <Route
                             path="/admin"
-                            element={<DashboardLayout />}
+                            element={
+                                <DashboardLayout />
+                            }
                         >
+
                             <Route
                                 path="dashboard"
-                                element={<AdminDashboard />}
+                                element={
+                                    <AdminDashboard />
+                                }
                             />
 
                             <Route
                                 path="users"
-                                element={<AdminUsers />}
+                                element={
+                                    <AdminUsers />
+                                }
                             />
 
                             <Route
@@ -148,25 +255,35 @@ function AppContent() {
 
                             <Route
                                 path="workstations"
-                                element={<AdminWorkstations />}
+                                element={
+                                    <AdminWorkstations />
+                                }
                             />
+
                         </Route>
+
                     </Route>
 
+
                     {/* WORKSTATION HEAD */}
+
                     <Route
                         element={
                             <RoleRoute
                                 allowedRoles={[
-                                    "WORKSTATION_HEAD",
+                                    "WORKSTATION_HEAD"
                                 ]}
                             />
                         }
                     >
+
                         <Route
                             path="/workstation-head"
-                            element={<DashboardLayout />}
+                            element={
+                                <DashboardLayout />
+                            }
                         >
+
                             <Route
                                 path="dashboard"
                                 element={
@@ -194,23 +311,31 @@ function AppContent() {
                                     <WorkstationCenter />
                                 }
                             />
+
                         </Route>
+
                     </Route>
 
+
                     {/* WORKSTATION EMPLOYEE */}
+
                     <Route
                         element={
                             <RoleRoute
                                 allowedRoles={[
-                                    "WORKSTATION_EMPLOYEE",
+                                    "WORKSTATION_EMPLOYEE"
                                 ]}
                             />
                         }
                     >
+
                         <Route
                             path="/workstation-employee"
-                            element={<DashboardLayout />}
+                            element={
+                                <DashboardLayout />
+                            }
                         >
+
                             <Route
                                 path="dashboard"
                                 element={
@@ -238,23 +363,31 @@ function AppContent() {
                                     <SanitizationCertificate />
                                 }
                             />
+
                         </Route>
+
                     </Route>
 
+
                     {/* CUSTOMER */}
+
                     <Route
                         element={
                             <RoleRoute
                                 allowedRoles={[
-                                    "CUSTOMER",
+                                    "CUSTOMER"
                                 ]}
                             />
                         }
                     >
+
                         <Route
                             path="/customer"
-                            element={<DashboardLayout />}
+                            element={
+                                <DashboardLayout />
+                            }
                         >
+
                             <Route
                                 path="dashboard"
                                 element={
@@ -275,10 +408,16 @@ function AppContent() {
                                     <ForensicNewCase />
                                 }
                             />
+
                         </Route>
+
                     </Route>
 
-                    {/* FORENSICS */}
+
+                    {/* ==================================================
+                        CERTIFICATES & EVIDENCE
+                       ================================================== */}
+
                     <Route
                         element={
                             <RoleRoute
@@ -286,15 +425,67 @@ function AppContent() {
                                     "ADMIN",
                                     "CUSTOMER",
                                     "WORKSTATION_HEAD",
-                                    "WORKSTATION_EMPLOYEE",
+                                    "WORKSTATION_EMPLOYEE"
                                 ]}
                             />
                         }
                     >
+
+                        <Route
+                            path="/certificates"
+                            element={
+                                <DashboardLayout />
+                            }
+                        >
+
+                            <Route
+                                index
+                                element={
+                                    <Certificates />
+                                }
+                            />
+
+                            <Route
+                                path="sanitization/:id"
+                                element={
+                                    <CertificateDetails />
+                                }
+                            />
+
+                            <Route
+                                path="forensic/:id"
+                                element={
+                                    <CertificateDetails />
+                                }
+                            />
+
+                        </Route>
+
+                    </Route>
+
+
+                    {/* FORENSICS */}
+
+                    <Route
+                        element={
+                            <RoleRoute
+                                allowedRoles={[
+                                    "ADMIN",
+                                    "CUSTOMER",
+                                    "WORKSTATION_HEAD",
+                                    "WORKSTATION_EMPLOYEE"
+                                ]}
+                            />
+                        }
+                    >
+
                         <Route
                             path="/forensics"
-                            element={<DashboardLayout />}
+                            element={
+                                <DashboardLayout />
+                            }
                         >
+
                             <Route
                                 index
                                 element={
@@ -304,7 +495,9 @@ function AppContent() {
 
                             <Route
                                 path="cases"
-                                element={<ForensicCases />}
+                                element={
+                                    <ForensicCases />
+                                }
                             />
 
                             <Route
@@ -327,12 +520,16 @@ function AppContent() {
                                     <ForensicReports />
                                 }
                             />
+
                         </Route>
+
                     </Route>
 
                 </Route>
 
-                {/* Default Routes */}
+
+                {/* DEFAULT */}
+
                 <Route
                     path="/"
                     element={
@@ -352,19 +549,27 @@ function AppContent() {
                         />
                     }
                 />
+
             </Routes>
 
+
             <FloatingDownloadButton />
+
         </>
     );
 }
 
+
 function App() {
+
     return (
         <BrowserRouter>
+
             <AppContent />
+
         </BrowserRouter>
     );
 }
+
 
 export default App;

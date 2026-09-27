@@ -112,7 +112,8 @@ bool SanitizationEngine::canSanitize(
 
 SanitizationResult SanitizationEngine::sanitize(
     const StorageDevice& device,
-    const SafetyResult& safetyResult)
+    const SafetyResult& safetyResult,
+    const SecureWipe::SanitizationProgressCallback& progressCallback)
 {
     SanitizationResult result;
 
@@ -145,6 +146,31 @@ SanitizationResult SanitizationEngine::sanitize(
 
     result.verificationStatus =
         VerificationStatus::NOT_PERFORMED;
+
+    const auto reportProgress =
+        [&progressCallback](
+            std::uint64_t processedBytes,
+            std::uint64_t totalBytes,
+            const std::string& phase,
+            const std::string& message)
+        {
+            if (!progressCallback)
+            {
+                return;
+            }
+
+            progressCallback(
+                processedBytes,
+                totalBytes,
+                phase,
+                message);
+        };
+
+    reportProgress(
+        0,
+        device.getCapacityBytes(),
+        "VALIDATION",
+        "Safety validation");
 
     std::cout
         << "\n========================================\n"
@@ -192,6 +218,12 @@ SanitizationResult SanitizationEngine::sanitize(
         detectSanitizationCapability(
             device);
 
+    reportProgress(
+        0,
+        device.getCapacityBytes(),
+        "CAPABILITY",
+        "Capability detection");
+
     // --------------------------------------------------
     // STEP 3: METHOD
     // --------------------------------------------------
@@ -206,6 +238,13 @@ SanitizationResult SanitizationEngine::sanitize(
 
     result.method =
         method;
+
+    reportProgress(
+        0,
+        device.getCapacityBytes(),
+        "METHOD_SELECTION",
+        std::string("Selected method: ") +
+            methodName(method));
 
     std::cout
         << "Selected method: "
@@ -340,7 +379,8 @@ SanitizationResult SanitizationEngine::sanitize(
             result.errorMessage =
                 result.message;
 
-            CloseHandle(deviceHandle);
+            CloseHandle(
+                deviceHandle);
 
             return result;
         }
@@ -348,7 +388,9 @@ SanitizationResult SanitizationEngine::sanitize(
         executionResult =
             executeNvmeSanitize(
                 deviceHandle,
-                nvmeMethod);
+                nvmeMethod,
+                device.getCapacityBytes(),
+                progressCallback);
 
         break;
     }
@@ -399,7 +441,8 @@ SanitizationResult SanitizationEngine::sanitize(
             result.errorMessage =
                 result.message;
 
-            CloseHandle(deviceHandle);
+            CloseHandle(
+                deviceHandle);
 
             return result;
         }
@@ -407,7 +450,8 @@ SanitizationResult SanitizationEngine::sanitize(
         verificationResult =
             executeAtaSanitize(
                 deviceHandle,
-                ataMethod);
+                ataMethod,
+                progressCallback);
 
         executionResult =
             verificationResult.sanitizationCompleted;
@@ -429,7 +473,8 @@ SanitizationResult SanitizationEngine::sanitize(
         verificationResult =
             sanitizer.sanitize(
                 deviceHandle,
-                device.getCapacityBytes());
+                device.getCapacityBytes(),
+                progressCallback);
 
         executionResult =
             verificationResult.sanitizationCompleted;
@@ -452,7 +497,8 @@ SanitizationResult SanitizationEngine::sanitize(
         result.errorMessage =
             result.message;
 
-        CloseHandle(deviceHandle);
+        CloseHandle(
+            deviceHandle);
 
         return result;
     }
@@ -499,7 +545,8 @@ SanitizationResult SanitizationEngine::sanitize(
     // STEP 8: CLOSE PHYSICAL DEVICE
     // --------------------------------------------------
 
-    CloseHandle(deviceHandle);
+    CloseHandle(
+        deviceHandle);
 
     // --------------------------------------------------
     // STEP 9: FINAL RESULT
@@ -554,6 +601,12 @@ SanitizationResult SanitizationEngine::sanitize(
 
     result.status =
         SanitizationStatus::COMPLETED;
+
+    reportProgress(
+        device.getCapacityBytes(),
+        device.getCapacityBytes(),
+        "COMPLETED",
+        "Sanitization completed");
 
     result.bytesProcessed =
         device.getCapacityBytes();

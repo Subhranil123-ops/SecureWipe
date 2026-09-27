@@ -201,6 +201,72 @@ const sanitizationRequestSchema = new mongoose.Schema(
         },
 
         // --------------------------------------------------
+        // LIVE SANITIZATION PROGRESS
+        //
+        // These fields represent the ACTUAL running
+        // sanitization operation reported by the CLI/C++
+        // engine.
+        //
+        // They are deliberately stored on the request
+        // itself so the website can read the current state
+        // without depending on the desktop GUI.
+        // --------------------------------------------------
+
+        progress: {
+            type: Number,
+            min: 0,
+            max: 100,
+            default: 0
+        },
+
+        progressKnown: {
+            type: Boolean,
+            default: false
+        },
+
+        processedBytes: {
+            type: Number,
+            min: 0,
+            default: 0
+        },
+
+        totalBytes: {
+            type: Number,
+            min: 0,
+            default: 0
+        },
+
+        remainingBytes: {
+            type: Number,
+            min: 0,
+            default: 0
+        },
+
+        phase: {
+            type: String,
+            trim: true,
+            default: ""
+        },
+
+        progressMessage: {
+            type: String,
+            trim: true,
+            default: ""
+        },
+
+        operationId: {
+            type: String,
+            trim: true,
+            default: ""
+        },
+
+        lastProgressAt: {
+            type: Date,
+            default: null,
+            index: true
+        },
+
+        // --------------------------------------------------
         // REQUEST HISTORY
         // --------------------------------------------------
 
@@ -246,6 +312,29 @@ const sanitizationRequestSchema = new mongoose.Schema(
         timestamps: true
     }
 );
+
+
+// --------------------------------------------------
+// LIVE PROGRESS INDEX
+// --------------------------------------------------
+
+sanitizationRequestSchema.index({
+    status: 1,
+    lastProgressAt: -1
+});
+
+sanitizationRequestSchema.index({
+    assignedEmployee: 1,
+    status: 1,
+    lastProgressAt: -1
+});
+
+sanitizationRequestSchema.index({
+    workstationCenter: 1,
+    status: 1,
+    lastProgressAt: -1
+});
+
 
 module.exports = mongoose.model(
     "SanitizationRequest",

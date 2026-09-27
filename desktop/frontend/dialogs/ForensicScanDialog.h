@@ -15,7 +15,14 @@ public:
         QWidget *parent = nullptr
     );
 
+    void setProgress(
+        int percentage,
+        quint64 bytesScanned,
+        quint64 totalBytes
+    );
+
 private:
     QLabel *sourceLabel_;
     QProgressBar *progressBar_;
+    QLabel *progressLabel_;
 };

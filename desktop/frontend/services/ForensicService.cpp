@@ -13,7 +13,7 @@
 #include <exception>
 
 #include <QtConcurrent/QtConcurrentRun>
-
+#include <QMetaObject>
 ForensicService::ForensicService(
     QObject *parent)
     : QObject(parent)
@@ -160,12 +160,56 @@ void ForensicService::scan(
 
     watcher_.setFuture(
         QtConcurrent::run(
-            [nativeSource]()
+            [this, nativeSource]()
             {
                 EvidenceCollector collector;
 
+                const EvidenceProgressCallback
+                    progressCallback =
+                        [this](
+                            std::uint64_t bytesScanned,
+                            std::uint64_t totalBytes)
+                        {
+                            int percentage = -1;
+
+                            if (totalBytes > 0)
+                            {
+                                const std::uint64_t boundedScanned =
+                                    bytesScanned > totalBytes
+                                        ? totalBytes
+                                        : bytesScanned;
+
+                                percentage =
+                                    static_cast<int>(
+                                        (boundedScanned * 100ULL) /
+                                        totalBytes);
+
+                                if (percentage > 100)
+                                {
+                                    percentage = 100;
+                                }
+                            }
+
+                            QMetaObject::invokeMethod(
+                                this,
+                                [this,
+                                 percentage,
+                                 bytesScanned,
+                                 totalBytes]()
+                                {
+                                    emit scanProgress(
+                                        percentage,
+                                        static_cast<quint64>(
+                                            bytesScanned),
+                                        static_cast<quint64>(
+                                            totalBytes));
+                                },
+                                Qt::QueuedConnection);
+                        };
+
                 return collector.collectWithSummary(
-                    nativeSource);
+                    nativeSource,
+                    progressCallback);
             }));
 }
 

@@ -2316,6 +2316,13 @@ void ForensicPage::startScan()
 
     ForensicScanDialog dialog(source, window());
 
+    connect(
+        forensicService_,
+        &ForensicService::scanProgress,
+        &dialog,
+        &ForensicScanDialog::setProgress,
+        Qt::QueuedConnection);
+
     forensicService_->scan(source);
 
     QTimer::singleShot(0, &dialog, [&dialog]()

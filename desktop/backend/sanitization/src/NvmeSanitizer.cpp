@@ -12,6 +12,19 @@
 
 namespace
 {
+    /*
+     * IMPORTANT:
+     *
+     * Keep this false until the complete destructive NVMe path has
+     * been validated on a dedicated disposable test drive.
+     *
+     * When false:
+     *   - The actual SANITIZE command is NOT submitted.
+     *   - The function reports that it is running in safe test mode.
+     *
+     * When true:
+     *   - The NVMe SANITIZE command is actually submitted.
+     */
     constexpr bool ENABLE_DESTRUCTIVE_SANITIZE = false;
 
     constexpr std::uint32_t NVME_SANITIZE_OPCODE = 0x84;
@@ -21,9 +34,18 @@ namespace
     constexpr std::uint32_t SANACT_OVERWRITE = 3;
     constexpr std::uint32_t SANACT_CRYPTO_ERASE = 4;
 
+    /*
+     * NVMe Sanitize Status log page.
+     */
     constexpr ULONG NVME_LOG_QUERY_SIZE = 512;
 
     constexpr DWORD SANITIZE_STATUS_POLL_INTERVAL_MS = 1000;
+
+    /*
+     * SPROG is a 16-bit progress value whose maximum represents
+     * completion.
+     */
+    constexpr std::uint32_t NVME_SPROG_MAX = 0x10000;
 
     std::uint32_t getSanitizeAction(
         NvmeSanitizeMethod method)
@@ -53,6 +75,31 @@ namespace
         SucceededWithForcedDeallocation,
         QueryFailed
     };
+
+    /*
+     * Convert the NVMe SPROG value to the UI's 0-100 range.
+     *
+     * This conversion is deliberately clamped so a malformed or
+     * unexpected controller value cannot produce a value outside
+     * the Qt progress-bar range.
+     */
+    int convertNvmeProgress(
+        std::uint16_t sprog)
+    {
+        if (sprog >= NVME_SPROG_MAX)
+        {
+            return 100;
+        }
+
+        const std::uint32_t percentage =
+            (static_cast<std::uint32_t>(sprog) * 100U) /
+            NVME_SPROG_MAX;
+
+        return static_cast<int>(
+            percentage > 100U
+                ? 100U
+                : percentage);
+    }
 
     NvmeSanitizeStatus queryNvmeSanitizeStatus(
         HANDLE deviceHandle,
@@ -206,6 +253,12 @@ namespace
         std::cout
             << "Progress        : "
             << statusLog.SPROG
+            << '\n';
+
+        std::cout
+            << "Progress (%)    : "
+            << convertNvmeProgress(
+                   statusLog.SPROG)
             << '\n';
 
         std::cout
@@ -400,21 +453,24 @@ namespace
         std::uint8_t* command =
             protocolCommand->Command;
 
-        // CDW0 byte 0 = OPC
-
+        /*
+         * CDW0 byte 0 = OPC.
+         */
         command[0] =
             static_cast<std::uint8_t>(
                 NVME_SANITIZE_OPCODE);
 
-        // NSID = 0
-
+        /*
+         * NSID = 0.
+         */
         std::memset(
             command + 4,
             0,
             sizeof(std::uint32_t));
 
-        // CDW10
-
+        /*
+         * CDW10.
+         */
         const std::uint32_t cdw10 =
             sanitizeAction &
             SANACT_MASK;
@@ -492,7 +548,9 @@ namespace
 
 bool executeNvmeSanitize(
     HANDLE deviceHandle,
-    NvmeSanitizeMethod method)
+    NvmeSanitizeMethod method,
+    std::uint64_t totalBytes,
+    const SecureWipe::SanitizationProgressCallback& progressCallback)
 {
     if (deviceHandle == INVALID_HANDLE_VALUE)
     {
@@ -501,6 +559,15 @@ bool executeNvmeSanitize(
                "Invalid device handle.\n";
 
         return false;
+    }
+
+    if (progressCallback)
+    {
+        progressCallback(
+            0,
+            0,
+            "NVME_SANITIZE",
+            "Preparing NVMe sanitization");
     }
 
     if (!sendNvmeSanitizeCommand(
@@ -514,11 +581,27 @@ bool executeNvmeSanitize(
         return false;
     }
 
+    /*
+     * SAFE TEST MODE:
+     *
+     * Do not report 100% here because no real sanitization happened.
+     * The caller can therefore distinguish "command path tested" from
+     * "actual sanitization completed".
+     */
     if (!ENABLE_DESTRUCTIVE_SANITIZE)
     {
         std::cout
             << "\nSanitization was not executed "
                "because SAFE TEST MODE is enabled.\n";
+
+        if (progressCallback)
+        {
+            progressCallback(
+                0,
+                0,
+                "NVME_SANITIZE",
+                "NVMe safe test mode - no destructive operation executed");
+        }
 
         return true;
     }
@@ -540,6 +623,15 @@ bool executeNvmeSanitize(
         {
         case NvmeSanitizeStatus::Succeeded:
 
+            if (progressCallback)
+            {
+                progressCallback(
+                    totalBytes,
+                    totalBytes,
+                    "NVME_SANITIZE",
+                    "NVMe sanitization completed");
+            }
+
             std::cout
                 << "\nNVMe sanitization "
                    "COMPLETED successfully.\n";
@@ -549,6 +641,15 @@ bool executeNvmeSanitize(
         case NvmeSanitizeStatus::
             SucceededWithForcedDeallocation:
 
+            if (progressCallback)
+            {
+                progressCallback(
+                    totalBytes,
+                    totalBytes,
+                    "NVME_SANITIZE",
+                    "NVMe sanitization completed with forced deallocation");
+            }
+
             std::cout
                 << "\nNVMe sanitization "
                    "COMPLETED with forced "
@@ -557,11 +658,40 @@ bool executeNvmeSanitize(
             return true;
 
         case NvmeSanitizeStatus::InProgress:
+        {
+            const int percentage =
+                convertNvmeProgress(
+                    statusLog.SPROG);
+
+            std::cout
+                << "\nNVMe sanitization progress: "
+                << percentage
+                << "%\n";
+
+            if (progressCallback)
+            {
+                const std::uint64_t processedBytes =
+                    totalBytes == 0
+                        ? 0
+                        : (totalBytes *
+                           static_cast<std::uint64_t>(percentage)) /
+                              100ULL;
+
+                if (progressCallback)
+                {
+                    progressCallback(
+                        processedBytes,
+                        totalBytes,
+                        "NVME_SANITIZE",
+                        "NVMe sanitization");
+                }
+            }
 
             Sleep(
                 SANITIZE_STATUS_POLL_INTERVAL_MS);
 
             break;
+        }
 
         case NvmeSanitizeStatus::Failed:
 

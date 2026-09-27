@@ -1,101 +1,213 @@
-const asyncHandler = require("../utils/asyncHandler");
-const service = require("../services/forensicCase.services");
+const asyncHandler =
+    require("../utils/asyncHandler");
 
-exports.createCase = asyncHandler(async (req, res) => {
-    const item = await service.createForensicCase(
-        req.body,
-        req.user
+const service =
+    require("../services/forensicCase.services");
+
+const evidenceService =
+    require("../services/forensicEvidence.services");
+
+
+exports.createCase =
+    asyncHandler(
+        async (req, res) => {
+
+            const item =
+                await service.createForensicCase(
+                    req.body,
+                    req.user
+                );
+
+            res.status(201).json({
+                success: true,
+
+                message:
+                    "Forensic case created successfully",
+
+                data:
+                    item
+            });
+        }
     );
 
-    res.status(201).json({
-        success: true,
-        message: "Forensic case created successfully",
-        data: item
-    });
-});
 
-exports.getCases = asyncHandler(async (req, res) => {
-    res.json({
-        success: true,
-        data: await service.getCasesForUser(
-            req.user
-        )
-    });
-});
+exports.getCases =
+    asyncHandler(
+        async (req, res) => {
 
-exports.getDashboard = asyncHandler(async (req, res) => {
-    res.json({
-        success: true,
-        data: await service.getDashboard(
-            req.user
-        )
-    });
-});
+            res.json({
+                success: true,
 
-exports.getCase = asyncHandler(async (req, res) => {
-    res.json({
-        success: true,
-        data: await service.getCaseById(
-            req.params.caseId,
-            req.user
-        )
-    });
-});
+                data:
+                    await service.getCasesForUser(
+                        req.user
+                    )
+            });
+        }
+    );
 
-exports.getAuditTrail = asyncHandler(async (req, res) => {
-    res.json({
-        success: true,
-        data: await service.getForensicAuditTrail(
-            req.params.caseId,
-            req.user
-        )
-    });
-});
 
-exports.assignCase = asyncHandler(async (req, res) => {
-    res.json({
-        success: true,
-        message: "Forensic case assigned successfully",
-        data: await service.assignCase(
-            req.params.caseId,
-            req.body,
-            req.user
-        )
-    });
-});
+exports.getDashboard =
+    asyncHandler(
+        async (req, res) => {
 
-exports.updateStatus = asyncHandler(async (req, res) => {
-    res.json({
-        success: true,
-        message: "Forensic case status updated successfully",
-        data: await service.updateCaseStatus(
-            req.params.caseId,
-            req.body.status,
-            req.body.note,
-            req.user,
-            req.body.workstationId || ""
-        )
-    });
-});
+            res.json({
+                success: true,
 
-exports.ingestResult = asyncHandler(async (req, res) => {
-    res.json({
-        success: true,
-        message: "Forensic result stored successfully",
-        data: await service.ingestResult(
-            req.params.caseId,
-            req.body,
-            req.user
-        )
-    });
-});
+                data:
+                    await service.getDashboard(
+                        req.user
+                    )
+            });
+        }
+    );
 
-exports.generateReport = asyncHandler(async (req, res) => {
-    res.json({
-        success: true,
-        data: await service.generateReport(
-            req.params.caseId,
-            req.user
-        )
-    });
-});
+
+exports.getCase =
+    asyncHandler(
+        async (req, res) => {
+
+            res.json({
+                success: true,
+
+                data:
+                    await service.getCaseById(
+                        req.params.caseId,
+                        req.user
+                    )
+            });
+        }
+    );
+
+
+exports.getAuditTrail =
+    asyncHandler(
+        async (req, res) => {
+
+            res.json({
+                success: true,
+
+                data:
+                    await service.getForensicAuditTrail(
+                        req.params.caseId,
+                        req.user
+                    )
+            });
+        }
+    );
+
+
+exports.getNativeIntegrity =
+    asyncHandler(
+        async (req, res) => {
+
+            res.json({
+                success: true,
+
+                data:
+                    await evidenceService.getNativeIntegrity(
+                        req.params.caseId,
+                        req.user
+                    )
+            });
+        }
+    );
+
+
+exports.verifyNativeIntegrity =
+    asyncHandler(
+        async (req, res) => {
+
+            res.json({
+                success: true,
+
+                data:
+                    await evidenceService.verifyStoredIntegrity(
+                        req.params.caseId,
+                        req.user
+                    )
+            });
+        }
+    );
+
+
+exports.assignCase =
+    asyncHandler(
+        async (req, res) => {
+
+            res.json({
+                success: true,
+
+                message:
+                    "Forensic case assigned successfully",
+
+                data:
+                    await service.assignCase(
+                        req.params.caseId,
+                        req.body,
+                        req.user
+                    )
+            });
+        }
+    );
+
+
+exports.updateStatus =
+    asyncHandler(
+        async (req, res) => {
+
+            res.json({
+                success: true,
+
+                message:
+                    "Forensic case status updated successfully",
+
+                data:
+                    await service.updateCaseStatus(
+                        req.params.caseId,
+                        req.body.status,
+                        req.body.note,
+                        req.user,
+                        req.body.workstationId || ""
+                    )
+            });
+        }
+    );
+
+
+exports.ingestResult =
+    asyncHandler(
+        async (req, res) => {
+
+            res.json({
+                success: true,
+
+                message:
+                    "Forensic result stored successfully",
+
+                data:
+                    await service.ingestResult(
+                        req.params.caseId,
+                        req.body,
+                        req.user
+                    )
+            });
+        }
+    );
+
+
+exports.generateReport =
+    asyncHandler(
+        async (req, res) => {
+
+            res.json({
+                success: true,
+
+                data:
+                    await service.generateReport(
+                        req.params.caseId,
+                        req.user
+                    )
+            });
+        }
+    );
