@@ -1,43 +1,19 @@
 find_package(libjpeg-turbo CONFIG REQUIRED)
 
-# ============================================================
-# CORE STORAGE / SANITIZATION / FORENSICS LIBRARY
-# ============================================================
-
 add_library(
     SecureWipeStorage
-
-    # ----------------------------------------------------------
-    # STORAGE
-    # ----------------------------------------------------------
 
     storage/src/StorageDevice.cpp
     storage/src/StorageManager.cpp
 
-    # ----------------------------------------------------------
-    # DISCOVERY
-    # ----------------------------------------------------------
-
     discovery/src/WindowsStorageDiscovery.cpp
 
-    # ----------------------------------------------------------
-    # CLASSIFICATION
-    # ----------------------------------------------------------
-
     classification/src/DeviceClassifier.cpp
-
-    # ----------------------------------------------------------
-    # SAFETY
-    # ----------------------------------------------------------
 
     safety/src/BootInfo.cpp
     safety/src/WindowsBootChecker.cpp
     safety/src/WindowsStorageUtils.cpp
     safety/src/SafetyEngine.cpp
-
-    # ----------------------------------------------------------
-    # SANITIZATION
-    # ----------------------------------------------------------
 
     sanitization/src/SanitizationEngine.cpp
     sanitization/src/SanitizationCapability.cpp
@@ -57,78 +33,45 @@ add_library(
     sanitization/src/SanitizationEvent.cpp
     sanitization/src/SanitizationPipeline.cpp
 
-    # ----------------------------------------------------------
-    # VERIFICATION
-    # ----------------------------------------------------------
-
     verification/src/AuditChainVerifier.cpp
     verification/src/CertificateVerifier.cpp
-
-    # ----------------------------------------------------------
-    # FORENSICS
-    # ----------------------------------------------------------
 
     forensic/evidence/src/EvidenceCollector.cpp
     forensic/validation/src/EvidenceValidator.cpp
     forensic/hashing/src/HashCalculator.cpp
     forensic/scoring/src/ConfidenceScorer.cpp
 
-    # ----------------------------------------------------------
-    # LIVE BACKEND PROGRESS REPORTING
-    # ----------------------------------------------------------
-
+    # ========================================================
+    # LIVE PROGRESS REPORTING
+    # ========================================================
     progress/src/LiveProgressReporter.cpp
 )
-
-# ============================================================
-# PUBLIC INCLUDE DIRECTORIES
-# ============================================================
 
 target_include_directories(
     SecureWipeStorage
     PUBLIC
-
         storage/include
-
         discovery/include
-
         classification/include
-
         safety/include
-
         sanitization/include
-
         forensic/evidence/include
         forensic/validation/include
         forensic/hashing/include
         forensic/scoring/include
-
         verification/include
-
         progress/include
 )
 
-# ============================================================
-# WINDOWS DEPENDENCIES
-# ============================================================
-
 if(WIN32)
-
     target_link_libraries(
         SecureWipeStorage
         PUBLIC
-
             wbemuuid
             setupapi
             bcrypt
-
-            # JPEG decoding used by forensic validation
             libjpeg-turbo::jpeg
-
-            # Live backend progress reporting
-            winhttp
     )
-
 endif()
 
 # ============================================================
@@ -224,14 +167,11 @@ add_executable(
 )
 
 if(WIN32)
-
     target_link_libraries(
         HostOverwriteE2ETest
         PRIVATE
-
             winhttp
     )
-
 endif()
 
 # ============================================================
@@ -257,9 +197,7 @@ add_executable(
 # ALL TEST TARGETS
 # ============================================================
 
-set(
-    STORAGE_TESTS
-
+set(STORAGE_TESTS
     StorageDeviceTest
     StorageManagerTest
     WindowsStorageDiscoveryTest
@@ -274,23 +212,14 @@ set(
     SanitizationMethodSelectionTest
     HostOverwriteSanitizerTest
 
-    # ----------------------------------------------------------
     # Real physical-device E2E test
-    # ----------------------------------------------------------
-
     HostOverwriteE2ETest
 
-    # ----------------------------------------------------------
-    # Pipeline / verification
-    # ----------------------------------------------------------
-
     SanitizationPipelineAuditTest
-    CertificateVerifierTest
-    AuditChainVerifierTest
 
-    # ----------------------------------------------------------
-    # Forensic
-    # ----------------------------------------------------------
+    CertificateVerifierTest
+
+    AuditChainVerifierTest
 
     EvidenceCollectorTest
     HashCalculatorTest
@@ -306,31 +235,22 @@ foreach(TEST_TARGET IN LISTS STORAGE_TESTS)
     target_include_directories(
         ${TEST_TARGET}
         PRIVATE
-
             storage/include
-
             discovery/include
-
             classification/include
-
             safety/include
-
             sanitization/include
-
             forensic/evidence/include
             forensic/validation/include
             forensic/hashing/include
             forensic/scoring/include
-
             verification/include
-
             progress/include
     )
 
     target_link_libraries(
         ${TEST_TARGET}
         PRIVATE
-
             SecureWipeStorage
     )
 

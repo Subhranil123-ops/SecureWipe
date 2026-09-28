@@ -32,17 +32,7 @@ public:
         std::string baseUrl;
         std::string token;
 
-        /*
-         * Minimum interval between network updates.
-         *
-         * Native engines can generate many progress callbacks.
-         * We do not want one HTTP request for every callback.
-         */
         std::uint64_t minimumUpdateIntervalMs = 1000;
-
-        /*
-         * Always send when progress reaches 0 or 100.
-         */
         bool alwaysSendBoundaryProgress = true;
     };
 
@@ -66,27 +56,15 @@ public:
     LiveProgressReporter& operator=(
         LiveProgressReporter&&) = delete;
 
-    /*
-     * Update the operation ID after the native operation has created it.
-     */
     void setOperationId(
         const std::string& operationId);
 
-    /*
-     * Sanitization progress.
-     */
     bool reportSanitizationProgress(
         std::uint64_t processedBytes,
         std::uint64_t totalBytes,
         const std::string& phase,
         const std::string& message = {});
 
-    /*
-     * Forensic progress.
-     *
-     * Candidate/recovery counters are sent along with the byte progress
-     * so the website can display the complete live forensic state.
-     */
     bool reportForensicProgress(
         std::uint64_t bytesScanned,
         std::uint64_t totalBytes,
@@ -99,24 +77,12 @@ public:
         const std::string& phase,
         const std::string& message = {});
 
-    /*
-     * Explicit successful final sanitization update.
-     *
-     * Bypasses throttling so the backend always receives the
-     * terminal COMPLETED state.
-     */
     bool finishSanitization(
         std::uint64_t processedBytes,
         std::uint64_t totalBytes,
         const std::string& phase,
         const std::string& message = {});
 
-    /*
-     * Explicit successful final forensic update.
-     *
-     * Bypasses throttling so the backend always receives the
-     * terminal COMPLETED state.
-     */
     bool finishForensic(
         std::uint64_t bytesScanned,
         std::uint64_t totalBytes,
@@ -129,12 +95,6 @@ public:
         const std::string& phase,
         const std::string& message = {});
 
-    /*
-     * Explicit failed forensic update.
-     *
-     * Bypasses throttling so the backend always receives the
-     * terminal FAILED state.
-     */
     bool failForensic(
         std::uint64_t bytesScanned,
         std::uint64_t totalBytes,
@@ -147,9 +107,6 @@ public:
         const std::string& phase,
         const std::string& message);
 
-    /*
-     * Disable network reporting without affecting the native operation.
-     */
     void disable();
 
     bool enabled() const;
