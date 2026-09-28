@@ -102,8 +102,8 @@ const evidenceArtifactSchema = new mongoose.Schema(
             default: false
         },
 
-        // Backward-compatible field used by the existing
-        // forensic evidence viewer/demo.
+        // Backward-compatible field used by the
+        // existing forensic evidence viewer/demo.
         contentBase64: {
             type: String,
             default: ""
@@ -290,11 +290,50 @@ const forensicCaseSchema = new mongoose.Schema(
             maxlength: 1000
         },
 
+        /*
+         * Persistent forensic live-progress state.
+         *
+         * The native desktop reports these values through
+         * LiveProgressReporter. The web layer stores the latest
+         * snapshot so dashboards and case details can retrieve it.
+         */
         progress: {
             type: Number,
             min: 0,
             max: 100,
             default: 0
+        },
+
+        progressKnown: {
+            type: Boolean,
+            default: false
+        },
+
+        progressPhase: {
+            type: String,
+            default: "",
+            trim: true,
+            maxlength: 200
+        },
+
+        progressMessage: {
+            type: String,
+            default: "",
+            trim: true,
+            maxlength: 1000
+        },
+
+        operationId: {
+            type: String,
+            default: "",
+            trim: true,
+            maxlength: 300,
+            index: true
+        },
+
+        lastProgressAt: {
+            type: Date,
+            default: null
         },
 
         bytesScanned: {
@@ -352,7 +391,7 @@ const forensicCaseSchema = new mongoose.Schema(
 
         /*
          * Native forensic certificate and integrity metadata
-         * are already cryptographically validated by
+         * are cryptographically validated by
          * forensicEvidence.services before persistence.
          *
          * Mixed is intentional so the native certificate

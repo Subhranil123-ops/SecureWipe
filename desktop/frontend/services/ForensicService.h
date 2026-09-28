@@ -3,9 +3,12 @@
 #include <QObject>
 #include <QFutureWatcher>
 #include <QNetworkAccessManager>
+#include <QNetworkRequest>
 #include <QVector>
 #include <QString>
 #include <QJsonObject>
+
+#include <cstdint>
 
 #include "../../backend/forensic/evidence/include/EvidenceItem.h"
 #include "../../backend/forensic/evidence/include/EvidenceCollector.h"
@@ -58,7 +61,9 @@ class ForensicService : public QObject
     Q_OBJECT
 
 public:
-    explicit ForensicService(QObject *parent = nullptr);
+    explicit ForensicService(
+        QObject *parent = nullptr);
+
     ~ForensicService() override;
 
     void setAuthenticationToken(
@@ -71,9 +76,11 @@ public:
 
     bool isRunning() const;
 
-    const QVector<EvidenceItem> &results() const;
+    const QVector<EvidenceItem> &
+    results() const;
 
-    const ForensicScanSummary &summary() const;
+    const ForensicScanSummary &
+    summary() const;
 
     QString lastSource() const;
 
@@ -90,9 +97,11 @@ public:
         const QString &caseId,
         const QString &workstationId);
 
-    const QVector<ForensicCaseInfo> &cases() const;
+    const QVector<ForensicCaseInfo> &
+    cases() const;
 
-    const ForensicCaseInfo &selectedCase() const;
+    const ForensicCaseInfo &
+    selectedCase() const;
 
     bool hasSelectedCase() const;
 
@@ -145,19 +154,41 @@ private:
         const QJsonObject &object) const;
 
 private:
-    QFutureWatcher<EvidenceCollectionResult> watcher_;
+    QFutureWatcher<EvidenceCollectionResult>
+        watcher_;
 
-    QVector<EvidenceItem> results_;
+    QVector<EvidenceItem>
+        results_;
 
-    ForensicScanSummary summary_;
+    ForensicScanSummary
+        summary_;
 
-    QString lastSource_;
+    QString
+        lastSource_;
 
-    QNetworkAccessManager *networkManager_;
+    QNetworkAccessManager *
+        networkManager_;
 
-    QString authenticationToken_;
+    QString
+        authenticationToken_;
 
-    QVector<ForensicCaseInfo> cases_;
+    QVector<ForensicCaseInfo>
+        cases_;
 
-    ForensicCaseInfo selectedCase_;
+    ForensicCaseInfo
+        selectedCase_;
+
+    /*
+     * A single native forensic run ID is used for:
+     *
+     * 1. live-progress operationId
+     * 2. native evidence package
+     * 3. native certificate
+     * 4. native audit chain
+     *
+     * This gives the backend one immutable correlation
+     * identifier for the entire acquisition.
+     */
+    QString
+        currentRunId_;
 };
