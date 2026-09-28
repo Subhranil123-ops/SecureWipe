@@ -73,6 +73,12 @@ import CustomerDashboard
 import CustomerSanitizationRequest
     from "./pages/Customer/SanitizationRequest/CustomerSanitizationRequest";
 
+import CustomerSanitizationRequests
+    from "./pages/Customer/SanitizationRequest/CustomerSanitizationRequests";
+
+import CustomerSanitizationDetails
+    from "./pages/Customer/SanitizationRequest/CustomerSanitizationDetails";
+
 
 import ForensicDashboard
     from "./pages/Forensics/ForensicDashboard";
@@ -213,7 +219,9 @@ function AppContent() {
                     }
                 >
 
-                    {/* ADMIN */}
+                    {/* ==================================================
+                        ADMIN
+                       ================================================== */}
 
                     <Route
                         element={
@@ -265,7 +273,9 @@ function AppContent() {
                     </Route>
 
 
-                    {/* WORKSTATION HEAD */}
+                    {/* ==================================================
+                        WORKSTATION HEAD
+                       ================================================== */}
 
                     <Route
                         element={
@@ -317,7 +327,9 @@ function AppContent() {
                     </Route>
 
 
-                    {/* WORKSTATION EMPLOYEE */}
+                    {/* ==================================================
+                        WORKSTATION EMPLOYEE
+                       ================================================== */}
 
                     <Route
                         element={
@@ -369,7 +381,9 @@ function AppContent() {
                     </Route>
 
 
-                    {/* CUSTOMER */}
+                    {/* ==================================================
+                        CUSTOMER
+                       ================================================== */}
 
                     <Route
                         element={
@@ -388,6 +402,8 @@ function AppContent() {
                             }
                         >
 
+                            {/* Customer Dashboard */}
+
                             <Route
                                 path="dashboard"
                                 element={
@@ -395,12 +411,38 @@ function AppContent() {
                                 }
                             />
 
+
+                            {/* Existing request creation page */}
+
                             <Route
                                 path="sanitization-request"
                                 element={
                                     <CustomerSanitizationRequest />
                                 }
                             />
+
+
+                            {/* Customer's own sanitization requests */}
+
+                            <Route
+                                path="sanitization-requests"
+                                element={
+                                    <CustomerSanitizationRequests />
+                                }
+                            />
+
+
+                            {/* Individual customer sanitization job */}
+
+                            <Route
+                                path="sanitization-requests/:requestId"
+                                element={
+                                    <CustomerSanitizationDetails />
+                                }
+                            />
+
+
+                            {/* New forensic case */}
 
                             <Route
                                 path="forensics/new"
@@ -438,6 +480,8 @@ function AppContent() {
                             }
                         >
 
+                            {/* Certificate Registry */}
+
                             <Route
                                 index
                                 element={
@@ -445,12 +489,18 @@ function AppContent() {
                                 }
                             />
 
+
+                            {/* Sanitization Certificate */}
+
                             <Route
                                 path="sanitization/:id"
                                 element={
                                     <CertificateDetails />
                                 }
                             />
+
+
+                            {/* Forensic Certificate */}
 
                             <Route
                                 path="forensic/:id"
@@ -464,7 +514,9 @@ function AppContent() {
                     </Route>
 
 
-                    {/* FORENSICS */}
+                    {/* ==================================================
+                        FORENSICS
+                       ================================================== */}
 
                     <Route
                         element={
@@ -486,12 +538,17 @@ function AppContent() {
                             }
                         >
 
+                            {/* Forensics Overview */}
+
                             <Route
                                 index
                                 element={
                                     <ForensicDashboard />
                                 }
                             />
+
+
+                            {/* Cases */}
 
                             <Route
                                 path="cases"
@@ -500,6 +557,9 @@ function AppContent() {
                                 }
                             />
 
+
+                            {/* Individual Case */}
+
                             <Route
                                 path="cases/:caseId"
                                 element={
@@ -507,12 +567,18 @@ function AppContent() {
                                 }
                             />
 
+
+                            {/* Evidence */}
+
                             <Route
                                 path="evidence"
                                 element={
                                     <ForensicEvidence />
                                 }
                             />
+
+
+                            {/* Reports */}
 
                             <Route
                                 path="reports"
@@ -528,7 +594,9 @@ function AppContent() {
                 </Route>
 
 
-                {/* DEFAULT */}
+                {/* ==================================================
+                    DEFAULT ROUTES
+                   ================================================== */}
 
                 <Route
                     path="/"
@@ -539,6 +607,7 @@ function AppContent() {
                         />
                     }
                 />
+
 
                 <Route
                     path="*"

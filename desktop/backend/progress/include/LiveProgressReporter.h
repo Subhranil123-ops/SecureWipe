@@ -66,6 +66,9 @@ public:
     LiveProgressReporter& operator=(
         LiveProgressReporter&&) = delete;
 
+    /*
+     * Update the operation ID after the native operation has created it.
+     */
     void setOperationId(
         const std::string& operationId);
 
@@ -97,10 +100,10 @@ public:
         const std::string& message = {});
 
     /*
-     * Explicit final update.
+     * Explicit successful final sanitization update.
      *
-     * These bypass throttling so the backend always receives the
-     * terminal state.
+     * Bypasses throttling so the backend always receives the
+     * terminal COMPLETED state.
      */
     bool finishSanitization(
         std::uint64_t processedBytes,
@@ -108,6 +111,12 @@ public:
         const std::string& phase,
         const std::string& message = {});
 
+    /*
+     * Explicit successful final forensic update.
+     *
+     * Bypasses throttling so the backend always receives the
+     * terminal COMPLETED state.
+     */
     bool finishForensic(
         std::uint64_t bytesScanned,
         std::uint64_t totalBytes,
@@ -119,6 +128,24 @@ public:
         std::uint64_t recoveredBytes,
         const std::string& phase,
         const std::string& message = {});
+
+    /*
+     * Explicit failed forensic update.
+     *
+     * Bypasses throttling so the backend always receives the
+     * terminal FAILED state.
+     */
+    bool failForensic(
+        std::uint64_t bytesScanned,
+        std::uint64_t totalBytes,
+        std::uint64_t candidatesFound,
+        std::uint64_t recoveredArtifacts,
+        std::uint64_t validatedArtifacts,
+        std::uint64_t rejectedArtifacts,
+        std::uint64_t highConfidenceArtifacts,
+        std::uint64_t recoveredBytes,
+        const std::string& phase,
+        const std::string& message);
 
     /*
      * Disable network reporting without affecting the native operation.

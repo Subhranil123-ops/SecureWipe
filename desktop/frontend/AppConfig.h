@@ -15,23 +15,46 @@ inline QString apiBaseUrl()
 #endif
 }
 
-inline QUrl apiUrl(const QString &path)
+/*
+ * Backward-compatible overload.
+ *
+ * Existing desktop/frontend services use:
+ *
+ *     apiBaseUrl(QStringLiteral("")).toString()
+ *
+ * Keep that API valid without changing the desktop UI/services.
+ */
+inline QUrl apiBaseUrl(
+    const QString &path)
 {
-    QString base = apiBaseUrl().trimmed();
+    QString base =
+        apiBaseUrl().trimmed();
 
     while (base.endsWith('/'))
     {
         base.chop(1);
     }
 
-    QString normalizedPath = path.trimmed();
+    QString normalizedPath =
+        path.trimmed();
 
-    if (!normalizedPath.startsWith('/'))
+    if (
+        !normalizedPath.isEmpty() &&
+        !normalizedPath.startsWith('/'))
     {
         normalizedPath.prepend('/');
     }
 
-    return QUrl(base + normalizedPath);
+    return QUrl(
+        base +
+        normalizedPath);
+}
+
+inline QUrl apiUrl(
+    const QString &path)
+{
+    return apiBaseUrl(
+        path);
 }
 
 }
