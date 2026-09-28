@@ -306,6 +306,7 @@ function Sidebar() {
 
                         <SidebarLink
                             to="/customer/dashboard"
+                            end
                             icon={
                                 <IconHome />
                             }
@@ -321,7 +322,7 @@ function Sidebar() {
 
 
                         <SidebarLink
-                            to="/customer/sanitization-request"
+                            to="/customer/sanitization-requests"
                             icon={
                                 <IconShield />
                             }
@@ -332,7 +333,23 @@ function Sidebar() {
                                 getIconClass
                             }
                         >
-                            Sanitization Request
+                            My Sanitization Requests
+                        </SidebarLink>
+
+
+                        <SidebarLink
+                            to="/customer/sanitization-request"
+                            icon={
+                                <IconPlus />
+                            }
+                            getClass={
+                                getLinkClass
+                            }
+                            getIconClass={
+                                getIconClass
+                            }
+                        >
+                            New Sanitization Request
                         </SidebarLink>
 
                     </NavSection>
