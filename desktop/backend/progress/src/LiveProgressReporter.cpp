@@ -417,6 +417,8 @@ LiveProgressReporter::LiveProgressReporter(
     const Config& config)
     : operationType_(
           operationType),
+      resourceId_(
+          resourceId),
       operationId_(
           operationId),
       config_(
