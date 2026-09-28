@@ -127,7 +127,9 @@ function Sidebar() {
 
             <nav className="flex-1 overflow-y-auto p-4">
 
-                {/* ADMIN */}
+                {/* ==================================================
+                    ADMIN
+                   ================================================== */}
 
                 {role ===
                     "ADMIN" && (
@@ -188,7 +190,9 @@ function Sidebar() {
                 )}
 
 
-                {/* WORKSTATION HEAD */}
+                {/* ==================================================
+                    WORKSTATION HEAD
+                   ================================================== */}
 
                 {role ===
                     "WORKSTATION_HEAD" && (
@@ -249,7 +253,9 @@ function Sidebar() {
                 )}
 
 
-                {/* WORKSTATION EMPLOYEE */}
+                {/* ==================================================
+                    WORKSTATION EMPLOYEE
+                   ================================================== */}
 
                 {role ===
                     "WORKSTATION_EMPLOYEE" && (
@@ -290,12 +296,32 @@ function Sidebar() {
                             Sanitization History
                         </SidebarLink>
 
+
+                        {/* Employee's assigned forensic cases */}
+
+                        <SidebarLink
+                            to="/forensics/cases"
+                            icon={
+                                <IconFolder />
+                            }
+                            getClass={
+                                getLinkClass
+                            }
+                            getIconClass={
+                                getIconClass
+                            }
+                        >
+                            Forensic Cases
+                        </SidebarLink>
+
                     </NavSection>
 
                 )}
 
 
-                {/* CUSTOMER */}
+                {/* ==================================================
+                    CUSTOMER
+                   ================================================== */}
 
                 {role ===
                     "CUSTOMER" && (
@@ -357,7 +383,9 @@ function Sidebar() {
                 )}
 
 
-                {/* COMMON CERTIFICATE REGISTRY */}
+                {/* ==================================================
+                    COMMON CERTIFICATE REGISTRY
+                   ================================================== */}
 
                 {role && (
 
@@ -386,30 +414,91 @@ function Sidebar() {
                 )}
 
 
-                {/* FORENSICS */}
+                {/* ==================================================
+                    FORENSICS
+                   ==================================================
 
-                {role && (
+                   Navigation is deliberately RBAC-aware.
+
+                   ADMIN:
+                       Overview
+                       Cases
+                       Evidence
+                       Reports
+
+                   WORKSTATION_HEAD:
+                       Overview
+                       Cases
+                       Evidence
+                       Reports
+
+                   WORKSTATION_EMPLOYEE:
+                       Cases
+                       Evidence
+                       Reports
+
+                   CUSTOMER:
+                       Cases
+                       Evidence
+                       Reports
+                       New Forensic Case
+
+                   The backend remains the final authorization
+                   boundary. These links only expose actions that
+                   are relevant to the current role.
+                */}
+
+                {[
+                    "ADMIN",
+                    "WORKSTATION_HEAD",
+                    "WORKSTATION_EMPLOYEE",
+                    "CUSTOMER"
+                ].includes(role) && (
 
                     <NavSection
                         title="Forensics"
                     >
 
-                        <SidebarLink
-                            to="/forensics"
-                            end
-                            icon={
-                                <IconGrid />
-                            }
-                            getClass={
-                                getLinkClass
-                            }
-                            getIconClass={
-                                getIconClass
-                            }
-                        >
-                            Overview
-                        </SidebarLink>
+                        {/* ------------------------------------------------
+                            ADMIN + WORKSTATION HEAD
+                           ------------------------------------------------ */}
 
+                        {[
+                            "ADMIN",
+                            "WORKSTATION_HEAD"
+                        ].includes(role) && (
+
+                            <SidebarLink
+                                to="/forensics"
+                                end
+                                icon={
+                                    <IconGrid />
+                                }
+                                getClass={
+                                    getLinkClass
+                                }
+                                getIconClass={
+                                    getIconClass
+                                }
+                            >
+                                Overview
+                            </SidebarLink>
+
+                        )}
+
+
+                        {/* ------------------------------------------------
+                            CASES
+
+                            Employee:
+                                assigned cases are returned by backend.
+
+                            Customer:
+                                own cases are returned by backend.
+
+                            Head/Admin:
+                                operational case list.
+                           ------------------------------------------------ */}
 
                         <SidebarLink
                             to="/forensics/cases"
@@ -427,6 +516,14 @@ function Sidebar() {
                         </SidebarLink>
 
 
+                        {/* ------------------------------------------------
+                            EVIDENCE
+
+                            Backend evidence access is already scoped
+                            through the forensic case ownership/
+                            assignment checks.
+                           ------------------------------------------------ */}
+
                         <SidebarLink
                             to="/forensics/evidence"
                             icon={
@@ -443,6 +540,10 @@ function Sidebar() {
                         </SidebarLink>
 
 
+                        {/* ------------------------------------------------
+                            REPORTS
+                           ------------------------------------------------ */}
+
                         <SidebarLink
                             to="/forensics/reports"
                             icon={
@@ -458,6 +559,16 @@ function Sidebar() {
                             Reports
                         </SidebarLink>
 
+
+                        {/* ------------------------------------------------
+                            CUSTOMER ONLY
+
+                            Customer creates the forensic case.
+
+                            Employee does NOT get this option.
+                            Workstation Head does NOT get this option.
+                            Admin does NOT use this customer route.
+                           ------------------------------------------------ */}
 
                         {role ===
                             "CUSTOMER" && (

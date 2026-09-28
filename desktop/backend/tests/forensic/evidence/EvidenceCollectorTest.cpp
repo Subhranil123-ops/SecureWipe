@@ -2,6 +2,7 @@
 #include "StorageDevice.h"
 #include "WindowsStorageDiscovery.h"
 #include "../../../progress/include/LiveProgressReporter.h"
+#include "../../../progress/include/ConsoleForensicProgress.h"
 
 #include <Windows.h>
 #include <Lmcons.h>
@@ -3641,9 +3642,14 @@ int main()
         runId,
         progressConfig);
 
+    const std::uint64_t acquisitionTotalBytes =
+        selectedDevice.getCapacityBytes();
+
+    ConsoleForensicProgress consoleProgress;
+
     liveProgressReporter.reportForensicProgress(
         0,
-        selectedDevice.getCapacityBytes(),
+        acquisitionTotalBytes,
         0,
         0,
         0,
@@ -3653,10 +3659,17 @@ int main()
         "ACQUIRING",
         "Native forensic acquisition started");
 
+    consoleProgress.start(
+        selectedDevice.getDeviceId(),
+        acquisitionTotalBytes);
+
     EvidenceCollector collector;
 
     const EvidenceProgressCallback progressCallback =
-        [&liveProgressReporter](
+        [
+            &liveProgressReporter,
+            &consoleProgress
+        ](
             std::uint64_t bytesScanned,
             std::uint64_t totalBytes)
         {
@@ -3671,6 +3684,10 @@ int main()
                 0,
                 "ACQUIRING",
                 "Scanning physical device and carving JPEG artifacts");
+
+            consoleProgress.update(
+                bytesScanned,
+                totalBytes);
         };
 
     const EvidenceCollectionResult result =
@@ -3683,6 +3700,9 @@ int main()
 
     if (!summary.sourceOpened)
     {
+        consoleProgress.fail(
+            "EvidenceCollector could not open the physical source.");
+
         Console::fail(
             "EvidenceCollector could not open the physical source.");
         return 7;
@@ -3690,10 +3710,17 @@ int main()
 
     if (!summary.completed)
     {
+        consoleProgress.fail(
+            "Physical-device acquisition did not complete.");
+
         Console::fail(
             "Physical-device acquisition did not complete.");
         return 8;
     }
+
+    consoleProgress.complete(
+        summary.bytesScanned,
+        summary.totalBytes);
 
     Console::pass(
         "Physical source opened in read-only mode.");

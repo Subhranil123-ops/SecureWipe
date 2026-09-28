@@ -180,8 +180,8 @@ HttpResponse sendHttpRequest(
     }
 
     /*
-     * Progress reporting must never block
-     * the native sanitization for a long time.
+     * Progress updates must not hang the native operation
+     * for a long period because of an unavailable backend.
      */
     WinHttpSetTimeouts(
         session,
@@ -410,7 +410,6 @@ HttpResponse sendHttpRequest(
 
 } // namespace
 
-
 LiveProgressReporter::LiveProgressReporter(
     OperationType operationType,
     const std::string& resourceId,
@@ -431,10 +430,8 @@ LiveProgressReporter::LiveProgressReporter(
         !operationId_.empty();
 }
 
-
 LiveProgressReporter::~LiveProgressReporter() =
     default;
-
 
 void
 LiveProgressReporter::setOperationId(
@@ -444,18 +441,19 @@ LiveProgressReporter::setOperationId(
         operationId;
 
     /*
-     * The sanitization E2E flow creates the reporter
-     * before the native engine generates its operation ID.
+     * Sanitization creates the native operation ID only after
+     * SanitizationPipeline::execute() returns. The reporter is
+     * therefore constructed with an empty operation ID.
      *
-     * Once the native operation ID becomes available,
-     * the reporter can now become active.
+     * Re-evaluate enabled_ here so that the already-created
+     * reporter becomes active as soon as the native operation ID
+     * is available.
      */
     enabled_ =
         !config_.baseUrl.empty() &&
         !resourceId_.empty() &&
         !operationId_.empty();
 }
-
 
 std::uint64_t
 LiveProgressReporter::nowMs()
@@ -467,7 +465,6 @@ LiveProgressReporter::nowMs()
                 .time_since_epoch())
             .count());
 }
-
 
 int
 LiveProgressReporter::calculatePercentage(
@@ -505,7 +502,6 @@ LiveProgressReporter::calculatePercentage(
     return result;
 }
 
-
 bool
 LiveProgressReporter::shouldSend(
     std::uint64_t processedBytes,
@@ -538,18 +534,15 @@ LiveProgressReporter::shouldSend(
         return true;
     }
 
-    /*
-     * Keep the reporter throttled by time.
-     *
-     * Native sanitization may produce progress
-     * callbacks much faster than the backend needs.
-     */
-    (void)processedBytes;
-    (void)totalBytes;
+    const int percentage =
+        calculatePercentage(
+            processedBytes,
+            totalBytes);
+
+    (void)percentage;
 
     return false;
 }
-
 
 std::string
 LiveProgressReporter::escapeJson(
@@ -562,7 +555,7 @@ LiveProgressReporter::escapeJson(
     {
         switch (character)
         {
-        case '\"':
+        case '"':
             output << "\\\"";
             break;
 
@@ -617,7 +610,6 @@ LiveProgressReporter::escapeJson(
     return output.str();
 }
 
-
 std::string
 LiveProgressReporter::joinUrl(
     const std::string& baseUrl,
@@ -657,7 +649,6 @@ LiveProgressReporter::joinUrl(
     return baseUrl + path;
 }
 
-
 bool
 LiveProgressReporter::patchJson(
     const std::string& url,
@@ -680,16 +671,11 @@ LiveProgressReporter::patchJson(
         response.statusCode < 200 ||
         response.statusCode >= 300)
     {
-        /*
-         * Progress reporting must remain
-         * non-fatal to the native operation.
-         */
         return false;
     }
 
     return true;
 }
-
 
 bool
 LiveProgressReporter::reportSanitizationProgress(
@@ -733,7 +719,6 @@ LiveProgressReporter::reportSanitizationProgress(
         force);
 }
 
-
 bool
 LiveProgressReporter::sendSanitizationRequest(
     std::uint64_t processedBytes,
@@ -755,20 +740,6 @@ LiveProgressReporter::sendSanitizationRequest(
 
     std::ostringstream json;
 
-    /*
-     * IMPORTANT:
-     *
-     * Keep this JSON valid.
-     *
-     * The previous implementation generated:
-     *
-     *   "message":"...",""status":"..."
-     *
-     * because of an extra quote.
-     *
-     * That caused the backend request body to be
-     * invalid JSON.
-     */
     json
         << "{"
         << "\"operationId\":\""
@@ -823,11 +794,7 @@ LiveProgressReporter::sendSanitizationRequest(
             url,
             json.str());
 
-    /*
-     * Only update the throttle clock when
-     * the backend actually accepted the request.
-     */
-    if (success)
+    if (success || force)
     {
         lastSentAtMs_ =
             nowMs();
@@ -836,11 +803,8 @@ LiveProgressReporter::sendSanitizationRequest(
             percentage;
     }
 
-    (void)force;
-
     return success;
 }
-
 
 bool
 LiveProgressReporter::reportForensicProgress(
@@ -896,7 +860,6 @@ LiveProgressReporter::reportForensicProgress(
         force);
 }
 
-
 bool
 LiveProgressReporter::sendForensicRequest(
     std::uint64_t bytesScanned,
@@ -924,9 +887,6 @@ LiveProgressReporter::sendForensicRequest(
 
     std::ostringstream json;
 
-    /*
-     * Keep forensic JSON valid as well.
-     */
     json
         << "{"
         << "\"operationId\":\""
@@ -999,7 +959,7 @@ LiveProgressReporter::sendForensicRequest(
             url,
             json.str());
 
-    if (success)
+    if (success || force)
     {
         lastSentAtMs_ =
             nowMs();
@@ -1008,11 +968,8 @@ LiveProgressReporter::sendForensicRequest(
             percentage;
     }
 
-    (void)force;
-
     return success;
 }
-
 
 bool
 LiveProgressReporter::finishSanitization(
@@ -1029,7 +986,6 @@ LiveProgressReporter::finishSanitization(
         "COMPLETED",
         true);
 }
-
 
 bool
 LiveProgressReporter::finishForensic(
@@ -1059,13 +1015,39 @@ LiveProgressReporter::finishForensic(
         true);
 }
 
+bool
+LiveProgressReporter::failForensic(
+    std::uint64_t bytesScanned,
+    std::uint64_t totalBytes,
+    std::uint64_t candidatesFound,
+    std::uint64_t recoveredArtifacts,
+    std::uint64_t validatedArtifacts,
+    std::uint64_t rejectedArtifacts,
+    std::uint64_t highConfidenceArtifacts,
+    std::uint64_t recoveredBytes,
+    const std::string& phase,
+    const std::string& message)
+{
+    return sendForensicRequest(
+        bytesScanned,
+        totalBytes,
+        candidatesFound,
+        recoveredArtifacts,
+        validatedArtifacts,
+        rejectedArtifacts,
+        highConfidenceArtifacts,
+        recoveredBytes,
+        phase,
+        message,
+        "FAILED",
+        true);
+}
 
 void
 LiveProgressReporter::disable()
 {
     enabled_ = false;
 }
-
 
 bool
 LiveProgressReporter::enabled() const
