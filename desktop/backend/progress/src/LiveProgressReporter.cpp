@@ -417,6 +417,8 @@ LiveProgressReporter::LiveProgressReporter(
     const Config& config)
     : operationType_(
           operationType),
+      resourceId_(
+          resourceId),
       operationId_(
           operationId),
       config_(
@@ -424,6 +426,7 @@ LiveProgressReporter::LiveProgressReporter(
 {
     enabled_ =
         !config_.baseUrl.empty() &&
+        !resourceId_.empty() &&
         !operationId_.empty();
 }
 
@@ -859,7 +862,7 @@ LiveProgressReporter::reportForensicProgress(
         recoveredBytes,
         phase,
         message,
-        "IN_PROGRESS",
+        "ACQUIRING",
         force);
 }
 
