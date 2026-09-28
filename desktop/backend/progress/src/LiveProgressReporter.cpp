@@ -417,6 +417,8 @@ LiveProgressReporter::LiveProgressReporter(
     const Config& config)
     : operationType_(
           operationType),
+      resourceId_(
+          resourceId),
       operationId_(
           operationId),
       config_(
@@ -424,6 +426,7 @@ LiveProgressReporter::LiveProgressReporter(
 {
     enabled_ =
         !config_.baseUrl.empty() &&
+        !resourceId_.empty() &&
         !operationId_.empty();
 }
 
@@ -464,10 +467,6 @@ LiveProgressReporter::calculatePercentage(
         return 100;
     }
 
-    /*
-     * Use division after scaling carefully so that
-     * overflow is avoided for normal storage sizes.
-     */
     const long double percentage =
         (
             static_cast<long double>(
@@ -526,11 +525,6 @@ LiveProgressReporter::shouldSend(
             processedBytes,
             totalBytes);
 
-    /*
-     * If percentage changed while throttled,
-     * keep throttling based on time. This prevents
-     * a huge number of HTTP requests.
-     */
     (void)percentage;
 
     return false;
@@ -782,10 +776,6 @@ LiveProgressReporter::sendSanitizationRequest(
         << "\""
         << "}";
 
-    /*
-     * This is the backend live-progress endpoint introduced
-     * in Part 1.
-     */
     const std::string url =
         joinUrl(
             config_.baseUrl,
@@ -859,7 +849,7 @@ LiveProgressReporter::reportForensicProgress(
         recoveredBytes,
         phase,
         message,
-        "IN_PROGRESS",
+        "ACQUIRING",
         force);
 }
 
