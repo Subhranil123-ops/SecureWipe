@@ -1,6 +1,7 @@
 #include "EvidenceCollector.h"
 #include "StorageDevice.h"
 #include "WindowsStorageDiscovery.h"
+#include "../../../progress/include/LiveProgressReporter.h"
 
 #include <Windows.h>
 #include <Lmcons.h>
@@ -3620,11 +3621,62 @@ int main()
     Console::section(
         "05 // RAW READ + JPEG CARVING");
 
+    LiveProgressReporter::Config progressConfig;
+
+    progressConfig.baseUrl =
+        baseUrl;
+
+    progressConfig.token =
+        session.token;
+
+    progressConfig.minimumUpdateIntervalMs =
+        1000;
+
+    progressConfig.alwaysSendBoundaryProgress =
+        true;
+
+    LiveProgressReporter liveProgressReporter(
+        LiveProgressReporter::OperationType::FORENSIC,
+        caseId,
+        runId,
+        progressConfig);
+
+    liveProgressReporter.reportForensicProgress(
+        0,
+        selectedDevice.getCapacityBytes(),
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        "ACQUIRING",
+        "Native forensic acquisition started");
+
     EvidenceCollector collector;
+
+    const EvidenceProgressCallback progressCallback =
+        [&liveProgressReporter](
+            std::uint64_t bytesScanned,
+            std::uint64_t totalBytes)
+        {
+            liveProgressReporter.reportForensicProgress(
+                bytesScanned,
+                totalBytes,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                "ACQUIRING",
+                "Scanning physical device and carving JPEG artifacts");
+        };
 
     const EvidenceCollectionResult result =
         collector.collectWithSummary(
-            selectedDevice.getDeviceId());
+            selectedDevice.getDeviceId(),
+            progressCallback);
 
     const EvidenceCollectionSummary &summary =
         result.summary;
@@ -3648,6 +3700,38 @@ int main()
 
     Console::pass(
         "Chunk-by-chunk acquisition completed.");
+
+    /*
+     * The scan itself is now complete, but the forensic case must
+     * remain in the acquisition/analysis lifecycle until the native
+     * evidence package has been uploaded and server-side integrity
+     * verification succeeds.
+     */
+    liveProgressReporter.reportForensicProgress(
+        summary.bytesScanned,
+        summary.totalBytes,
+        summary.candidatesFound,
+        summary.recoveredArtifacts,
+        summary.validatedArtifacts,
+        summary.rejectedArtifacts,
+        summary.highConfidenceArtifacts,
+        summary.recoveredBytes,
+        "ANALYZING",
+        "Native acquisition completed; preparing forensic evidence");
+
+    if (!updateCaseStatus(
+            baseUrl,
+            caseId,
+            caseBinding.workstationMongoId,
+            session,
+            "ANALYZING",
+            "Native forensic acquisition completed; preparing evidence package"))
+    {
+        return 8;
+    }
+
+    Console::pass(
+        "Server case moved to ANALYZING.");
 
     Console::section(
         "06 // ACQUISITION TELEMETRY");
@@ -3846,6 +3930,23 @@ int main()
 
     Console::pass(
         "Evidence package accepted by the server.");
+
+    /*
+     * Only now is it safe to publish the terminal live-progress state.
+     * The server-side evidence package handler has independently
+     * verified the native certificate, audit chain and artifact hashes.
+     */
+    liveProgressReporter.finishForensic(
+        summary.bytesScanned,
+        summary.totalBytes,
+        summary.candidatesFound,
+        summary.recoveredArtifacts,
+        summary.validatedArtifacts,
+        summary.rejectedArtifacts,
+        summary.highConfidenceArtifacts,
+        summary.recoveredBytes,
+        "COMPLETED",
+        "Forensic evidence package accepted and integrity verified");
 
     Console::section(
         "11 // SERVER-SIDE INTEGRITY COMPLETION");
