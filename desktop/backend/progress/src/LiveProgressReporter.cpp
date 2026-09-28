@@ -424,6 +424,7 @@ LiveProgressReporter::LiveProgressReporter(
 {
     enabled_ =
         !config_.baseUrl.empty() &&
+        !resourceId_.empty() &&
         !operationId_.empty();
 }
 
@@ -859,7 +860,7 @@ LiveProgressReporter::reportForensicProgress(
         recoveredBytes,
         phase,
         message,
-        "IN_PROGRESS",
+        "ACQUIRING",
         force);
 }
 
