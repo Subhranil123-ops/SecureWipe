@@ -1,16 +1,19 @@
 import {
-    Github,
     PlayCircle,
     ExternalLink
 } from "lucide-react";
 
+
 const YOUTUBE_URL =
     "https://www.youtube.com/watch?v=0CUP6A33hT0";
+
 
 const GITHUB_URL =
     "https://github.com/Subhranil123-ops/SecureWipe";
 
+
 function ProjectResources() {
+
     return (
         <section
             className="
@@ -23,6 +26,7 @@ function ProjectResources() {
                 shadow-sm
             "
         >
+
             <div
                 className="
                     flex
@@ -36,8 +40,21 @@ function ProjectResources() {
                     lg:justify-between
                 "
             >
+
+                {/* ==================================================
+                    LEFT SIDE
+                   ================================================== */}
+
                 <div className="min-w-0">
-                    <div className="flex items-center gap-2">
+
+                    <div
+                        className="
+                            flex
+                            items-center
+                            gap-2
+                        "
+                    >
+
                         <span
                             className="
                                 inline-flex
@@ -50,8 +67,11 @@ function ProjectResources() {
                                 text-indigo-600
                             "
                         >
-                            <PlayCircle className="h-4 w-4" />
+                            <PlayCircle
+                                className="h-4 w-4"
+                            />
                         </span>
+
 
                         <p
                             className="
@@ -64,7 +84,9 @@ function ProjectResources() {
                         >
                             Project Resources
                         </p>
+
                     </div>
+
 
                     <h3
                         className="
@@ -75,8 +97,9 @@ function ProjectResources() {
                             text-slate-900
                         "
                     >
-                        Explore the ForenWipe demonstration
+                        Explore the SecureWipe demonstration
                     </h3>
+
 
                     <p
                         className="
@@ -87,11 +110,17 @@ function ProjectResources() {
                             text-slate-500
                         "
                     >
-                        Watch the complete project demonstration or
-                        inspect the source code and implementation
-                        repository.
+                        Watch the complete project demonstration
+                        or inspect the source code and
+                        implementation repository.
                     </p>
+
                 </div>
+
+
+                {/* ==================================================
+                    RIGHT SIDE — RESOURCE BUTTONS
+                   ================================================== */}
 
                 <div
                     className="
@@ -102,11 +131,16 @@ function ProjectResources() {
                         sm:items-center
                     "
                 >
+
+                    {/* ==================================================
+                        YOUTUBE
+                       ================================================== */}
+
                     <a
                         href={YOUTUBE_URL}
                         target="_blank"
                         rel="noopener noreferrer"
-                        aria-label="Watch ForenWipe demo on YouTube"
+                        aria-label="Watch SecureWipe demo on YouTube"
                         className="
                             inline-flex
                             items-center
@@ -129,12 +163,23 @@ function ProjectResources() {
                             focus:ring-offset-2
                         "
                     >
-                        <PlayCircle className="h-4 w-4" />
+
+                        <PlayCircle
+                            className="h-4 w-4"
+                        />
 
                         Watch Demo
 
-                        <ExternalLink className="h-3.5 w-3.5" />
+                        <ExternalLink
+                            className="h-3.5 w-3.5"
+                        />
+
                     </a>
+
+
+                    {/* ==================================================
+                        GITHUB
+                       ================================================== */}
 
                     <a
                         href={GITHUB_URL}
@@ -165,14 +210,66 @@ function ProjectResources() {
                             focus:ring-offset-2
                         "
                     >
-                        <Github className="h-4 w-4" />
+
+                        {/* GitHub SVG */}
+
+                        <svg
+                            viewBox="0 0 24 24"
+                            className="h-4 w-4"
+                            fill="currentColor"
+                            aria-hidden="true"
+                        >
+                            <path
+                                d="
+                                    M12 2
+                                    C6.477 2 2 6.477 2 12
+                                    C2 16.42 4.865 20.17 8.84 21.49
+                                    C9.34 21.58 9.52 21.27 9.52 21
+                                    C9.52 20.76 9.51 20.13 9.51 19.29
+                                    C6.73 19.89 6.14 17.95 6.14 17.95
+                                    C5.68 16.8 5.03 16.5 5.03 16.5
+                                    C4.12 15.88 5.1 15.89 5.1 15.89
+                                    C6.1 15.96 6.63 16.91 6.63 16.91
+                                    C7.52 18.43 8.97 18 9.54 17.74
+                                    C9.63 17.09 9.89 16.65 10.17 16.4
+                                    C7.95 16.15 5.62 15.29 5.62 11.18
+                                    C5.62 10.01 6.04 9.05 6.73 8.3
+                                    C6.62 8.04 6.25 6.95 6.84 5.48
+                                    C6.84 5.48 7.73 5.2 9.5 6.4
+                                    C10.35 6.17 11.25 6.05 12 6.05
+                                    C12.75 6.05 13.65 6.17 14.5 6.4
+                                    C16.27 5.2 17.16 5.48 17.16 5.48
+                                    C17.75 6.95 17.38 8.04 17.27 8.3
+                                    C17.96 9.05 18.38 10.01 18.38 11.18
+                                    C18.38 15.3 16.05 16.14 13.83 16.39
+                                    C14.18 16.69 14.48 17.28 14.48 18.19
+                                    C14.48 19.5 14.47 20.56 14.47 21
+                                    C14.47 21.27 14.65 21.58 15.15 21.49
+                                    C19.135 20.17 22 16.42 22 12
+                                    C22 6.477 17.523 2 12 2
+                                    Z
+                                "
+                            />
+                        </svg>
+
 
                         GitHub Repository
 
-                        <ExternalLink className="h-3.5 w-3.5" />
+
+                        <ExternalLink
+                            className="h-3.5 w-3.5"
+                        />
+
                     </a>
+
                 </div>
+
             </div>
+
+
+            {/* ==================================================
+                FOOTER STRIP
+               ================================================== */}
 
             <div
                 className="
@@ -184,6 +281,7 @@ function ProjectResources() {
                     sm:px-6
                 "
             >
+
                 <div
                     className="
                         flex
@@ -196,18 +294,29 @@ function ProjectResources() {
                         sm:justify-between
                     "
                 >
+
                     <span>
-                        ForenWipe · Secure data sanitization & digital
-                        forensics
+                        SecureWipe · Secure data sanitization &
+                        digital forensics
                     </span>
 
-                    <span className="font-medium text-slate-400">
+
+                    <span
+                        className="
+                            font-medium
+                            text-slate-400
+                        "
+                    >
                         Demo & source available publicly
                     </span>
+
                 </div>
+
             </div>
+
         </section>
     );
 }
+
 
 export default ProjectResources;
